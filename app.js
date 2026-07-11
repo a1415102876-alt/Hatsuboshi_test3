@@ -12493,11 +12493,19 @@ ${buildChoiceHardRules({ phase1: true })}`;
       turnId: state.harness?.activeTurn?.turnId || "",
       promptLength: prompt.length
     });
+    const generationMode = String(options.generationMode || "shujuku_same_layer");
+    const ownerKind = String(options.ownerKind || owner.ownerKind || "legacy_main");
+    const turnId = String(options.turnId || owner.turnId || "");
+    const saveScope = String(owner.saveScope || activeHostSaveScope || "");
     window.parent.postMessage({
       source: "hatsuboshi-produce",
       type: "sendPrompt",
       requestId,
       channelLeaseId: owner.channelLeaseId,
+      saveScope,
+      ownerKind,
+      generationMode,
+      turnId,
       prompt
     }, "*");
     if (!hostPromptSendSilent) {

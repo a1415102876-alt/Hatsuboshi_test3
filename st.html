@@ -626,13 +626,16 @@
           postCharacterToFrame();
         }
         if (data.type === 'sendPrompt') {
-          const reqId = String(data.requestId || '');
-          const channelLeaseId = String(data.channelLeaseId || '');
+          const envelope = normalizeHostGenerationEnvelope(data);
+          if (!envelope.ok) {
+            postPrimaryAiError(data.requestId, data.channelLeaseId, new Error(envelope.reason));
+            return;
+          }
           queuePromptTask(async () => {
             try {
-              await runTransactionalPrompt(data.prompt, reqId, channelLeaseId);
+              await runHostGenerationAttempt(envelope);
             } catch (error) {
-              postPrimaryAiError(reqId, channelLeaseId, error);
+              postPrimaryAiError(envelope.requestId, envelope.channelLeaseId, error);
             }
           });
         }
@@ -644,10 +647,11 @@
           const reqId = String(data.requestId || '');
           const channelLeaseId = String(data.channelLeaseId || '');
           const cachedPrompt = requestPromptCache.get(reqId);
+          const cachedPromptText = typeof cachedPrompt === 'object' ? cachedPrompt.prompt : cachedPrompt;
           if (cachedPrompt) {
             queuePromptTask(async () => {
               try {
-                await runTransactionalPrompt(cachedPrompt, reqId, channelLeaseId);
+                await runTransactionalPrompt(cachedPromptText, reqId, channelLeaseId);
               } catch (error) {
                 postPrimaryAiError(reqId, channelLeaseId, error);
               }
@@ -832,6 +836,24 @@
         turnId: String(data?.turnId || ''),
         attemptKey: createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope)
       };
+    }
+
+    function createHostPromptCacheEntry(envelope) {
+      return {
+        prompt: envelope.prompt,
+        generationMode: envelope.generationMode,
+        saveScope: envelope.saveScope,
+        ownerKind: envelope.ownerKind,
+        turnId: envelope.turnId,
+        requestId: envelope.requestId,
+        channelLeaseId: envelope.channelLeaseId,
+        attemptKey: envelope.attemptKey
+      };
+    }
+
+    async function runHostGenerationAttempt(envelope) {
+      requestPromptCache.set(envelope.requestId, createHostPromptCacheEntry(envelope));
+      return runTransactionalPrompt(envelope.prompt, envelope.requestId, envelope.channelLeaseId);
     }
     let promptTaskQueue = Promise.resolve();
 
@@ -1718,7 +1740,7 @@
       const promptText = String(prompt || '').trim();
       const reqId = String(requestId || '');
       if (!context || !promptText || !reqId) return;
-      requestPromptCache.set(reqId, promptText);
+      if (!requestPromptCache.has(reqId)) requestPromptCache.set(reqId, promptText);
       pendingRequestId = reqId;
       pendingChannelLeaseId = String(channelLeaseId || '');
       clearReplyCandidateState();

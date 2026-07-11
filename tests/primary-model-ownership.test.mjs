@@ -136,7 +136,9 @@ test("recovery acquires a new lease before changing the active turn", () => {
 });
 
 test("primary bridge echoes the exact lease and terminal handling releases it", () => {
-  assert.match(bridgeSource, /runTransactionalPrompt\(data\.prompt, reqId, channelLeaseId\)/);
+  assert.match(bridgeSource, /normalizeHostGenerationEnvelope\(data\)/);
+  assert.match(bridgeSource, /runHostGenerationAttempt\(envelope\)/);
+  assert.match(readFunction(bridgeSource, "runHostGenerationAttempt"), /runTransactionalPrompt\(envelope\.prompt, envelope\.requestId, envelope\.channelLeaseId\)/);
   assert.match(bridgeSource, /pendingChannelLeaseId\s*=\s*String\(channelLeaseId/);
   assert.match(bridgeSource, /channelLeaseId:\s*String\(options\.channelLeaseId/);
   assert.match(bridgeSource, /channelLeaseId:\s*pendingChannelLeaseId/);
