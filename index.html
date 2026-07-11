@@ -520,6 +520,31 @@
     </article>
   </section>
 
+  <section id="harnessRecoveryOverlay" class="event-overlay" hidden aria-label="行动叙事恢复">
+    <article class="event-panel" role="dialog" aria-modal="true" aria-labelledby="harnessRecoveryTitle">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Turn Recovery</p>
+          <h2 id="harnessRecoveryTitle">行动叙事尚未确认</h2>
+        </div>
+        <button id="harnessRecoveryCloseBtn" class="icon-button" type="button" aria-label="暂时关闭恢复提示">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </header>
+      <div class="event-result" id="harnessRecoverySummary">
+        本次行动的数值、随机结果和时间已经结算，不会回滚或再次结算。
+      </div>
+      <div class="event-story" id="harnessRecoveryPromptNote">
+        正在检查是否保留了原始行动提示词。
+      </div>
+      <footer class="event-actions">
+        <button id="harnessRecoveryDismissBtn" class="event-button secondary" type="button">暂时关闭</button>
+        <button id="harnessRecoveryAbandonBtn" class="event-button secondary" type="button" disabled>放弃叙事恢复</button>
+        <button id="harnessRecoveryRetryBtn" class="event-button primary" type="button" disabled>重新生成叙事</button>
+      </footer>
+    </article>
+  </section>
+
   <section id="chronicleLoadOverlay" class="event-overlay chronicle-load-overlay" hidden aria-label="剧情读档">
     <article class="event-panel chronicle-load-panel">
       <header class="event-head">

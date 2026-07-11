@@ -4,6 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+const indexSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
 function readFunction(source, functionName) {
   const declaration = `function ${functionName}`;
@@ -206,4 +207,107 @@ test("ordinary settlement freezes the existing prompt before its settled save", 
   assert.match(rejectedTrace, /promptLength/);
   assert.match(rejectedTrace, /promptStatus/);
   assert.doesNotMatch(rejectedTrace, /generationPrompt\s*:/);
+});
+
+test("refresh transition preserves the turn and is persisted only once", () => {
+  const state = { harness: { activeTurn: ordinaryTurn() } };
+  const trace = [];
+  let saves = 0;
+  const context = hostContext();
+  const sandbox = {
+    state,
+    runtimeSessionEpoch: context.runtimeSessionEpoch,
+    activeHostSaveScope: context.activeHostSaveScope,
+    activeStorageKey: context.activeStorageKey,
+    isSillyTavernHost: () => true,
+    isHarnessOrdinaryAction: (action) => ["lesson", "training", "rest"].includes(action),
+    recordHarnessTrace: (type, detail) => trace.push({ type, detail }),
+    saveState: () => { saves += 1; },
+    Date: { now: () => 123456 }
+  };
+  vm.runInNewContext([
+    readFunction(appSource, "isHarnessTurnInActiveScope"),
+    readFunction(appSource, "getHarnessRecoveryDisposition"),
+    readFunction(appSource, "getHarnessRecoveryContext"),
+    readFunction(appSource, "markHarnessRecoveryRequired"),
+    "this.markHarnessRecoveryRequired = markHarnessRecoveryRequired;"
+  ].join("\n"), sandbox);
+
+  const first = sandbox.markHarnessRecoveryRequired();
+  assert.equal(first.status, "recovery_required");
+  assert.equal(first.turnId, "turn-1");
+  assert.equal(first.requestId, "request-old");
+  assert.equal(first.interruptedStatus, "generating");
+  assert.equal(first.interruptedSessionEpoch, "session-old");
+  assert.equal(first.recoveryRequiredAt, 123456);
+  assert.equal(saves, 1);
+  assert.equal(trace.length, 1);
+  assert.equal(trace[0].type, "turn.recovery_required");
+
+  const second = sandbox.markHarnessRecoveryRequired();
+  assert.equal(second.status, "recovery_required");
+  assert.equal(saves, 1);
+  assert.equal(trace.length, 1);
+});
+
+test("recovery prompt auto-opens once per page and can be forced open", () => {
+  const turn = ordinaryTurn({ status: "recovery_required" });
+  const opened = [];
+  const sandbox = {
+    shownHarnessRecoveryKeys: new Set(),
+    markHarnessRecoveryRequired: () => turn,
+    getHarnessRecoveryContext: () => hostContext(),
+    openHarnessRecoveryOverlay: (value) => opened.push(value.turnId)
+  };
+  vm.runInNewContext([
+    readFunction(appSource, "buildHarnessRecoveryPromptKey"),
+    readFunction(appSource, "maybeShowHarnessRecoveryPrompt"),
+    "this.maybeShowHarnessRecoveryPrompt = maybeShowHarnessRecoveryPrompt;"
+  ].join("\n"), sandbox);
+
+  const maybeShowSource = readFunction(appSource, "maybeShowHarnessRecoveryPrompt");
+  assert.doesNotMatch(maybeShowSource, /createRequestId|requestHostPromptSend|postMessage/);
+
+  assert.equal(sandbox.maybeShowHarnessRecoveryPrompt(), true);
+  assert.equal(sandbox.maybeShowHarnessRecoveryPrompt(), false);
+  assert.equal(sandbox.maybeShowHarnessRecoveryPrompt({ force: true }), true);
+  assert.deepEqual(opened, ["turn-1", "turn-1"]);
+});
+
+test("recovery prompt is scheduled only after the active host scope and render are ready", () => {
+  const applyHost = readFunction(appSource, "applyHostCharacter");
+  const scopeIndex = applyHost.indexOf("activeHostSaveScope = String(saveScope || \"\")");
+  const renderIndex = applyHost.indexOf("render();", scopeIndex);
+  const scheduleIndex = applyHost.indexOf("requestAnimationFrame(() => maybeShowHarnessRecoveryPrompt())");
+  assert.ok(scopeIndex >= 0 && scopeIndex < renderIndex && renderIndex < scheduleIndex);
+
+  const bootstrap = appSource.slice(appSource.indexOf("hydrateWorldMapLayout().finally"));
+  assert.match(bootstrap, /if \(!isSillyTavernHost\(\)\) requestAnimationFrame\(\(\) => maybeShowHarnessRecoveryPrompt\(\)\)/);
+});
+
+test("the independent recovery overlay closes without abandoning the turn", () => {
+  assert.match(indexSource, /id="harnessRecoveryOverlay"/);
+  assert.match(indexSource, /id="harnessRecoveryRetryBtn"[^>]*disabled/);
+  assert.match(indexSource, /id="harnessRecoveryAbandonBtn"[^>]*disabled/);
+  assert.match(indexSource, /id="harnessRecoveryDismissBtn"/);
+
+  const closeRecovery = readFunction(appSource, "closeHarnessRecoveryOverlay");
+  const closeEvent = readFunction(appSource, "closeEventOverlay");
+  assert.doesNotMatch(closeRecovery, /state\.|abandoned|recovery_required/);
+  assert.doesNotMatch(closeEvent, /abandoned|recovery_required/);
+  const keydownStart = appSource.indexOf('document.addEventListener("keydown"');
+  const keydown = appSource.slice(keydownStart, keydownStart + 700);
+  const recoveryCloseIndex = keydown.indexOf("closeHarnessRecoveryOverlay();");
+  const earlyReturnIndex = keydown.indexOf("return;", recoveryCloseIndex);
+  const eventCloseIndex = keydown.indexOf("closeEventOverlay();");
+  assert.ok(recoveryCloseIndex >= 0 && recoveryCloseIndex < earlyReturnIndex && earlyReturnIndex < eventCloseIndex);
+
+  const node = { hidden: false };
+  const sandbox = {
+    document: { getElementById: (id) => id === "harnessRecoveryOverlay" ? node : null },
+    setElementHidden: (id, hidden) => { if (id === "harnessRecoveryOverlay") node.hidden = hidden; }
+  };
+  const close = vm.runInNewContext(`(${closeRecovery})`, sandbox);
+  close();
+  assert.equal(node.hidden, true);
 });

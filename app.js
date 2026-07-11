@@ -2719,6 +2719,7 @@
   let activeHostSaveScope = "";
   let hostStateReady = false;
   let runtimeSessionEpoch = createHarnessId("session");
+  const shownHarnessRecoveryKeys = new Set();
   const aiBridgeDebug = {
     lastPromptRequest: null,
     lastReply: null,
@@ -5723,6 +5724,77 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     if (turn.status === "recovery_required") return "pending";
     if (turn.sessionEpoch === context.runtimeSessionEpoch) return "none";
     return ["settled", "generating"].includes(turn.status) ? "transition" : "none";
+  }
+
+  function getHarnessRecoveryContext() {
+    return {
+      runtimeSessionEpoch,
+      isHost: isSillyTavernHost(),
+      activeHostSaveScope: String(activeHostSaveScope || ""),
+      activeStorageKey: String(activeStorageKey || "")
+    };
+  }
+
+  function markHarnessRecoveryRequired() {
+    const turn = state.harness?.activeTurn;
+    const context = getHarnessRecoveryContext();
+    const disposition = getHarnessRecoveryDisposition(turn, context);
+    if (disposition === "none") return null;
+    if (disposition === "pending") return turn;
+    const now = Date.now();
+    state.harness.activeTurn = {
+      ...turn,
+      status: "recovery_required",
+      interruptedStatus: turn.status,
+      interruptedSessionEpoch: turn.sessionEpoch,
+      recoveryRequiredAt: now,
+      updatedAt: now
+    };
+    recordHarnessTrace("turn.recovery_required", {
+      turnId: turn.turnId || "",
+      requestId: turn.requestId || "",
+      action: turn.action || "",
+      interruptedStatus: turn.status || ""
+    });
+    saveState("harness.recovery_required");
+    return state.harness.activeTurn;
+  }
+
+  function buildHarnessRecoveryPromptKey(turn, context) {
+    const scopeKey = context.isHost
+      ? `host:${String(context.activeHostSaveScope || "")}`
+      : `local:${String(context.activeStorageKey || "")}`;
+    return `${scopeKey}:${String(turn?.turnId || "")}`;
+  }
+
+  function openHarnessRecoveryOverlay(turn) {
+    const actionNames = { lesson: "上课", training: "训练", rest: "休息" };
+    const actionName = actionNames[turn?.action] || "普通行动";
+    const title = document.getElementById("harnessRecoveryTitle");
+    const summary = document.getElementById("harnessRecoverySummary");
+    const promptNote = document.getElementById("harnessRecoveryPromptNote");
+    if (title) title.textContent = `${actionName}叙事尚未确认`;
+    if (summary) summary.textContent = "本次行动的数值、随机结果和时间已经结算，不会回滚或再次结算。";
+    if (promptNote) {
+      promptNote.textContent = turn?.generationPromptStatus === "captured"
+        ? "已保留原始行动提示词。重新生成与放弃操作将在下一阶段启用。"
+        : "原始行动提示词不可安全恢复；当前只能暂时关闭提示。";
+    }
+    setElementHidden("harnessRecoveryOverlay", false);
+  }
+
+  function closeHarnessRecoveryOverlay() {
+    setElementHidden("harnessRecoveryOverlay", true);
+  }
+
+  function maybeShowHarnessRecoveryPrompt(options = {}) {
+    const turn = markHarnessRecoveryRequired();
+    if (!turn) return false;
+    const key = buildHarnessRecoveryPromptKey(turn, getHarnessRecoveryContext());
+    if (!options.force && shownHarnessRecoveryKeys.has(key)) return false;
+    shownHarnessRecoveryKeys.add(key);
+    openHarnessRecoveryOverlay(turn);
+    return true;
   }
 
   function buildHarnessActionKey(action, attribute) {
@@ -12006,6 +12078,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
       saveState();
     }
     render();
+    requestAnimationFrame(() => maybeShowHarnessRecoveryPrompt());
     resumeOpeningIfNeeded();
     const syncTitle = resolution.source === "remote"
       ? "已载入共享存档"
@@ -17875,6 +17948,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
   document.getElementById("eventOverlay").addEventListener("click", (event) => {
     if (event.target.id === "eventOverlay") closeEventOverlay();
   });
+  document.getElementById("harnessRecoveryCloseBtn")?.addEventListener("click", closeHarnessRecoveryOverlay);
+  document.getElementById("harnessRecoveryDismissBtn")?.addEventListener("click", closeHarnessRecoveryOverlay);
+  document.getElementById("harnessRecoveryOverlay")?.addEventListener("click", (event) => {
+    if (event.target.id === "harnessRecoveryOverlay") closeHarnessRecoveryOverlay();
+  });
 
   // Galgame 播放器控制按钮事件绑定
   document.getElementById("vnBtnSkip").addEventListener("click", skipAllVnDialogue);
@@ -18273,7 +18351,13 @@ ${buildChoiceHardRules({ phase1: true })}`;
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      const recoveryOverlay = document.getElementById("harnessRecoveryOverlay");
+      if (recoveryOverlay && !recoveryOverlay.hidden) {
+        closeHarnessRecoveryOverlay();
+        return;
+      }
       closeVnDebugView();
+      closeHarnessRecoveryOverlay();
       closeEventOverlay();
       closeAiPromptOverlay();
       closeFreeChatOverlay();
@@ -18487,6 +18571,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
   hydrateWorldMapLayout().finally(() => {
     saveState();
     render();
+    if (!isSillyTavernHost()) requestAnimationFrame(() => maybeShowHarnessRecoveryPrompt());
     requestAnimationFrame(() => {
       ensureIdolListRendered();
     });
