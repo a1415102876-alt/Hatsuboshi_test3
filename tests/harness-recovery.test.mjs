@@ -288,7 +288,7 @@ test("recovery prompt is scheduled only after the active host scope and render a
 test("the independent recovery overlay closes without abandoning the turn", () => {
   assert.match(indexSource, /id="harnessRecoveryOverlay"/);
   assert.doesNotMatch(indexSource, /id="harnessRecoveryRetryBtn"[^>]*disabled/);
-  assert.match(indexSource, /id="harnessRecoveryAbandonBtn"[^>]*disabled/);
+  assert.doesNotMatch(indexSource, /id="harnessRecoveryAbandonBtn"[^>]*disabled/);
   assert.match(indexSource, /id="harnessRecoveryDismissBtn"/);
 
   const closeRecovery = readFunction(appSource, "closeHarnessRecoveryOverlay");
@@ -513,4 +513,200 @@ test("recovery controls are enabled and wired without changing ordinary close be
   assert.doesNotMatch(indexSource, /id="harnessRecoveryRetryBtn"[^>]*disabled/);
   assert.match(appSource, /harnessRecoveryRetryBtn"\)\?\.addEventListener\("click", retryHarnessNarrativeRecovery\)/);
   assert.doesNotMatch(readFunction(appSource, "closeHarnessRecoveryOverlay"), /abandoned|recovery_required|state\./);
+});
+
+test("pending recovery blocks every ordinary action before a new turn or settlement context is written", () => {
+  for (const action of ["lesson", "training", "rest"]) {
+    const state = {
+      day: 4,
+      round: 2,
+      stamina: 68,
+      stress: 11,
+      trust: 35,
+      Vo: 100,
+      Da: 110,
+      Vi: 120,
+      pendingActionContext: null,
+      log: [{ action: "existing" }],
+      harness: { activeTurn: ordinaryTurn({ status: "recovery_required" }) }
+    };
+    const businessBefore = JSON.stringify({
+      day: state.day,
+      round: state.round,
+      stamina: state.stamina,
+      stress: state.stress,
+      trust: state.trust,
+      Vo: state.Vo,
+      Da: state.Da,
+      Vi: state.Vi,
+      pendingActionContext: state.pendingActionContext,
+      log: state.log
+    });
+    let actionKeyBuilds = 0;
+    let promptOpens = 0;
+    let saves = 0;
+    const traces = [];
+    const sandbox = {
+      state,
+      runtimeSessionEpoch: "session-new",
+      activeHostSaveScope: "scope-a",
+      activeStorageKey: "hatsuProduceLocalState:scope-a",
+      buildHarnessActionKey: () => { actionKeyBuilds += 1; return "new-key"; },
+      buildHarnessPreTurnSnapshot: () => ({ day: 4, round: 2 }),
+      createHarnessId: () => "turn-new",
+      getHarnessRecoveryContext: () => hostContext(),
+      isHarnessTurnInActiveScope: () => true,
+      isHarnessOrdinaryAction: (value) => ["lesson", "training", "rest"].includes(value),
+      isHarnessTurnBlocking: () => false,
+      recordHarnessTrace: (type, detail) => traces.push({ type, detail }),
+      debugHarnessEvent: () => {},
+      maybeShowHarnessRecoveryPrompt: ({ force }) => { if (force) promptOpens += 1; },
+      showToast: () => {},
+      saveState: () => { saves += 1; }
+    };
+    vm.runInNewContext([
+      readFunction(appSource, "beginHarnessProduceAction"),
+      "this.beginHarnessProduceAction = beginHarnessProduceAction;"
+    ].join("\n"), sandbox);
+
+    assert.deepEqual(JSON.parse(JSON.stringify(sandbox.beginHarnessProduceAction(action, "Vo"))), { ok: false });
+    assert.equal(actionKeyBuilds, 0, `${action} must return before creating a new action key`);
+    assert.equal(promptOpens, 1);
+    assert.equal(saves, 1);
+    assert.equal(traces.at(-1)?.type, "turn.rejected_recovery_pending");
+    assert.equal(state.harness.activeTurn.turnId, "turn-1");
+    assert.equal(state.harness.activeTurn.status, "recovery_required");
+    assert.equal(JSON.stringify({
+      day: state.day,
+      round: state.round,
+      stamina: state.stamina,
+      stress: state.stress,
+      trust: state.trust,
+      Vo: state.Vo,
+      Da: state.Da,
+      Vi: state.Vi,
+      pendingActionContext: state.pendingActionContext,
+      log: state.log
+    }), businessBefore);
+  }
+});
+
+test("abandoned recovery no longer blocks the next ordinary action", () => {
+  const state = {
+    day: 4,
+    round: 2,
+    stamina: 68,
+    stress: 11,
+    trust: 35,
+    Vo: 100,
+    Da: 110,
+    Vi: 120,
+    sp: { Vo: false, Da: true, Vi: false },
+    harness: { persistenceRevision: 9, activeTurn: ordinaryTurn({ status: "abandoned" }) }
+  };
+  const sandbox = {
+    state,
+    runtimeSessionEpoch: "session-new",
+    activeHostSaveScope: "scope-a",
+    activeStorageKey: "hatsuProduceLocalState:scope-a",
+    buildHarnessActionKey: () => "produce:4:2:rest:-",
+    getHarnessRecoveryContext: () => hostContext(),
+    isHarnessTurnInActiveScope: () => true,
+    isHarnessOrdinaryAction: (value) => ["lesson", "training", "rest"].includes(value),
+    isHarnessTurnBlocking: () => false,
+    createHarnessId: () => "turn-new",
+    buildHarnessPreTurnSnapshot: () => ({ day: 4, round: 2 }),
+    recordHarnessTrace: () => {},
+    debugHarnessEvent: () => {},
+    showToast: () => {}
+  };
+  vm.runInNewContext([
+    readFunction(appSource, "beginHarnessProduceAction"),
+    "this.beginHarnessProduceAction = beginHarnessProduceAction;"
+  ].join("\n"), sandbox);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.beginHarnessProduceAction("rest", null))), {
+    ok: true,
+    turnId: "turn-new"
+  });
+  assert.equal(state.harness.activeTurn.status, "prepared");
+});
+
+test("explicit abandon requires confirmation and changes only harness recovery fields", () => {
+  const initialTurn = ordinaryTurn({
+    status: "recovery_required",
+    generationPrompt: "frozen prompt",
+    generationPromptLength: 13,
+    generationPromptStatus: "captured",
+    requestIds: ["request-old"]
+  });
+  const state = {
+    day: 5,
+    round: 3,
+    stamina: 57,
+    stress: 18,
+    trust: 40,
+    Vo: 140,
+    Da: 150,
+    Vi: 160,
+    sp: { Vo: true, Da: false, Vi: false },
+    log: [{ action: "training", result: "saved" }],
+    lastStory: "existing story",
+    harness: { activeTurn: initialTurn }
+  };
+  const businessBefore = JSON.stringify({ ...state, harness: undefined });
+  let confirmed = false;
+  let saves = 0;
+  let closes = 0;
+  const traces = [];
+  const sandbox = {
+    state,
+    Date: { now: () => 424242 },
+    getHarnessRecoveryContext: () => hostContext(),
+    isHarnessTurnInActiveScope: () => true,
+    isHarnessOrdinaryAction: (value) => ["lesson", "training", "rest"].includes(value),
+    window: { confirm: () => confirmed },
+    recordHarnessTrace: (type, detail) => traces.push({ type, detail }),
+    saveState: () => { saves += 1; },
+    render: () => {},
+    closeHarnessRecoveryOverlay: () => { closes += 1; },
+    showToast: () => {}
+  };
+  vm.runInNewContext([
+    readFunction(appSource, "abandonHarnessNarrativeRecovery"),
+    "this.abandonHarnessNarrativeRecovery = abandonHarnessNarrativeRecovery;"
+  ].join("\n"), sandbox);
+
+  assert.equal(sandbox.abandonHarnessNarrativeRecovery(), false);
+  assert.equal(state.harness.activeTurn.status, "recovery_required");
+  assert.equal(saves, 0);
+  assert.equal(closes, 0);
+
+  confirmed = true;
+  assert.equal(sandbox.abandonHarnessNarrativeRecovery(), true);
+  assert.equal(state.harness.activeTurn.status, "abandoned");
+  assert.equal(state.harness.activeTurn.abandonedAt, 424242);
+  assert.equal(state.harness.activeTurn.turnId, "turn-1");
+  assert.equal(state.harness.activeTurn.generationPrompt, "frozen prompt");
+  assert.deepEqual(Array.from(state.harness.activeTurn.requestIds), ["request-old"]);
+  assert.equal(traces.at(-1)?.type, "turn.abandoned");
+  assert.equal(saves, 1);
+  assert.equal(closes, 1);
+  assert.equal(JSON.stringify({ ...state, harness: undefined }), businessBefore);
+});
+
+test("only the dedicated abandon control can abandon recovery", () => {
+  assert.doesNotMatch(indexSource, /id="harnessRecoveryAbandonBtn"[^>]*disabled/);
+  assert.match(appSource, /harnessRecoveryAbandonBtn"\)\?\.addEventListener\("click", abandonHarnessNarrativeRecovery\)/);
+  assert.match(readFunction(appSource, "abandonHarnessNarrativeRecovery"), /window\.confirm\(/);
+  assert.doesNotMatch(readFunction(appSource, "closeHarnessRecoveryOverlay"), /abandonHarnessNarrativeRecovery|abandoned|state\./);
+  assert.doesNotMatch(readFunction(appSource, "closeEventOverlay"), /abandonHarnessNarrativeRecovery|abandoned|recovery_required/);
+});
+
+test("recovery guard remains scoped to ordinary action entry only", () => {
+  const settlement = readSection("function settleAction(", "function createRequestId(");
+  assert.equal((appSource.match(/beginHarnessProduceAction\(/g) || []).length, 2);
+  assert.match(settlement, /if \(isHarnessOrdinaryAction\(action\)\) \{\s*const turnStart = beginHarnessProduceAction/);
+  for (const sideEntry of ["submitPhoneChatMessage", "requestBroadcastFullScript", "confirmMapLocationEntry", "openSideQuestFromTaskPanel"]) {
+    assert.doesNotMatch(readFunction(appSource, sideEntry), /beginHarnessProduceAction|turn\.rejected_recovery_pending/);
+  }
 });

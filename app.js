@@ -5774,6 +5774,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const summary = document.getElementById("harnessRecoverySummary");
     const promptNote = document.getElementById("harnessRecoveryPromptNote");
     const retryButton = document.getElementById("harnessRecoveryRetryBtn");
+    const abandonButton = document.getElementById("harnessRecoveryAbandonBtn");
     if (title) title.textContent = `${actionName}叙事尚未确认`;
     if (summary) summary.textContent = "本次行动的数值、随机结果和时间已经结算，不会回滚或再次结算。";
     if (promptNote) {
@@ -5782,6 +5783,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
         : "原始行动提示词缺失或无法确认归属，不能重新生成；你仍可暂时关闭提示。";
     }
     if (retryButton) retryButton.disabled = !resolveHarnessRecoveryPrompt(turn);
+    if (abandonButton) abandonButton.disabled = false;
     setElementHidden("harnessRecoveryOverlay", false);
   }
 
@@ -5905,6 +5907,44 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     return true;
   }
 
+  function abandonHarnessNarrativeRecovery() {
+    const turn = state.harness?.activeTurn;
+    const context = getHarnessRecoveryContext();
+    if (
+      !turn
+      || turn.kind !== "produce_action"
+      || turn.status !== "recovery_required"
+      || !isHarnessOrdinaryAction(turn.action)
+      || !isHarnessTurnInActiveScope(turn, context)
+    ) {
+      showToast("无法放弃恢复", "当前恢复记录不属于这个存档，未修改任何状态。", "warn");
+      return false;
+    }
+    const confirmed = window.confirm(
+      "放弃后不会补写本次叙事。已经结算的数值、随机结果、轮次和时间不会回滚。确认放弃吗？"
+    );
+    if (!confirmed) return false;
+
+    const now = Date.now();
+    state.harness.activeTurn = {
+      ...turn,
+      status: "abandoned",
+      requestId: "",
+      abandonedAt: now,
+      updatedAt: now
+    };
+    recordHarnessTrace("turn.abandoned", {
+      turnId: turn.turnId || "",
+      requestId: turn.requestId || "",
+      action: turn.action || ""
+    });
+    saveState("harness.recovery_abandoned");
+    closeHarnessRecoveryOverlay();
+    render();
+    showToast("已放弃叙事恢复", "本次行动的既有结算保持不变，可以继续普通行动。", "info");
+    return true;
+  }
+
   function maybeShowHarnessRecoveryPrompt(options = {}) {
     const turn = markHarnessRecoveryRequired();
     if (!turn) return false;
@@ -5944,6 +5984,24 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   function beginHarnessProduceAction(action, attribute) {
+    const recoveryTurn = state.harness?.activeTurn;
+    if (
+      recoveryTurn
+      && recoveryTurn.kind === "produce_action"
+      && recoveryTurn.status === "recovery_required"
+      && isHarnessOrdinaryAction(recoveryTurn.action)
+      && isHarnessTurnInActiveScope(recoveryTurn, getHarnessRecoveryContext())
+    ) {
+      recordHarnessTrace("turn.rejected_recovery_pending", {
+        turnId: recoveryTurn.turnId || "",
+        action,
+        blockedByAction: recoveryTurn.action || ""
+      });
+      saveState("harness.recovery_pending_guard");
+      showToast("叙事恢复待处理", "请先重新生成或明确放弃上一行动的叙事恢复。", "warn");
+      maybeShowHarnessRecoveryPrompt({ force: true });
+      return { ok: false };
+    }
     const actionKey = buildHarnessActionKey(action, attribute);
     const blockingTurn = state.harness?.activeTurn;
     if (isHarnessTurnBlocking(blockingTurn, runtimeSessionEpoch)) {
@@ -18080,6 +18138,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
   document.getElementById("harnessRecoveryCloseBtn")?.addEventListener("click", closeHarnessRecoveryOverlay);
   document.getElementById("harnessRecoveryDismissBtn")?.addEventListener("click", closeHarnessRecoveryOverlay);
   document.getElementById("harnessRecoveryRetryBtn")?.addEventListener("click", retryHarnessNarrativeRecovery);
+  document.getElementById("harnessRecoveryAbandonBtn")?.addEventListener("click", abandonHarnessNarrativeRecovery);
   document.getElementById("harnessRecoveryOverlay")?.addEventListener("click", (event) => {
     if (event.target.id === "harnessRecoveryOverlay") closeHarnessRecoveryOverlay();
   });
