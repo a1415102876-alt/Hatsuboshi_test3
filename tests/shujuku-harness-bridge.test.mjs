@@ -274,12 +274,45 @@ test("opening quiet keeps an explicit null assistant floor absent", () => {
   assert.equal(context.resolveMessageId(null), -1);
 });
 
+test("structured regeneration creates a new exact attempt from the cached narrative request", () => {
+  const context = {
+    HOST_GENERATION_MODES: new Set(["opening_quiet", "shujuku_same_layer"])
+  };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "createHostGenerationAttemptKey"),
+    readFunction(bridgeSource, "normalizeHostGenerationEnvelope"),
+    readFunction(bridgeSource, "createHostRegenerationEnvelope"),
+    "this.createRegenerationEnvelope = createHostRegenerationEnvelope;"
+  ].join("\n"), context);
+  const cached = {
+    prompt: "frozen narrative prompt",
+    generationMode: "shujuku_same_layer",
+    saveScope: "scope-a",
+    ownerKind: "regeneration",
+    turnId: "turn-1",
+    requestId: "req-1",
+    channelLeaseId: "lease-old",
+    attemptKey: "req-1::lease-old::scope-a"
+  };
+
+  const regenerated = context.createRegenerationEnvelope(cached, "req-1", "lease-new");
+
+  assert.equal(regenerated.ok, true);
+  assert.equal(regenerated.requestId, "req-1");
+  assert.equal(regenerated.channelLeaseId, "lease-new");
+  assert.equal(regenerated.saveScope, "scope-a");
+  assert.equal(regenerated.generationMode, "shujuku_same_layer");
+  assert.equal(regenerated.prompt, "frozen narrative prompt");
+  assert.equal(regenerated.attemptKey, "req-1::lease-new::scope-a");
+  assert.notEqual(regenerated.attemptKey, cached.attemptKey);
+  assert.equal(cached.channelLeaseId, "lease-old");
+});
+
 test("structured host regeneration preserves the cached generation mode with the new lease", () => {
   const regenerateStart = bridgeSource.indexOf("if (data.type === 'regenerate')");
   const regenerateEnd = bridgeSource.indexOf("if (data.type === 'requestState')", regenerateStart);
   const regenerateBlock = bridgeSource.slice(regenerateStart, regenerateEnd);
-  assert.match(regenerateBlock, /generationMode:\s*cachedPrompt\.generationMode/);
-  assert.match(regenerateBlock, /channelLeaseId/);
+  assert.match(regenerateBlock, /createHostRegenerationEnvelope\(cachedPrompt, reqId, channelLeaseId\)/);
   assert.match(regenerateBlock, /runHostGenerationAttempt\(regenerationEnvelope\)/);
   assert.match(regenerateBlock, /typeof cachedPrompt === 'object'/);
   assert.match(regenerateBlock, /runTransactionalPrompt\(cachedPromptText, reqId, channelLeaseId\)/);

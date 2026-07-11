@@ -6127,6 +6127,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     if (!requestHostPromptSend(prompt, requestId, {
       channelLeaseId: acquired.owner.channelLeaseId,
       ownerKind: "ordinary_recovery",
+      generationMode: "shujuku_same_layer",
       turnId: turn.turnId
     })) {
       pendingAiRequestId = "";

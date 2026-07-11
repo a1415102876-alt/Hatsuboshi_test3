@@ -652,13 +652,7 @@
             queuePromptTask(async () => {
               try {
                 if (typeof cachedPrompt === 'object') {
-                  const regenerationEnvelope = normalizeHostGenerationEnvelope({
-                    ...cachedPrompt,
-                    requestId: reqId,
-                    channelLeaseId,
-                    generationMode: cachedPrompt.generationMode,
-                    prompt: cachedPromptText
-                  });
+                  const regenerationEnvelope = createHostRegenerationEnvelope(cachedPrompt, reqId, channelLeaseId);
                   if (!regenerationEnvelope.ok) throw new Error(regenerationEnvelope.reason);
                   await runHostGenerationAttempt(regenerationEnvelope);
                 } else {
@@ -864,6 +858,19 @@
         channelLeaseId: envelope.channelLeaseId,
         attemptKey: envelope.attemptKey
       };
+    }
+
+    function createHostRegenerationEnvelope(cachedEntry, requestId, channelLeaseId) {
+      if (!cachedEntry || typeof cachedEntry !== 'object') {
+        return { ok: false, reason: 'regenerate_cache_invalid' };
+      }
+      return normalizeHostGenerationEnvelope({
+        ...cachedEntry,
+        requestId: String(requestId || ''),
+        channelLeaseId: String(channelLeaseId || ''),
+        prompt: cachedEntry.prompt,
+        generationMode: cachedEntry.generationMode
+      });
     }
 
     function createHostGenerationAttempt(envelope) {

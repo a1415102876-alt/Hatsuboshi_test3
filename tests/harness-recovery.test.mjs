@@ -372,7 +372,12 @@ test("recovery retry preserves turn id, rotates request id, and sends only the f
   assert.deepEqual(JSON.parse(JSON.stringify(sent)), [{
     prompt: "frozen ordinary prompt",
     requestId: "request-new",
-    options: { channelLeaseId: "lease-new", ownerKind: "ordinary_recovery", turnId: "turn-1" }
+    options: {
+      channelLeaseId: "lease-new",
+      ownerKind: "ordinary_recovery",
+      generationMode: "shujuku_same_layer",
+      turnId: "turn-1"
+    }
   }]);
   assert.equal(traces.at(-1)?.type, "turn.recovery_started");
 });
