@@ -2370,6 +2370,13 @@
     lastDebug: "尚未结算行动。",
     pendingAiRequestId: "",
     lastRequestId: "",
+    harness: {
+      schemaVersion: 1,
+      persistenceRevision: 0,
+      sessionEpoch: "",
+      activeTurn: null,
+      trace: []
+    },
     eventMode: "none",
     choiceStep: 0,
     pendingChoiceRewards: [],
@@ -2711,6 +2718,7 @@
   let activeStorageKey = STORAGE_KEY;
   let activeHostSaveScope = "";
   let hostStateReady = false;
+  let runtimeSessionEpoch = createHarnessId("session");
   const aiBridgeDebug = {
     lastPromptRequest: null,
     lastReply: null,
@@ -2777,7 +2785,13 @@
     }
   }
 
-  function saveState() {
+  function saveState(reason = "state.save") {
+    state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
+    state.harness.persistenceRevision += 1;
+    debugHarnessEvent("state.save", {
+      persistenceRevision: state.harness.persistenceRevision,
+      reason
+    });
     state.pendingAiRequestId = pendingAiRequestId;
     if (pendingAiRequestId) {
       state.lastRequestId = pendingAiRequestId;
@@ -2855,6 +2869,7 @@
   }
 
   function ensureStateShape() {
+    state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
     state.gameMode = state.gameMode === "hybrid" ? "hybrid" : "classic";
     state.launchMode = ["produce", "sandbox"].includes(state.launchMode) ? state.launchMode : null;
     state.launchMenuPaused = Boolean(state.launchMenuPaused);
@@ -5555,6 +5570,70 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
 
   function createRequestId() {
     return `hatsu-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  const HARNESS_PERSISTED_TRACE_TYPES = new Set([
+    "turn.prepared",
+    "turn.settled",
+    "turn.generating",
+    "turn.completed",
+    "turn.completed_without_narrative",
+    "turn.failed",
+    "turn.rejected_duplicate",
+    "reply.rejected_stale"
+  ]);
+
+  function createHarnessId(prefix) {
+    const randomPart = globalThis.crypto?.randomUUID?.()
+      || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return `${prefix}-${randomPart}`;
+  }
+
+  function normalizeHarnessState(raw, sessionEpoch) {
+    const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    return {
+      schemaVersion: 1,
+      persistenceRevision: Math.max(0, Number(source.persistenceRevision) || 0),
+      sessionEpoch: String(sessionEpoch || source.sessionEpoch || ""),
+      activeTurn: source.activeTurn && typeof source.activeTurn === "object" && !Array.isArray(source.activeTurn)
+        ? source.activeTurn
+        : null,
+      trace: Array.isArray(source.trace) ? source.trace.slice(0, 40) : []
+    };
+  }
+
+  function sanitizeHarnessDetail(detail) {
+    const source = detail && typeof detail === "object" && !Array.isArray(detail) ? detail : {};
+    return Object.fromEntries(Object.entries(source).filter(([key, value]) => {
+      if (/^(?:prompt|promptText|text|rawText|renderedText)$/i.test(key) || /api.?key/i.test(key)) return false;
+      return value === null || ["string", "number", "boolean"].includes(typeof value);
+    }));
+  }
+
+  function debugHarnessEvent(type, detail = {}) {
+    console.debug("[Harness]", {
+      at: Date.now(),
+      type: String(type || ""),
+      ...sanitizeHarnessDetail(detail)
+    });
+  }
+
+  function recordHarnessTrace(type, detail = {}) {
+    if (!HARNESS_PERSISTED_TRACE_TYPES.has(type)) return false;
+    state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
+    const activeTurn = state.harness.activeTurn;
+    const safeDetail = sanitizeHarnessDetail(detail);
+    state.harness.trace.unshift({
+      at: Date.now(),
+      type,
+      turnId: String(safeDetail.turnId || activeTurn?.turnId || ""),
+      requestId: String(safeDetail.requestId || activeTurn?.requestId || ""),
+      persistenceRevision: state.harness.persistenceRevision,
+      saveScope: String(activeHostSaveScope || activeTurn?.saveScope || ""),
+      detail: safeDetail
+    });
+    state.harness.trace = state.harness.trace.slice(0, 40);
+    return true;
   }
 
   function buildAiWaitingResult(resultSummary) {
@@ -11439,6 +11518,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (!sum) return;
     const messageIdNum = Number(messageId);
     if (!Number.isInteger(messageIdNum) || messageIdNum < 0) return;
+    debugHarnessEvent("chronicle.request", {
+      messageId: messageIdNum,
+      sumLength: sum.length,
+      turnId: state.harness?.activeTurn?.turnId || ""
+    });
     window.parent.postMessage({
       source: "hatsuboshi-produce",
       type: "updateChronicle",
@@ -11570,6 +11654,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
   function requestHostStateSave() {
     if (!isSillyTavernHost() || !hostStateReady || !activeHostSaveScope) return false;
+    debugHarnessEvent("host-save.request", {
+      scope: activeHostSaveScope,
+      persistenceRevision: state.harness?.persistenceRevision || 0
+    });
     window.parent.postMessage({
       source: "hatsuboshi-produce",
       type: "saveState",
@@ -11687,6 +11775,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
     aiBridgeDebug.lastMessage = "已向 SillyTavern 发送提示词";
     refreshVnDebugView();
     saveState();
+    debugHarnessEvent("prompt.send", {
+      requestId,
+      turnId: state.harness?.activeTurn?.turnId || "",
+      promptLength: prompt.length
+    });
     window.parent.postMessage({
       source: "hatsuboshi-produce",
       type: "sendPrompt",
@@ -16439,6 +16532,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
   }
 
   function applyAiReply(text, requestId = "", rawText = "", renderedText = "", isFinal = true, variableCommands = []) {
+    debugHarnessEvent("reply.received", {
+      requestId,
+      isFinal: Boolean(isFinal),
+      textLength: String(text || "").length
+    });
     aiBridgeDebug.lastVariableCommands = Array.isArray(variableCommands) ? variableCommands : [];
     // 私聊回复容错：即使模块级 pendingAiRequestId 因报错/跳过/重载而丢失，只要回复的
     // requestId 与当前等待中的私聊请求一致，仍应接收并重新接管 pendingAiRequestId。
@@ -16451,7 +16549,17 @@ ${buildChoiceHardRules({ phase1: true })}`;
       pendingAiRequestId = requestId;
     }
     const acceptedRequest = shouldAcceptAiReply(requestId, pendingAiRequestId);
+    debugHarnessEvent("reply.accepted", {
+      requestId,
+      isFinal: Boolean(isFinal),
+      accepted: acceptedRequest
+    });
     if (!acceptedRequest) {
+      recordHarnessTrace("reply.rejected_stale", {
+        requestId,
+        expectedRequestId: pendingAiRequestId || "",
+        isFinal: Boolean(isFinal)
+      });
       recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source: "", accepted: false });
       sendAiReplyAck(requestId, false, false);
       return;
