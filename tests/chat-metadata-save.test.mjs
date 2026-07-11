@@ -48,7 +48,13 @@ test("only a meaningful local save migrates into empty chat metadata", () => {
 });
 
 test("host accepts saves only for the current chat scope", () => {
-  const shouldAcceptHostSave = vm.runInNewContext(`(${readFunction(bridgeSource, "shouldAcceptHostSave")})`);
+  const sandbox = {};
+  vm.runInNewContext([
+    readFunction(bridgeSource, "decideHostStateSave"),
+    readFunction(bridgeSource, "shouldAcceptHostSave"),
+    "this.shouldAcceptHostSave = shouldAcceptHostSave;"
+  ].join("\n"), sandbox);
+  const shouldAcceptHostSave = sandbox.shouldAcceptHostSave;
   assert.equal(shouldAcceptHostSave("char-1-chat-a", "char-1-chat-a", { idol: "藤田琴音" }), true);
   assert.equal(shouldAcceptHostSave("char-1-chat-a", "char-1-chat-b", { idol: "藤田琴音" }), false);
   assert.equal(shouldAcceptHostSave("", "", { idol: "藤田琴音" }), false);
@@ -65,9 +71,64 @@ test("host message handler validates current scope before saving chat metadata",
   assert.notEqual(end, -1, "messageHandler registration must follow its declaration");
   const handler = bridgeSource.slice(start, end);
   const currentScopeIndex = handler.indexOf("getCurrentContextInfo().saveScope");
-  const guardIndex = handler.indexOf("shouldAcceptHostSave(");
-  const saveIndex = handler.indexOf("saveChatState(data.state)");
+  const guardIndex = handler.indexOf("decideHostStateSave(");
+  const saveIndex = handler.indexOf("saveChatState(data.state, incomingScope, decision.normalizedSequence)");
   assert.ok(currentScopeIndex >= 0 && currentScopeIndex < guardIndex);
   assert.ok(guardIndex < saveIndex);
   assert.match(handler, /rejected stale or invalid state save/);
+});
+test("host save ordering accepts only a strictly newer sequence in the same scope", () => {
+  const decideHostStateSave = vm.runInNewContext(`(${readFunction(bridgeSource, "decideHostStateSave")})`);
+  const base = {
+    incomingScope: "char-1-chat-a",
+    currentScope: "char-1-chat-a",
+    nextState: { idol: "藤田琴音" },
+    lastAcceptedSequence: 7,
+    hasVersionedHistory: true
+  };
+
+  assert.deepEqual(normalize(decideHostStateSave({ ...base, incomingSequence: 8 })), {
+    accepted: true,
+    reason: "accepted",
+    normalizedSequence: 8
+  });
+  assert.equal(decideHostStateSave({ ...base, incomingSequence: 7 }).reason, "duplicate_sequence");
+  assert.equal(decideHostStateSave({ ...base, incomingSequence: 6 }).reason, "stale_sequence");
+  assert.equal(decideHostStateSave({ ...base, incomingScope: "char-1-chat-b", incomingSequence: 99 }).reason, "scope_mismatch");
+});
+
+test("legacy host saves are accepted only before versioned history exists", () => {
+  const decideHostStateSave = vm.runInNewContext(`(${readFunction(bridgeSource, "decideHostStateSave")})`);
+  const base = {
+    incomingScope: "char-1-chat-a",
+    currentScope: "char-1-chat-a",
+    nextState: { day: 3 },
+    incomingSequence: 0,
+    lastAcceptedSequence: 0
+  };
+
+  assert.equal(decideHostStateSave({ ...base, hasVersionedHistory: false }).reason, "legacy_accepted");
+  assert.equal(decideHostStateSave({ ...base, hasVersionedHistory: true }).reason, "legacy_after_versioned");
+});
+
+test("chat metadata envelope v2 stores scope and accepted host sequence", () => {
+  const saveChatStateSource = readFunction(bridgeSource, "saveChatState");
+  assert.match(saveChatStateSource, /version:\s*2/);
+  assert.match(saveChatStateSource, /saveScope/);
+  assert.match(saveChatStateSource, /hostSaveSequence/);
+
+  const handlerStart = bridgeSource.indexOf("const messageHandler = async (event) =>");
+  const handlerEnd = bridgeSource.indexOf("window.addEventListener('message', messageHandler)", handlerStart);
+  const handler = bridgeSource.slice(handlerStart, handlerEnd);
+  const decisionIndex = handler.indexOf("decideHostStateSave(");
+  const rememberIndex = handler.indexOf("lastAcceptedHostSaveSequenceByScope.set(");
+  const saveIndex = handler.indexOf("saveChatState(");
+  assert.ok(decisionIndex >= 0 && decisionIndex < rememberIndex && rememberIndex < saveIndex);
+  assert.match(handler, /data\.hostSaveSequence\s*\?\?\s*data\.state\?\.harness\?\.hostSaveSequence/);
+});
+
+test("version one metadata remains readable after envelope v2 upgrade", () => {
+  const getSavedChatStateSource = readFunction(bridgeSource, "getSavedChatState");
+  assert.match(getSavedChatStateSource, /return envelope\.state/);
+  assert.doesNotMatch(getSavedChatStateSource, /version\s*!==\s*2/);
 });

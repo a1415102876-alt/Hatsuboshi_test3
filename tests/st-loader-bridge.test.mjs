@@ -224,3 +224,65 @@ ${readFunction("isGeneratedTextCompatibleWithPrompt")}; return isGeneratedTextCo
   assert.equal(fn(bondPrompt, properChoiceReply), true);
   assert.equal(fn("plain prompt", missingOptionsReply), true);
 });
+
+test("st bridge does not publish an empty assistant placeholder as a final reply", () => {
+  const posted = [];
+  const committed = [];
+  const retries = [];
+  const context = {
+    chat: [
+      { is_user: true, mes: "prompt" },
+      { is_user: false, mes: "" }
+    ]
+  };
+  const collect = new Function(
+    "getContext",
+    "findLatestUsableAiReplyId",
+    "getMessageRawText",
+    "window",
+    "document",
+    "scheduleStreamFinalize",
+    "scheduleReplyRetry",
+    "clearStreamFinalizeTimer",
+    "dispatchCommittedReplyEvent",
+    "useCommittedReplyEvent",
+    "pendingRequestId",
+    "pendingCandidateInFlight",
+    "pendingCandidateMessageId",
+    `${readFunction("collectAndSendAiReply")}; return collectAndSendAiReply;`
+  )(
+    () => context,
+    () => 1,
+    () => "",
+    {
+      parent: { document: { querySelector: () => ({ innerText: "" }) } },
+      postMessage: (payload) => posted.push(payload)
+    },
+    { querySelector: () => null },
+    () => {},
+    (messageId, delay) => retries.push({ messageId, delay }),
+    () => {},
+    (payload) => committed.push(payload),
+    true,
+    "request-current",
+    false,
+    -1
+  );
+
+  collect(1, true);
+  assert.deepEqual(posted, []);
+  assert.deepEqual(committed, []);
+  assert.deepEqual(retries, [{ messageId: 1, delay: 350 }]);
+});
+
+test("transactional helper keeps waiting for the scoped end event after an empty generate return", () => {
+  const fnSource = readFunction("runTransactionalViaTavernHelper");
+  const lateWaitStart = fnSource.indexOf("if (!generatedText && listening)");
+  const lateWaitEnd = fnSource.indexOf("generatedText = extractReplyTextFromGenerated(lateText)", lateWaitStart);
+  const lateWait = fnSource.slice(lateWaitStart, lateWaitEnd);
+
+  assert.notEqual(lateWaitStart, -1);
+  assert.notEqual(lateWaitEnd, -1);
+  assert.match(lateWait, /Promise\.race\(\[\s*endedPromise,\s*timeoutPromise\s*\]\)/);
+  assert.doesNotMatch(lateWait, /1500/);
+});

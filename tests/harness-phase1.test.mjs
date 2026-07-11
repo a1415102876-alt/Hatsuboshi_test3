@@ -47,6 +47,7 @@ test("harness state migrates old saves without copying full state", () => {
   assert.deepEqual(normalized, {
     schemaVersion: 1,
     persistenceRevision: 0,
+    hostSaveSequence: 0,
     sessionEpoch: "session-new",
     activeTurn: null,
     trace: []
@@ -58,12 +59,14 @@ test("harness state sanitizes invalid legacy fields and caps trace history", () 
   const trace = Array.from({ length: 45 }, (_, index) => ({ type: `event-${index}` }));
   const normalized = normalize(normalizeHarnessState({
     persistenceRevision: -4,
+    hostSaveSequence: -9,
     sessionEpoch: "old-session",
     activeTurn: [],
     trace,
     copiedState: { shouldNotSurvive: true }
   }, "current-session"));
   assert.equal(normalized.persistenceRevision, 0);
+  assert.equal(normalized.hostSaveSequence, 0);
   assert.equal(normalized.sessionEpoch, "current-session");
   assert.equal(normalized.activeTurn, null);
   assert.equal(normalized.trace.length, 40);
@@ -71,6 +74,7 @@ test("harness state sanitizes invalid legacy fields and caps trace history", () 
   assert.deepEqual(normalize(normalizeHarnessState([], "array-session")), {
     schemaVersion: 1,
     persistenceRevision: 0,
+    hostSaveSequence: 0,
     sessionEpoch: "array-session",
     activeTurn: null,
     trace: []
@@ -145,6 +149,22 @@ test("saveState increments persistence revision before persistence and only debu
   assert.doesNotMatch(saveStateSource, /recordHarnessTrace\(/);
 });
 
+test("host save sequence advances only for an eligible host mirror", () => {
+  const saveStateSource = readFunction(appSource, "saveState");
+  const eligibilityIndex = saveStateSource.indexOf("willMirrorToHost");
+  const sequenceIndex = saveStateSource.indexOf("hostSaveSequence += 1");
+  const localStorageIndex = saveStateSource.indexOf("localStorage.setItem(");
+  const hostRequestIndex = saveStateSource.indexOf("requestHostStateSave(state.harness.hostSaveSequence)");
+
+  assert.ok(eligibilityIndex >= 0 && eligibilityIndex < sequenceIndex);
+  assert.ok(sequenceIndex < localStorageIndex && localStorageIndex < hostRequestIndex);
+  assert.match(saveStateSource, /persistenceRevision \+= 1/);
+  assert.doesNotMatch(saveStateSource, /persistenceRevision[^\n]*hostSave/);
+
+  const hostSaveSource = readFunction(appSource, "requestHostStateSave");
+  assert.match(hostSaveSource, /hostSaveSequence/);
+  assert.match(hostSaveSource, /type:\s*"saveState"[\s\S]*hostSaveSequence/);
+});
 test("phase zero observations log metadata without persisting routine events", () => {
   const hostSaveSource = readFunction(appSource, "requestHostStateSave");
   const promptSendSource = readSection("function requestHostPromptSend(", "function applyHostCharacter(");

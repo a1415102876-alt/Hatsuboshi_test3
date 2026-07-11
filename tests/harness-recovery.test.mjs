@@ -338,8 +338,11 @@ test("recovery retry preserves turn id, rotates request id, and sends only the f
     createRequestId: () => "request-new",
     getHarnessRecoveryContext: () => hostContext(),
     isHarnessOrdinaryAction: (action) => ["lesson", "training", "rest"].includes(action),
-    requestHostPromptSend: (prompt, requestId) => {
-      sent.push({ prompt, requestId });
+    getPrimaryModelChannelOwner: () => null,
+    tryAcquirePrimaryModelChannel: () => ({ ok: true, owner: { channelLeaseId: "lease-new" } }),
+    rejectPrimaryModelDispatch: () => false,
+    requestHostPromptSend: (prompt, requestId, options) => {
+      sent.push({ prompt, requestId, options });
       return true;
     },
     recordHarnessTrace: (type, detail) => traces.push({ type, detail }),
@@ -366,7 +369,11 @@ test("recovery retry preserves turn id, rotates request id, and sends only the f
   assert.equal(state.harness.activeTurn.sessionEpoch, "session-new");
   assert.equal(state.harness.activeTurn.recoveryAttemptCount, 1);
   assert.equal(state.lastPrompt, "frozen ordinary prompt");
-  assert.deepEqual(sent, [{ prompt: "frozen ordinary prompt", requestId: "request-new" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(sent)), [{
+    prompt: "frozen ordinary prompt",
+    requestId: "request-new",
+    options: { channelLeaseId: "lease-new", ownerKind: "ordinary_recovery", turnId: "turn-1" }
+  }]);
   assert.equal(traces.at(-1)?.type, "turn.recovery_started");
 });
 
@@ -411,13 +418,15 @@ test("recovery retry refuses missing or unowned prompts before creating a reques
 test("recovery conflict detection ignores UI-only overlays but blocks an occupied model channel", () => {
   const conflict = vm.runInNewContext(`(${readFunction(appSource, "hasConflictingHarnessRecoveryFlow")})`, {
     pendingAiRequestId: "",
-    state: { pendingAiRequestId: "" }
+    state: { pendingAiRequestId: "" },
+    getPrimaryModelChannelOwner: () => null
   });
   assert.equal(conflict(), false);
 
   const occupied = vm.runInNewContext(`(${readFunction(appSource, "hasConflictingHarnessRecoveryFlow")})`, {
     pendingAiRequestId: "phone-request",
-    state: { pendingAiRequestId: "phone-request", eventMode: "none" }
+    state: { pendingAiRequestId: "phone-request", eventMode: "none" },
+    getPrimaryModelChannelOwner: () => ({ requestId: "phone-request", ownerKind: "phone_chat" })
   });
   assert.equal(occupied(), true);
   assert.doesNotMatch(readFunction(appSource, "hasConflictingHarnessRecoveryFlow"), /overlay|hidden|eventMode/);
@@ -445,6 +454,9 @@ test("synchronous recovery send failure returns the same turn to recovery_requir
     createRequestId: () => "request-new",
     getHarnessRecoveryContext: () => hostContext(),
     isHarnessOrdinaryAction: (action) => ["lesson", "training", "rest"].includes(action),
+    getPrimaryModelChannelOwner: () => null,
+    tryAcquirePrimaryModelChannel: () => ({ ok: true, owner: { channelLeaseId: "lease-new" } }),
+    rejectPrimaryModelDispatch: () => false,
     appendHarnessRequestId: vm.runInNewContext(`(${readFunction(appSource, "appendHarnessRequestId")})`),
     requestHostPromptSend: () => false,
     recordHarnessTrace: (type, detail) => traces.push({ type, detail }),
@@ -705,7 +717,8 @@ test("only the dedicated abandon control can abandon recovery", () => {
 test("recovery guard remains scoped to ordinary action entry only", () => {
   const settlement = readSection("function settleAction(", "function createRequestId(");
   assert.equal((appSource.match(/beginHarnessProduceAction\(/g) || []).length, 2);
-  assert.match(settlement, /if \(isHarnessOrdinaryAction\(action\)\) \{\s*const turnStart = beginHarnessProduceAction/);
+  assert.match(settlement, /if \(isHarnessOrdinaryAction\(action\)\)[\s\S]*const turnStart = beginHarnessProduceAction/);
+  assert.ok(settlement.indexOf("tryAcquirePrimaryModelChannel(") < settlement.indexOf("state.pendingActionContext = {"));
   for (const sideEntry of ["submitPhoneChatMessage", "requestBroadcastFullScript", "confirmMapLocationEntry", "openSideQuestFromTaskPanel"]) {
     assert.doesNotMatch(readFunction(appSource, sideEntry), /beginHarnessProduceAction|turn\.rejected_recovery_pending/);
   }

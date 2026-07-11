@@ -7,6 +7,7 @@
   const spChance = 35;
   const lessonEventChance = 45;
   const trainingEventChance = 55;
+  const PRIMARY_MODEL_CHANNEL_TIMEOUT_MS = 5 * 60 * 1000;
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -2373,6 +2374,7 @@
     harness: {
       schemaVersion: 1,
       persistenceRevision: 0,
+      hostSaveSequence: 0,
       sessionEpoch: "",
       activeTurn: null,
       trace: []
@@ -2707,6 +2709,15 @@
   }
   const recentHostPromptDispatches = [];
   let pendingAiRequestId = "";
+  let primaryModelChannelOwner = null;
+  let primaryModelChannelTimeoutId = 0;
+  const primaryModelChannelDebug = {
+    lastReleaseReason: "",
+    lastReleaseAt: 0,
+    lastRejectReason: "",
+    lastRejectAt: 0
+  };
+  let activeInboundPrimaryChannelLeaseId = "";
   let pendingSecondaryRequestId = "";
   let pendingSecondaryMeta = null;
   let aiReplyRetryCount = 0;
@@ -2789,6 +2800,8 @@
   function saveState(reason = "state.save") {
     state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
     state.harness.persistenceRevision += 1;
+    const willMirrorToHost = isSillyTavernHost() && hostStateReady && Boolean(activeHostSaveScope);
+    if (willMirrorToHost) state.harness.hostSaveSequence += 1;
     debugHarnessEvent("state.save", {
       persistenceRevision: state.harness.persistenceRevision,
       reason
@@ -2798,7 +2811,7 @@
       state.lastRequestId = pendingAiRequestId;
     }
     localStorage.setItem(activeStorageKey, JSON.stringify(state));
-    if (hostStateReady) requestHostStateSave();
+    if (willMirrorToHost) requestHostStateSave(state.harness.hostSaveSequence);
   }
 
   function resolveHostState(remoteState, localState) {
@@ -5370,9 +5383,34 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       return;
     }
 
+    let ordinaryPrimaryDispatch = null;
     if (isHarnessOrdinaryAction(action)) {
+      const willGenerateNarrative = !(["lesson", "training"].includes(action) && isSkipLessonTrainingAiStoryEnabled());
+      const blockingOwner = getPrimaryModelChannelOwner();
+      if (willGenerateNarrative && blockingOwner) {
+        rejectPrimaryModelDispatch(blockingOwner, { requestId: "", ownerKind: "ordinary_action" });
+        return;
+      }
       const turnStart = beginHarnessProduceAction(action, attribute);
       if (!turnStart.ok) return;
+      if (willGenerateNarrative) {
+        const requestId = createRequestId();
+        const acquired = tryAcquirePrimaryModelChannel({
+          requestId,
+          ownerKind: "ordinary_action",
+          turnId: turnStart.turnId,
+          saveScope: activeHostSaveScope,
+          sessionEpoch: runtimeSessionEpoch
+        });
+        if (!acquired.ok) {
+          if (state.harness?.activeTurn?.turnId === turnStart.turnId && state.harness.activeTurn.status === "prepared") {
+            state.harness.activeTurn = null;
+          }
+          rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "ordinary_action" });
+          return;
+        }
+        ordinaryPrimaryDispatch = acquired.owner;
+      }
     }
 
     state.pendingActionContext = {
@@ -5514,7 +5552,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const eventText = randomEvent ? formatRandomEvent(randomEvent) : "";
     const locationText = action === "outing" && actionContext.destination ? `外出地点：${actionContext.destination}` : "";
     const resultSummary = [locationText, resultText, eventText].filter(Boolean).join("，");
-    const requestId = createRequestId();
+    const requestId = ordinaryPrimaryDispatch?.requestId || createRequestId();
     const story = buildPendingStory(actionName, resultSummary, randomEvent, actionContext);
     const prompt = buildPrompt(action, attribute, resultText, randomEvent, actionContext);
     const harnessPromptCapture = isHarnessOrdinaryAction(action)
@@ -5585,7 +5623,11 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       });
     }
     openEventOverlay(actionName, buildAiWaitingResult(resultSummary), buildAiWaitingStory(story));
-    if (!requestHostPromptSend(prompt, requestId)) {
+    if (!requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: ordinaryPrimaryDispatch?.channelLeaseId || "",
+      ownerKind: "ordinary_action",
+      turnId: state.harness?.activeTurn?.turnId || ""
+    })) {
       openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制提示词后手动发送。");
     }
     if (hybridFacility && hybridTimeResult?.hitDayEnd) {
@@ -5625,11 +5667,196 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     return `${prefix}-${randomPart}`;
   }
 
+  function getPrimaryModelChannelOwner() {
+    return primaryModelChannelOwner;
+  }
+
+  function getPrimaryModelChannelDebugSnapshot(now = Date.now()) {
+    const owner = getPrimaryModelChannelOwner();
+    const requestId = String(owner?.requestId || "");
+    return {
+      ownerKind: String(owner?.ownerKind || "none"),
+      ageMs: owner ? Math.max(0, Number(now) - Number(owner.acquiredAt || now)) : 0,
+      scope: String(owner?.saveScope || activeHostSaveScope || ""),
+      requestIdSuffix: requestId ? requestId.slice(-8) : "",
+      lastReleaseReason: primaryModelChannelDebug.lastReleaseReason,
+      lastRejectReason: primaryModelChannelDebug.lastRejectReason
+    };
+  }
+  function acquirePrimaryEntryDispatch(requestId, ownerKind, options) {
+    options = options && typeof options === "object" ? options : {};
+    if (!isSillyTavernHost()) {
+      return { ok: true, owner: null, localFallback: true };
+    }
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind,
+      turnId: options.turnId || "",
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, {
+        requestId,
+        ownerKind,
+        reason: "channel_occupied",
+        silent: Boolean(options.silent)
+      });
+      return { ok: false, owner: null, localFallback: false };
+    }
+    return { ok: true, owner: acquired.owner, localFallback: false };
+  }
+
+  function handlePrimaryModelChannelFailure(owner, reason = "generation_failed", expectedRequestId, expectedChannelLeaseId) {
+    const requestId = String(expectedRequestId || owner?.requestId || "");
+    const channelLeaseId = String(expectedChannelLeaseId || owner?.channelLeaseId || "");
+    if (!owner || !isPrimaryModelLeaseCurrent(requestId, channelLeaseId)) return false;
+
+    if (owner.ownerKind === "ordinary_recovery") {
+      if (returnHarnessRecoveryAttemptToPending(requestId, reason)) {
+        pendingAiRequestId = "";
+        state.pendingAiRequestId = "";
+        saveState("harness.recovery_primary_failure");
+        render();
+        openHarnessRecoveryOverlay(state.harness.activeTurn);
+      }
+    } else if (owner.ownerKind === "ordinary_action") {
+      if (pendingAiRequestId === requestId) pendingAiRequestId = "";
+      if (state.pendingAiRequestId === requestId) state.pendingAiRequestId = "";
+      markHarnessProduceTurn("failed", { failureReason: String(reason || "generation_failed") }, requestId);
+      state.lastStory = "生成剧情失败，行动结算已保留。可以从 P 手账编辑提示词后重试。";
+      saveState("harness.primary_generation_failed");
+      render();
+    } else if (owner.ownerKind === "phone_chat") {
+      if (pendingAiRequestId === requestId) pendingAiRequestId = "";
+      resetPhoneChatPendingState();
+      state.phoneChat.retryAvailable = true;
+      saveState("phone.primary_generation_failed");
+    } else if (owner.ownerKind === "broadcast") {
+      const episode = getBroadcastEpisode();
+      broadcastScriptLoading = false;
+      if (episode) episode.scriptStatus = "failed";
+      if (state.activeStoryNode?.type === "broadcast") state.activeStoryNode = null;
+      resetBroadcastPendingState();
+      if (pendingAiRequestId === requestId) pendingAiRequestId = "";
+      saveState("broadcast.primary_generation_failed");
+      renderBroadcastApp();
+    } else if (pendingAiRequestId === requestId) {
+      pendingAiRequestId = "";
+      state.pendingAiRequestId = "";
+    }
+
+    const released = releasePrimaryModelChannel(owner.requestId, owner.channelLeaseId, reason);
+    if (released) {
+      showToast("模型请求已结束", reason === "timeout" ? "等待回复超时，可以重新发起。" : "本次生成失败，可以稍后重试。", "warn");
+    }
+    return released;
+  }
+
+  function schedulePrimaryModelChannelTimeout(owner) {
+    if (primaryModelChannelTimeoutId) clearTimeout(primaryModelChannelTimeoutId);
+    primaryModelChannelTimeoutId = window.setTimeout(() => {
+      handlePrimaryModelChannelFailure(owner, "timeout");
+    }, PRIMARY_MODEL_CHANNEL_TIMEOUT_MS);
+  }
+
+  function tryAcquirePrimaryModelChannel(intent) {
+    intent = intent && typeof intent === "object" ? intent : {};
+    if (primaryModelChannelOwner) {
+      return { ok: false, blockingOwner: primaryModelChannelOwner };
+    }
+    const requestId = String(intent.requestId || "");
+    if (!requestId) return { ok: false, blockingOwner: null, reason: "missing_request_id" };
+    const owner = {
+      requestId,
+      channelLeaseId: String(intent.channelLeaseId || createHarnessId("primary-lease")),
+      ownerKind: String(intent.ownerKind || "legacy_main"),
+      turnId: String(intent.turnId || ""),
+      saveScope: String(intent.saveScope ?? activeHostSaveScope ?? ""),
+      sessionEpoch: String(intent.sessionEpoch || runtimeSessionEpoch || ""),
+      acquiredAt: Date.now()
+    };
+    primaryModelChannelOwner = owner;
+    schedulePrimaryModelChannelTimeout(owner);
+    debugHarnessEvent("primary-channel.acquired", {
+      requestId: owner.requestId,
+      channelLeaseId: owner.channelLeaseId,
+      ownerKind: owner.ownerKind,
+      turnId: owner.turnId,
+      saveScope: owner.saveScope
+    });
+    return { ok: true, owner };
+  }
+
+  function releasePrimaryModelChannel(requestId, channelLeaseId, reason = "completed") {
+    const owner = primaryModelChannelOwner;
+    if (
+      !owner
+      || owner.requestId !== String(requestId || "")
+      || owner.channelLeaseId !== String(channelLeaseId || "")
+    ) {
+      return false;
+    }
+    if (primaryModelChannelTimeoutId) clearTimeout(primaryModelChannelTimeoutId);
+    primaryModelChannelTimeoutId = 0;
+    primaryModelChannelOwner = null;
+    primaryModelChannelDebug.lastReleaseReason = String(reason || "completed");
+    primaryModelChannelDebug.lastReleaseAt = Date.now();
+    debugHarnessEvent("primary-channel.released", {
+      requestId: owner.requestId,
+      channelLeaseId: owner.channelLeaseId,
+      ownerKind: owner.ownerKind,
+      turnId: owner.turnId,
+      reason: String(reason || "completed")
+    });
+    return true;
+  }
+  function describePrimaryModelOwner(owner) {
+    const labels = {
+      ordinary_action: "上一项育成行动仍在生成剧情",
+      ordinary_recovery: "上一项行动正在恢复叙事",
+      phone_chat: "手机私聊正在等待回复",
+      broadcast: "广播完整稿正在生成",
+      free_chat: "担当闲聊正在等待回复",
+      idol_interaction: "偶像互动剧情正在生成",
+      manual_prompt: "编辑后的剧情请求正在生成",
+      regeneration: "剧情正在重新生成",
+      legacy_main: "另一项剧情正在生成"
+    };
+    return labels[String(owner?.ownerKind || "legacy_main")] || labels.legacy_main;
+  }
+
+  function rejectPrimaryModelDispatch(blockingOwner, options) {
+    options = options && typeof options === "object" ? options : {};
+    primaryModelChannelDebug.lastRejectReason = String(options.reason || "channel_occupied");
+    primaryModelChannelDebug.lastRejectAt = Date.now();
+    debugHarnessEvent("primary-channel.rejected", {
+      requestId: String(options.requestId || ""),
+      ownerKind: String(options.ownerKind || "legacy_main"),
+      blockingRequestId: String(blockingOwner?.requestId || ""),
+      blockingOwnerKind: String(blockingOwner?.ownerKind || "")
+    });
+    if (!options.silent) {
+      showToast("模型请求处理中", describePrimaryModelOwner(blockingOwner), "warn");
+    }
+    refreshVnDebugView();
+    return false;
+  }
+
+  function isPrimaryModelLeaseCurrent(requestId, channelLeaseId) {
+    const owner = getPrimaryModelChannelOwner();
+    return Boolean(
+      owner
+      && owner.requestId === String(requestId || "")
+      && owner.channelLeaseId === String(channelLeaseId || "")
+    );
+  }
   function normalizeHarnessState(raw, sessionEpoch) {
     const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
     return {
       schemaVersion: 1,
       persistenceRevision: Math.max(0, Number(source.persistenceRevision) || 0),
+      hostSaveSequence: Math.max(0, Math.floor(Number(source.hostSaveSequence) || 0)),
       sessionEpoch: String(sessionEpoch || source.sessionEpoch || ""),
       activeTurn: source.activeTurn && typeof source.activeTurn === "object" && !Array.isArray(source.activeTurn)
         ? source.activeTurn
@@ -5802,7 +6029,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   function hasConflictingHarnessRecoveryFlow() {
-    return Boolean(String(pendingAiRequestId || "") || String(state.pendingAiRequestId || ""));
+    return Boolean(getPrimaryModelChannelOwner() || String(pendingAiRequestId || "") || String(state.pendingAiRequestId || ""));
   }
 
   function returnHarnessRecoveryAttemptToPending(requestId, reason = "generation_failed") {
@@ -5862,6 +6089,17 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
 
     const previousRequestId = String(turn.requestId || "");
     const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "ordinary_recovery",
+      turnId: turn.turnId,
+      saveScope: turn.saveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "ordinary_recovery" });
+      return false;
+    }
     const now = Date.now();
     state.harness.activeTurn = {
       ...turn,
@@ -5885,7 +6123,11 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       attemptCount: state.harness.activeTurn.recoveryAttemptCount
     });
 
-    if (!requestHostPromptSend(prompt, requestId)) {
+    if (!requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "ordinary_recovery",
+      turnId: turn.turnId
+    })) {
       pendingAiRequestId = "";
       state.pendingAiRequestId = "";
       returnHarnessRecoveryAttemptToPending(requestId, "send_failed");
@@ -12081,16 +12323,18 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }, "*");
   }
 
-  function requestHostStateSave() {
+  function requestHostStateSave(hostSaveSequence) {
     if (!isSillyTavernHost() || !hostStateReady || !activeHostSaveScope) return false;
     debugHarnessEvent("host-save.request", {
       scope: activeHostSaveScope,
-      persistenceRevision: state.harness?.persistenceRevision || 0
+      persistenceRevision: state.harness?.persistenceRevision || 0,
+      hostSaveSequence: Number(hostSaveSequence) || 0
     });
     window.parent.postMessage({
       source: "hatsuboshi-produce",
       type: "saveState",
       saveScope: activeHostSaveScope,
+      hostSaveSequence: Number(hostSaveSequence) || 0,
       state: clone(state)
     }, "*");
     return true;
@@ -12100,10 +12344,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
   let hostPromptSendSilent = false;
 
   function resetPhoneChatPendingState() {
+    const phoneRequestId = String(state.phoneChat.pendingRequestId || "");
     state.phoneChat.isAwaitingReply = false;
     state.phoneChat.pendingRequestId = "";
     state.phoneChat.retryAvailable = false;
-    if (pendingAiRequestId && pendingAiRequestId === String(state.phoneChat.pendingRequestId || "")) {
+    if (pendingAiRequestId && pendingAiRequestId === phoneRequestId) {
       pendingAiRequestId = "";
     }
     aiReplyRetryCount = 0;
@@ -12135,10 +12380,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     return true;
   }
 
-  function sendPhoneChatPromptToHost(promptText, requestId = pendingAiRequestId || createRequestId()) {
+  function sendPhoneChatPromptToHost(promptText, requestId = pendingAiRequestId || createRequestId(), options) {
     const prevSource = hostPromptSendSource;
     hostPromptSendSource = "phonechat";
-    const sent = requestHostPromptSend(promptText, requestId);
+    const sent = requestHostPromptSend(promptText, requestId, options);
     hostPromptSendSource = prevSource;
     return sent;
   }
@@ -12148,7 +12393,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const prevSilent = hostPromptSendSilent;
     hostPromptSendSource = "broadcast";
     hostPromptSendSilent = Boolean(options.silent);
-    const sent = requestHostPromptSend(promptText, requestId);
+    const sent = requestHostPromptSend(promptText, requestId, options);
     hostPromptSendSilent = prevSilent;
     hostPromptSendSource = prevSource;
     return sent;
@@ -12160,15 +12405,53 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
   }
 
-  function requestHostPromptSend(promptText, requestId = pendingAiRequestId || createRequestId()) {
-    if (!isSillyTavernHost()) return false;
+  function requestHostPromptSend(promptText, requestId = pendingAiRequestId || createRequestId(), options) {
+    options = options && typeof options === "object" ? options : {};
+    const requestedLeaseId = String(options.channelLeaseId || "");
+    const releasePreparedLease = (reason) => {
+      if (requestedLeaseId) releasePrimaryModelChannel(requestId, requestedLeaseId, reason);
+    };
+    if (!isSillyTavernHost()) {
+      releasePreparedLease("host_unavailable");
+      return false;
+    }
     const prompt = promptText || state.lastPrompt || document.getElementById("promptText").value || "";
-    if (!prompt.trim()) return false;
+    if (!prompt.trim()) {
+      releasePreparedLease("empty_prompt");
+      return false;
+    }
     const source = hostPromptSendSource === "phonechat"
       ? "phonechat"
       : hostPromptSendSource === "broadcast"
         ? "broadcast"
         : "general";
+    let owner = getPrimaryModelChannelOwner();
+    if (requestedLeaseId) {
+      if (!isPrimaryModelLeaseCurrent(requestId, requestedLeaseId)) {
+        return rejectPrimaryModelDispatch(owner, {
+          requestId,
+          ownerKind: options.ownerKind || "legacy_main",
+          silent: hostPromptSendSilent
+        });
+      }
+    } else {
+      const acquired = tryAcquirePrimaryModelChannel({
+        requestId,
+        ownerKind: options.ownerKind || (source === "phonechat" ? "phone_chat" : source === "broadcast" ? "broadcast" : "legacy_main"),
+        turnId: options.turnId || "",
+        saveScope: activeHostSaveScope,
+        sessionEpoch: runtimeSessionEpoch
+      });
+      if (!acquired.ok) {
+        pendingAiRequestId = String(acquired.blockingOwner?.requestId || pendingAiRequestId || "");
+        return rejectPrimaryModelDispatch(acquired.blockingOwner, {
+          requestId,
+          ownerKind: options.ownerKind || "legacy_main",
+          silent: hostPromptSendSilent
+        });
+      }
+      owner = acquired.owner;
+    }
     if (source !== "phonechat" && state.activeStoryNode?.type === "phonechat") {
       state.activeStoryNode = null;
       resetPhoneChatPendingState();
@@ -12189,6 +12472,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
       if (!entry || now - entry.time > 120000) recentHostPromptDispatches.splice(index, 1);
     }
     if (recentHostPromptDispatches.some((entry) => entry.key === promptKey)) {
+      releasePrimaryModelChannel(owner.requestId, owner.channelLeaseId, "duplicate_dispatch");
       aiBridgeDebug.lastMessage = "重复发送已拦截：同一 requestId 的同一提示词刚刚发送过";
       refreshVnDebugView();
       if (!hostPromptSendSilent) {
@@ -12213,6 +12497,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
       source: "hatsuboshi-produce",
       type: "sendPrompt",
       requestId,
+      channelLeaseId: owner.channelLeaseId,
       prompt
     }, "*");
     if (!hostPromptSendSilent) {
@@ -12220,9 +12505,45 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
     return true;
   }
-
+  function requestHostRegeneration(requestId, options) {
+    options = options && typeof options === "object" ? options : {};
+    if (!isSillyTavernHost() || !requestId) return false;
+    let owner = getPrimaryModelChannelOwner();
+    const requestedLeaseId = String(options.channelLeaseId || "");
+    if (requestedLeaseId) {
+      if (!isPrimaryModelLeaseCurrent(requestId, requestedLeaseId)) {
+        return rejectPrimaryModelDispatch(owner, { requestId, ownerKind: options.ownerKind || "legacy_main" });
+      }
+    } else {
+      const acquired = tryAcquirePrimaryModelChannel({
+        requestId,
+        ownerKind: options.ownerKind || "legacy_main",
+        turnId: options.turnId || "",
+        saveScope: activeHostSaveScope,
+        sessionEpoch: runtimeSessionEpoch
+      });
+      if (!acquired.ok) {
+        pendingAiRequestId = String(acquired.blockingOwner?.requestId || pendingAiRequestId || "");
+        return rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: options.ownerKind || "legacy_main" });
+      }
+      owner = acquired.owner;
+    }
+    pendingAiRequestId = requestId;
+    window.parent.postMessage({
+      source: "hatsuboshi-produce",
+      type: "regenerate",
+      requestId,
+      channelLeaseId: owner.channelLeaseId
+    }, "*");
+    return true;
+  }
   function applyHostCharacter(character, saveScope = "", savedState = null, hasSavedState = false) {
     if (!character?.name) return;
+    const previousOwner = getPrimaryModelChannelOwner();
+    if (previousOwner && previousOwner.saveScope !== String(saveScope || "")) {
+      if (pendingAiRequestId === previousOwner.requestId) pendingAiRequestId = "";
+      releasePrimaryModelChannel(previousOwner.requestId, previousOwner.channelLeaseId, "save_scope_changed");
+    }
     hostStateReady = false;
     activeHostSaveScope = "";
     const switched = switchStorageScope(saveScope);
@@ -12911,6 +13232,16 @@ ${buildChoiceHardRules({ phase1: true })}`;
       ? builder(episode, state, getHatsuWorldHelpers())
       : `[初星广播部]\n${episode.outline || ""}`;
     const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "broadcast",
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "broadcast", silent: silent || auto });
+      return false;
+    }
 
     state.activeStoryNode = { type: "broadcast", episodeId: episode.id, mode: "fullScript", ready: false };
     state.lastPrompt = prompt;
@@ -12923,7 +13254,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
     saveState();
 
     pendingAiRequestId = requestId;
-    if (!sendBroadcastPromptToHost(prompt, requestId, { silent: silent || auto })) {
+    if (!sendBroadcastPromptToHost(prompt, requestId, {
+      silent: silent || auto,
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "broadcast"
+    })) {
       broadcastScriptLoading = false;
       episode.scriptStatus = auto ? "skipped" : "failed";
       state.activeStoryNode = null;
@@ -13800,10 +14135,25 @@ ${buildChoiceHardRules({ phase1: true })}`;
       showToast("暂无法重试", "当前没有等待中的私聊回复。", "warn");
       return;
     }
+    const prompt = String(state.lastPrompt || "");
+    if (!prompt.trim()) {
+      showToast("无法重试", "私聊提示词缺失，未发送请求。", "warn");
+      return;
+    }
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "phone_chat",
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "phone_chat" });
+      return;
+    }
 
     clearPhoneChatDelivery();
     aiReplyRetryCount = 0;
-    const requestId = state.phoneChat.pendingRequestId || state.lastRequestId || createRequestId();
     pendingAiRequestId = requestId;
     state.lastRequestId = requestId;
     state.phoneChat.pendingRequestId = requestId;
@@ -13814,17 +14164,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     updatePhoneChatRetryUi();
     saveState();
 
-    const prompt = state.lastPrompt || "";
-    if (isSillyTavernHost()) {
-      window.parent.postMessage({
-        source: "hatsuboshi-produce",
-        type: "regenerate",
-        requestId
-      }, "*");
-      showToast("正在重新生成", "已向 SillyTavern 请求重新生成私聊回复。", "info");
-      return;
-    }
-    if (prompt && sendPhoneChatPromptToHost(prompt, requestId)) {
+    if (sendPhoneChatPromptToHost(prompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "phone_chat"
+    })) {
       showToast("正在重新生成", "已重新发送私聊提示词。", "info");
       return;
     }
@@ -13837,7 +14180,6 @@ ${buildChoiceHardRules({ phase1: true })}`;
     saveState();
     openAiPromptOverlay("当前页面未连接 SillyTavern。请复制私聊提示词后手动发送。");
   }
-
   function setPhoneChatTyping(visible) {
     phoneChatTypingVisible = visible;
     const threadId = state.phoneChat?.activeThreadId;
@@ -13897,9 +14239,24 @@ ${buildChoiceHardRules({ phase1: true })}`;
     deliverNext();
   }
 
-  function sendPhoneChatToHost(userMessage, threadId = "idol") {
+  function sendPhoneChatToHost(userMessage, threadId = "idol", dispatch) {
+    dispatch = dispatch && typeof dispatch === "object" ? dispatch : {};
     const prompt = buildPhoneChatPrompt(userMessage, threadId);
-    const requestId = createRequestId();
+    const requestId = String(dispatch.requestId || createRequestId());
+    let channelLeaseId = String(dispatch.channelLeaseId || "");
+    if (!channelLeaseId) {
+      const acquired = tryAcquirePrimaryModelChannel({
+        requestId,
+        ownerKind: "phone_chat",
+        saveScope: activeHostSaveScope,
+        sessionEpoch: runtimeSessionEpoch
+      });
+      if (!acquired.ok) {
+        rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "phone_chat" });
+        return false;
+      }
+      channelLeaseId = acquired.owner.channelLeaseId;
+    }
     state.activeStoryNode = { type: "phonechat", threadId, mode: "chat", ready: false };
     state.lastPrompt = prompt;
     state.phoneChat.isAwaitingReply = true;
@@ -13910,7 +14267,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     saveState();
 
     pendingAiRequestId = requestId;
-    if (!sendPhoneChatPromptToHost(prompt, requestId)) {
+    if (!sendPhoneChatPromptToHost(prompt, requestId, { channelLeaseId, ownerKind: "phone_chat" })) {
       state.phoneChat.isAwaitingReply = false;
       state.phoneChat.pendingRequestId = "";
       state.phoneChat.retryAvailable = true;
@@ -13919,12 +14276,24 @@ ${buildChoiceHardRules({ phase1: true })}`;
       setPhoneChatComposerEnabled(true);
       updatePhoneChatRetryUi();
       openAiPromptOverlay("当前页面未连接 SillyTavern。请复制私聊提示词后手动发送。");
+      return false;
     }
+    return true;
   }
 
   function sendPhoneAddFriendGreeting(friendName, threadId) {
     const prompt = buildPhoneAddFriendGreetingPrompt(friendName);
     const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "phone_chat",
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "phone_chat" });
+      return false;
+    }
     state.activeStoryNode = { type: "phonechat", threadId, mode: "greeting", contactName: friendName, ready: false };
     state.lastPrompt = prompt;
     state.phoneChat.isAwaitingReply = true;
@@ -13935,7 +14304,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     saveState();
 
     pendingAiRequestId = requestId;
-    if (!sendPhoneChatPromptToHost(prompt, requestId)) {
+    if (!sendPhoneChatPromptToHost(prompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "phone_chat"
+    })) {
       state.phoneChat.isAwaitingReply = false;
       state.phoneChat.pendingRequestId = "";
       state.phoneChat.retryAvailable = true;
@@ -13944,9 +14316,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
       setPhoneChatComposerEnabled(true);
       updatePhoneChatRetryUi();
       openAiPromptOverlay("当前页面未连接 SillyTavern。请复制添加好友问候提示词后手动发送。");
+      return false;
     }
+    return true;
   }
-
   function handlePhoneChatAiReply(source, requestId, isFinal) {
     if (!isFinal) {
       state.phoneChat.isAwaitingReply = true;
@@ -14152,15 +14525,32 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
     const input = document.getElementById("phoneChatInput");
     const text = input?.value || "";
-    if (!appendPhoneChatMessage(threadId, "producer", text)) return;
+    if (!String(text).trim()) return;
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "phone_chat",
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "phone_chat" });
+      return;
+    }
+    if (!appendPhoneChatMessage(threadId, "producer", text)) {
+      releasePrimaryModelChannel(requestId, acquired.owner.channelLeaseId, "empty_phone_message");
+      return;
+    }
 
     if (input) input.value = "";
     renderPhoneChatMessages(threadId);
     renderPhoneChatList();
     saveState();
-    sendPhoneChatToHost(text, threadId);
+    sendPhoneChatToHost(text, threadId, {
+      requestId,
+      channelLeaseId: acquired.owner.channelLeaseId
+    });
   }
-
   function renderPhoneApp() {
     renderPhoneStatusBar();
     if (state.phoneChat.activeView === "home") {
@@ -14408,6 +14798,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
     const prompt = buildFreeChatPrompt(topic);
     const requestId = createRequestId();
+    const dispatch = acquirePrimaryEntryDispatch(requestId, "free_chat");
+    if (!dispatch.ok) return;
     state.activeStoryNode = { type: "freechat", topic, ready: false };
     state.lastPrompt = prompt;
     state.lastStory = `正在和${state.idol}聊：${topic}`;
@@ -14416,7 +14808,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     closeFreeChatOverlay();
     pendingAiRequestId = requestId;
     openEventOverlay("担当闲聊", "闲聊不消耗行动次数，也不会推进日程或改变数值。", buildAiWaitingStory(`正在等待${state.idol}回应这个话题。`));
-    if (!requestHostPromptSend(prompt, requestId)) {
+    const sent = dispatch.owner
+      ? requestHostPromptSend(prompt, requestId, { channelLeaseId: dispatch.owner.channelLeaseId, ownerKind: "free_chat" })
+      : requestHostPromptSend(prompt, requestId);
+    if (!sent) {
       openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制闲聊提示词后手动发送。出于本地测试需要，本次闲聊不会推进日程。 ");
     }
   }
@@ -14433,6 +14828,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const plot = document.getElementById("interactionPlotTextarea").value.trim();
     const prompt = buildIdolInteractionPrompt(selectedCharacters, plot, aiDecides);
     const requestId = createRequestId();
+    const dispatch = acquirePrimaryEntryDispatch(requestId, "idol_interaction");
+    if (!dispatch.ok) return;
     state.activeStoryNode = { type: "interaction", selectedCharacters, aiDecides, plot, ready: false };
     state.lastPrompt = prompt;
     state.lastStory = aiDecides
@@ -14443,7 +14840,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     closeInteractionOverlay();
     pendingAiRequestId = requestId;
     openEventOverlay("偶像互动", "互动不消耗行动次数，也不会推进日程或改变数值。", buildAiWaitingStory("正在等待角色卡生成完整互动剧情。"));
-    if (!requestHostPromptSend(prompt, requestId)) {
+    const sent = dispatch.owner
+      ? requestHostPromptSend(prompt, requestId, { channelLeaseId: dispatch.owner.channelLeaseId, ownerKind: "idol_interaction" })
+      : requestHostPromptSend(prompt, requestId);
+    if (!sent) {
       openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制互动提示词后手动发送。互动不会推进日程。 ");
     }
   }
@@ -14454,19 +14854,26 @@ ${buildChoiceHardRules({ phase1: true })}`;
       showToast("提示词为空", "请先输入要发送给 AI 的后续剧情提示词。", "warn");
       return;
     }
+    const requestId = createRequestId();
+    const phoneEdit = state.activeStoryNode?.type === "phonechat";
+    const ownerKind = phoneEdit ? "phone_chat" : "manual_prompt";
+    const dispatch = acquirePrimaryEntryDispatch(requestId, ownerKind);
+    if (!dispatch.ok) return;
     state.lastPrompt = prompt;
     saveState();
     renderNotebook();
     closeAiPromptOverlay();
-    const requestId = createRequestId();
     pendingAiRequestId = requestId;
-    if (state.activeStoryNode?.type === "phonechat") {
+    if (phoneEdit) {
       state.phoneChat.isAwaitingReply = true;
       state.phoneChat.pendingRequestId = requestId;
       setPhoneChatTyping(true);
       setPhoneChatComposerEnabled(false);
       saveState();
-      if (sendPhoneChatPromptToHost(prompt, requestId)) return;
+      const sent = dispatch.owner
+        ? sendPhoneChatPromptToHost(prompt, requestId, { channelLeaseId: dispatch.owner.channelLeaseId, ownerKind: "phone_chat" })
+        : sendPhoneChatPromptToHost(prompt, requestId);
+      if (sent) return;
       state.phoneChat.isAwaitingReply = false;
       state.phoneChat.pendingRequestId = "";
       pendingAiRequestId = "";
@@ -14476,7 +14883,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
       return;
     }
     openEventOverlay("AI 生成请求", "已重新发送提示词，等待角色卡回复。", "正在等待角色卡 AI 生成本次小剧情...");
-    if (requestHostPromptSend(prompt, requestId)) return;
+    const sent = dispatch.owner
+      ? requestHostPromptSend(prompt, requestId, { channelLeaseId: dispatch.owner.channelLeaseId, ownerKind: "manual_prompt" })
+      : requestHostPromptSend(prompt, requestId);
+    if (sent) return;
     openNotebook("prompt");
     showToast("提示词已准备", "当前不在 SillyTavern iframe 中，请从 P 手账复制。", "warn");
   }
@@ -14525,7 +14935,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
   }
 
   function triggerRegeneration() {
+    const choicePrompt = isChoicePromptMode();
+    const choiceResolution = isChoiceResolutionMode();
     const requestId = isChoicePromptMode() ? createRequestId() : (state.lastRequestId || createRequestId());
+    let dispatch = null;
+    if (!choicePrompt && !choiceResolution) {
+      dispatch = acquirePrimaryEntryDispatch(requestId, "regeneration");
+      if (!dispatch.ok) return;
+    }
     pendingAiRequestId = requestId;
     state.lastRequestId = requestId;
     saveState();
@@ -14566,13 +14983,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
       return;
     }
     
-    if (isSillyTavernHost()) {
+    const regenerationOptions = dispatch?.owner
+      ? { channelLeaseId: dispatch.owner.channelLeaseId, ownerKind: "regeneration" }
+      : { ownerKind: "legacy_main" };
+    if (isSillyTavernHost() && requestHostRegeneration(requestId, regenerationOptions)) {
       console.log('[Hatsu Produce] 正在发送 regenerate 消息到宿主端...', requestId);
-      window.parent.postMessage({
-        source: "hatsuboshi-produce",
-        type: "regenerate",
-        requestId
-      }, "*");
       showToast("正在重新生成", "已向 SillyTavern 发送重新生成请求。", "info");
     } else {
       console.warn('[Hatsu Produce] 检测到未连接宿主，无法重新生成。');
@@ -15887,6 +16302,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
       || liveStory.includes("等待 SillyTavern")
       || liveStory.includes("正在重新生成");
     const phoneThread = getPhoneThreadDefinition(state.phoneChat?.activeThreadId);
+    const primaryOwnerDebug = getPrimaryModelChannelDebugSnapshot();
     return `
       ${buildDebugDiagnosisHtml()}
       <div class="vn-debug-grid">
@@ -15908,6 +16324,12 @@ ${buildChoiceHardRules({ phase1: true })}`;
             ["运行环境", isSillyTavernHost() ? "SillyTavern iframe" : "独立页面"],
             ["hostStateReady", hostStateReady ? "true" : "false"],
             ["saveScope", activeHostSaveScope || "无"],
+            ["primary owner", primaryOwnerDebug.ownerKind],
+            ["owner age", `${primaryOwnerDebug.ageMs} ms`],
+            ["owner scope", primaryOwnerDebug.scope || "无"],
+            ["requestId 后缀", primaryOwnerDebug.requestIdSuffix || "无"],
+            ["last release", primaryOwnerDebug.lastReleaseReason || "无"],
+            ["last reject", primaryOwnerDebug.lastRejectReason || "无"],
             ["绑定角色卡", state.boundCharacter?.name || "未绑定"],
             ["最后消息", aiBridgeDebug.lastMessage]
           ])}</dl>
@@ -17489,6 +17911,9 @@ ${buildChoiceHardRules({ phase1: true })}`;
   }
 
   function sendAiReplyAck(requestId, accepted, retry, isFinal = true) {
+    if (isFinal && !retry) {
+      releasePrimaryModelChannel(requestId, activeInboundPrimaryChannelLeaseId, accepted ? "accepted_final" : "rejected_final");
+    }
     recordAiAckDebug(requestId, accepted, retry, isFinal);
     if (!isSillyTavernHost() || !requestId) return;
     window.parent.postMessage({
@@ -18494,6 +18919,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
       handleSecondaryAiReply(payload);
       return;
     }
+    if (payload.type === "primaryAiError") {
+      const owner = getPrimaryModelChannelOwner();
+      handlePrimaryModelChannelFailure(owner, "host_error", payload.requestId, payload.channelLeaseId);
+      return;
+    }
     if (payload.type === "chronicleBranchFailed") {
       showToast("读档失败", payload.error || "创建分支失败，请确认酒馆助手可用。", "warn");
       openChronicleLoadOverlay();
@@ -18501,15 +18931,20 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
     if (shouldSkipCommittedReply(payload)) return;
     if (payload.type === "aiReply" || payload.type === "aiReplyCommitted") {
-      applyAiReply(
-        payload.text,
-        payload.requestId,
-        payload.rawText,
-        payload.renderedText,
-        payload.isFinal,
-        payload.variableCommands,
-        payload.messageId
-      );
+      activeInboundPrimaryChannelLeaseId = String(payload.channelLeaseId || "");
+      try {
+        applyAiReply(
+          payload.text,
+          payload.requestId,
+          payload.rawText,
+          payload.renderedText,
+          payload.isFinal,
+          payload.variableCommands,
+          payload.messageId
+        );
+      } finally {
+        activeInboundPrimaryChannelLeaseId = "";
+      }
     }
   }
 

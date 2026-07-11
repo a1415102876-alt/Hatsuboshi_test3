@@ -627,7 +627,14 @@
         }
         if (data.type === 'sendPrompt') {
           const reqId = String(data.requestId || '');
-          queuePromptTask(() => runTransactionalPrompt(data.prompt, reqId));
+          const channelLeaseId = String(data.channelLeaseId || '');
+          queuePromptTask(async () => {
+            try {
+              await runTransactionalPrompt(data.prompt, reqId, channelLeaseId);
+            } catch (error) {
+              postPrimaryAiError(reqId, channelLeaseId, error);
+            }
+          });
         }
         if (data.type === 'sendSecondaryPrompt') {
           const reqId = String(data.requestId || '');
@@ -635,22 +642,49 @@
         }
         if (data.type === 'regenerate') {
           const reqId = String(data.requestId || '');
+          const channelLeaseId = String(data.channelLeaseId || '');
           const cachedPrompt = requestPromptCache.get(reqId);
           if (cachedPrompt) {
-            queuePromptTask(() => runTransactionalPrompt(cachedPrompt, reqId));
+            queuePromptTask(async () => {
+              try {
+                await runTransactionalPrompt(cachedPrompt, reqId, channelLeaseId);
+              } catch (error) {
+                postPrimaryAiError(reqId, channelLeaseId, error);
+              }
+            });
+          } else {
+            postPrimaryAiError(reqId, channelLeaseId, new Error('regenerate_cache_missing'));
           }
         }
         if (data.type === 'aiReplyAck') {
           // 固定事务流：不依赖 host->app ACK 回传
         }
         if (data.type === 'saveState') {
+          const incomingScope = String(data.saveScope || '');
           const currentScope = getCurrentContextInfo().saveScope;
-          if (shouldAcceptHostSave(String(data.saveScope || ''), currentScope, data.state)) {
-            saveChatState(data.state);
+          const incomingSequence = Number(data.hostSaveSequence ?? data.state?.harness?.hostSaveSequence);
+          const lastAcceptedSequence = getLastAcceptedHostSaveSequence(incomingScope);
+          const hasVersionedHistory = hasVersionedHostSaveHistory(incomingScope);
+          const decision = decideHostStateSave({
+            incomingScope,
+            currentScope,
+            nextState: data.state,
+            incomingSequence,
+            lastAcceptedSequence,
+            hasVersionedHistory
+          });
+          if (decision.accepted) {
+            if (decision.normalizedSequence > 0) {
+              lastAcceptedHostSaveSequenceByScope.set(incomingScope, decision.normalizedSequence);
+            }
+            saveChatState(data.state, incomingScope, decision.normalizedSequence);
           } else {
             console.warn('[st.html] rejected stale or invalid state save', {
-              incomingScope: String(data.saveScope || ''),
-              currentScope
+              reason: decision.reason,
+              incomingScope,
+              currentScope,
+              incomingSequence: decision.normalizedSequence,
+              lastAcceptedSequence
             });
           }
         }
@@ -754,11 +788,13 @@
 
     // ── 桥接辅助函数 ──
     const CHAT_STATE_METADATA_KEY = 'hatsuboshi_produce_state_v1';
+    const lastAcceptedHostSaveSequenceByScope = new Map();
     const HATSU_COMMIT_EVENT_NAME = 'hatsuAssistantCommitted';
     const useCommittedReplyEvent = true;
     const useTransactionalBridge = true;
     const useVisualHideFloors = true;
     let pendingRequestId = '';
+    let pendingChannelLeaseId = '';
     let pendingPromptSentAt = 0;
     let pendingPromptChatLength = 0;
     let pendingCandidateInFlight = false;
@@ -933,11 +969,71 @@
       return chat.length - 1;
     }
 
-    function shouldAcceptHostSave(incomingScope, currentScope, nextState) {
-      if (!incomingScope || !currentScope || incomingScope !== currentScope) return false;
-      return Boolean(nextState && typeof nextState === 'object' && !Array.isArray(nextState));
+    function decideHostStateSave(input) {
+      input = input && typeof input === 'object' ? input : {};
+      const incomingScope = String(input.incomingScope || '');
+      const currentScope = String(input.currentScope || '');
+      const nextState = input.nextState;
+      const normalizedSequence = Number.isInteger(Number(input.incomingSequence)) && Number(input.incomingSequence) > 0
+        ? Number(input.incomingSequence)
+        : 0;
+      const lastAcceptedSequence = Math.max(0, Math.floor(Number(input.lastAcceptedSequence) || 0));
+      const hasVersionedHistory = Boolean(input.hasVersionedHistory || lastAcceptedSequence > 0);
+      if (!incomingScope || !currentScope || incomingScope !== currentScope) {
+        return { accepted: false, reason: 'scope_mismatch', normalizedSequence };
+      }
+      if (!nextState || typeof nextState !== 'object' || Array.isArray(nextState)) {
+        return { accepted: false, reason: 'invalid_state', normalizedSequence };
+      }
+      if (!normalizedSequence) {
+        return {
+          accepted: !hasVersionedHistory,
+          reason: hasVersionedHistory ? 'legacy_after_versioned' : 'legacy_accepted',
+          normalizedSequence: 0
+        };
+      }
+      if (normalizedSequence === lastAcceptedSequence) {
+        return { accepted: false, reason: 'duplicate_sequence', normalizedSequence };
+      }
+      if (normalizedSequence < lastAcceptedSequence) {
+        return { accepted: false, reason: 'stale_sequence', normalizedSequence };
+      }
+      return { accepted: true, reason: 'accepted', normalizedSequence };
     }
 
+    function getLastAcceptedHostSaveSequence(saveScope) {
+      const scope = String(saveScope || '');
+      if (!scope) return 0;
+      const remembered = Math.max(0, Math.floor(Number(lastAcceptedHostSaveSequenceByScope.get(scope)) || 0));
+      const envelope = getContext()?.chatMetadata?.[CHAT_STATE_METADATA_KEY];
+      const persisted = envelope && String(envelope.saveScope || '') === scope
+        ? Math.max(0, Math.floor(Number(envelope.hostSaveSequence) || 0))
+        : 0;
+      return Math.max(remembered, persisted);
+    }
+
+    function hasVersionedHostSaveHistory(saveScope) {
+      const scope = String(saveScope || '');
+      if (!scope) return false;
+      if (getLastAcceptedHostSaveSequence(scope) > 0) return true;
+      const envelope = getContext()?.chatMetadata?.[CHAT_STATE_METADATA_KEY];
+      return Boolean(
+        envelope
+        && String(envelope.saveScope || '') === scope
+        && Number(envelope.hostSaveSequence) > 0
+      );
+    }
+
+    function shouldAcceptHostSave(incomingScope, currentScope, nextState, incomingSequence, lastAcceptedSequence, hasVersionedHistory) {
+      return decideHostStateSave({
+        incomingScope,
+        currentScope,
+        nextState,
+        incomingSequence,
+        lastAcceptedSequence,
+        hasVersionedHistory
+      }).accepted;
+    }
     function getCurrentContextInfo() {
       const context = getContext();
       const characterId = context?.characterId;
@@ -1052,12 +1148,14 @@
       return envelope.state;
     }
 
-    function saveChatState(state) {
+    function saveChatState(state, saveScope, hostSaveSequence) {
       const context = getContext();
       const metadata = context?.chatMetadata;
       if (!metadata) return;
       metadata[CHAT_STATE_METADATA_KEY] = {
-        version: 1,
+        version: 2,
+        saveScope: String(saveScope || ''),
+        hostSaveSequence: Math.max(0, Math.floor(Number(hostSaveSequence) || 0)),
         updatedAt: Date.now(),
         state: JSON.parse(JSON.stringify(state)),
       };
@@ -1405,6 +1503,7 @@
         source: 'hatsuboshi-produce-host',
         type: 'aiReplyCommitted',
         requestId: String(requestId || ''),
+        channelLeaseId: String(options.channelLeaseId || pendingChannelLeaseId || ''),
         text: String(text || ''),
         rawText: String(options.rawText || text || ''),
         renderedText: String(options.renderedText || ''),
@@ -1418,6 +1517,15 @@
       }
     }
 
+    function postPrimaryAiError(requestId, channelLeaseId, error) {
+      window.postMessage({
+        source: 'hatsuboshi-produce-host',
+        type: 'primaryAiError',
+        requestId: String(requestId || ''),
+        channelLeaseId: String(channelLeaseId || ''),
+        error: String(error?.message || error || 'primary_generation_failed')
+      }, '*');
+    }
     function postSecondaryReply(requestId, text, options = {}) {
       const payload = {
         source: 'hatsuboshi-produce-host',
@@ -1545,10 +1653,10 @@
           } catch (e) {}
         }
         if (!generatedText && listening) {
-          // generate 返回也空：最后再给事件一点时间。
+          // generate 可能先返回空值，但真正正文稍后才通过 scoped end event 到达。
           const lateText = await Promise.race([
             endedPromise,
-            new Promise((resolve) => setTimeout(() => resolve(''), 1500))
+            timeoutPromise
           ]);
           generatedText = extractReplyTextFromGenerated(lateText);
           if (generatedText && !isGeneratedTextCompatibleWithPrompt(promptText, generatedText)) generatedText = '';
@@ -1578,13 +1686,14 @@
       });
     }
 
-    async function runTransactionalPrompt(prompt, requestId) {
+    async function runTransactionalPrompt(prompt, requestId, channelLeaseId) {
       const context = getContext();
       const promptText = String(prompt || '').trim();
       const reqId = String(requestId || '');
       if (!context || !promptText || !reqId) return;
       requestPromptCache.set(reqId, promptText);
       pendingRequestId = reqId;
+      pendingChannelLeaseId = String(channelLeaseId || '');
       clearReplyCandidateState();
 
       const tavernHelper = getTavernHelper();
@@ -1784,6 +1893,12 @@
       const renderedText = mainDoc.querySelector(`.mes[mesid="${replyMessageId}"] .mes_text`)?.innerText || '';
       const text = rawText.length > renderedText.length ? rawText : renderedText;
 
+      if (!text.trim()) {
+        // SillyTavern may render an empty assistant placeholder before generation produces text.
+        if (isFinal) scheduleReplyRetry(replyMessageId, 350);
+        return;
+      }
+
       if (!isFinal) {
         // 部分宿主环境偶发不触发 GENERATION_STOPPED/MESSAGE_RECEIVED，防止前端永远停留在“生成中”
         scheduleStreamFinalize(replyMessageId, 1400);
@@ -1794,6 +1909,7 @@
           source: 'hatsuboshi-produce-host',
           type: useCommittedReplyEvent && isFinal ? 'aiReplyCommitted' : 'aiReply',
           requestId: pendingRequestId,
+          channelLeaseId: pendingChannelLeaseId,
           text,
           rawText,
           renderedText,
@@ -1925,6 +2041,7 @@
       pendingPromptSentAt = 0;
       pendingPromptChatLength = 0;
       pendingRequestId = '';
+      pendingChannelLeaseId = '';
     }
   } catch (err) {
     document.getElementById('hatsu-fullscreen-overlay')?.remove();
