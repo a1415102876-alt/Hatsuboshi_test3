@@ -3,6 +3,18 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
+const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+function readFunction(source, functionName) {
+  const declaration = `function ${functionName}`;
+  const start = source.indexOf(declaration);
+  assert.notEqual(start, -1, `${functionName} must exist`);
+  const lineStart = source.lastIndexOf("\n", start) + 1;
+  const indentation = source.slice(lineStart, start);
+  const nextDeclaration = source.indexOf(`\n${indentation}function `, start + declaration.length);
+  return source.slice(start, nextDeclaration === -1 ? source.length : nextDeclaration);
+}
+
 function loadChronicle() {
   const sandbox = { globalThis: {} };
   sandbox.globalThis = sandbox;
@@ -103,4 +115,17 @@ test("chronicle load list renders summaries as text, not html", () => {
   const renderBody = app.slice(renderStart, renderEnd);
   assert.doesNotMatch(renderBody, /\.innerHTML\s*=/);
   assert.match(renderBody, /\.textContent\s*=\s*summary/);
+});
+
+test("requestId-rejected stale reply cannot request a chronicle write", () => {
+  const route = readFunction(appSource, "routeHostAiPayload");
+  const apply = readFunction(appSource, "applyAiReply");
+  assert.doesNotMatch(route, /requestChronicleUpdate\(/);
+  assert.ok(apply.indexOf("if (!acceptedRequest)") < apply.indexOf("requestChronicleUpdate("));
+});
+
+test("chronicle decision helper rejects stale requests", () => {
+  const shouldRequest = vm.runInNewContext(`(${readFunction(appSource, "shouldRequestChronicleUpdate")})`);
+  assert.equal(shouldRequest(false, true), false);
+  assert.equal(shouldRequest(true, true), true);
 });

@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const frontendSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
-const bridgeSource = readFileSync(new URL("../../scripts/extensions/third-party/hatsuboshi-produce/index.js", import.meta.url), "utf8");
+const bridgeSource = readFileSync(new URL("../st.html", import.meta.url), "utf8");
 const normalize = (value) => JSON.parse(JSON.stringify(value));
 
 function readFunction(source, functionName) {
