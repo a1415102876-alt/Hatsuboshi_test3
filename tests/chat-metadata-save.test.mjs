@@ -52,5 +52,22 @@ test("host accepts saves only for the current chat scope", () => {
   assert.equal(shouldAcceptHostSave("char-1-chat-a", "char-1-chat-a", { idol: "藤田琴音" }), true);
   assert.equal(shouldAcceptHostSave("char-1-chat-a", "char-1-chat-b", { idol: "藤田琴音" }), false);
   assert.equal(shouldAcceptHostSave("", "", { idol: "藤田琴音" }), false);
+  assert.equal(shouldAcceptHostSave("", "char-1-chat-a", { day: 1 }), false);
+  assert.equal(shouldAcceptHostSave("char-1-chat-a", "", { day: 1 }), false);
+  assert.equal(shouldAcceptHostSave("char-1-chat-a", "char-1-chat-a", null), false);
   assert.equal(shouldAcceptHostSave("char-1-chat-a", "char-1-chat-a", []), false);
+});
+
+test("host message handler validates current scope before saving chat metadata", () => {
+  const start = bridgeSource.indexOf("const messageHandler = async (event) =>");
+  const end = bridgeSource.indexOf("window.addEventListener('message', messageHandler)", start);
+  assert.notEqual(start, -1, "messageHandler must exist");
+  assert.notEqual(end, -1, "messageHandler registration must follow its declaration");
+  const handler = bridgeSource.slice(start, end);
+  const currentScopeIndex = handler.indexOf("getCurrentContextInfo().saveScope");
+  const guardIndex = handler.indexOf("shouldAcceptHostSave(");
+  const saveIndex = handler.indexOf("saveChatState(data.state)");
+  assert.ok(currentScopeIndex >= 0 && currentScopeIndex < guardIndex);
+  assert.ok(guardIndex < saveIndex);
+  assert.match(handler, /rejected stale or invalid state save/);
 });

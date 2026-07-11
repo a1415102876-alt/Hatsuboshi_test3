@@ -644,7 +644,15 @@
           // 固定事务流：不依赖 host->app ACK 回传
         }
         if (data.type === 'saveState') {
-          saveChatState(data.state);
+          const currentScope = getCurrentContextInfo().saveScope;
+          if (shouldAcceptHostSave(String(data.saveScope || ''), currentScope, data.state)) {
+            saveChatState(data.state);
+          } else {
+            console.warn('[st.html] rejected stale or invalid state save', {
+              incomingScope: String(data.saveScope || ''),
+              currentScope
+            });
+          }
         }
         if (data.type === 'updateChronicle') {
           updateChronicleWorldbook(data.messageId, data.sum).catch((error) => {
@@ -923,6 +931,11 @@
         if (message && message.is_user === false) return index;
       }
       return chat.length - 1;
+    }
+
+    function shouldAcceptHostSave(incomingScope, currentScope, nextState) {
+      if (!incomingScope || !currentScope || incomingScope !== currentScope) return false;
+      return Boolean(nextState && typeof nextState === 'object' && !Array.isArray(nextState));
     }
 
     function getCurrentContextInfo() {
