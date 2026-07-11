@@ -5773,18 +5773,136 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const title = document.getElementById("harnessRecoveryTitle");
     const summary = document.getElementById("harnessRecoverySummary");
     const promptNote = document.getElementById("harnessRecoveryPromptNote");
+    const retryButton = document.getElementById("harnessRecoveryRetryBtn");
     if (title) title.textContent = `${actionName}叙事尚未确认`;
     if (summary) summary.textContent = "本次行动的数值、随机结果和时间已经结算，不会回滚或再次结算。";
     if (promptNote) {
-      promptNote.textContent = turn?.generationPromptStatus === "captured"
-        ? "已保留原始行动提示词。重新生成与放弃操作将在下一阶段启用。"
-        : "原始行动提示词不可安全恢复；当前只能暂时关闭提示。";
+      promptNote.textContent = resolveHarnessRecoveryPrompt(turn)
+        ? "已保留原始行动提示词。重新生成只会补写叙事，不会再次结算本次行动。"
+        : "原始行动提示词缺失或无法确认归属，不能重新生成；你仍可暂时关闭提示。";
     }
+    if (retryButton) retryButton.disabled = !resolveHarnessRecoveryPrompt(turn);
     setElementHidden("harnessRecoveryOverlay", false);
   }
 
   function closeHarnessRecoveryOverlay() {
     setElementHidden("harnessRecoveryOverlay", true);
+  }
+
+  function resolveHarnessRecoveryPrompt(turn) {
+    if (!turn || turn.status !== "recovery_required") return "";
+    if (turn.generationPromptStatus !== "captured") return "";
+    const prompt = String(turn.generationPrompt || "");
+    const recordedLength = Number(turn.generationPromptLength);
+    if (!prompt.trim() || prompt.length > HARNESS_RECOVERY_PROMPT_MAX_LENGTH) return "";
+    if (!Number.isFinite(recordedLength) || recordedLength !== prompt.length) return "";
+    return prompt;
+  }
+
+  function hasConflictingHarnessRecoveryFlow() {
+    return Boolean(String(pendingAiRequestId || "") || String(state.pendingAiRequestId || ""));
+  }
+
+  function returnHarnessRecoveryAttemptToPending(requestId, reason = "generation_failed") {
+    const turn = state.harness?.activeTurn;
+    if (
+      !turn
+      || turn.kind !== "produce_action"
+      || turn.status !== "generating"
+      || turn.sessionEpoch !== runtimeSessionEpoch
+      || Number(turn.recoveryAttemptCount || 0) < 1
+      || !requestId
+      || turn.requestId !== requestId
+    ) {
+      return false;
+    }
+    const now = Date.now();
+    state.harness.activeTurn = {
+      ...turn,
+      status: "recovery_required",
+      requestId: "",
+      recoveryFailureReason: String(reason || "generation_failed"),
+      recoveryFailedAt: now,
+      updatedAt: now
+    };
+    recordHarnessTrace("turn.recovery_send_failed", {
+      turnId: turn.turnId || "",
+      requestId,
+      action: turn.action || "",
+      attemptCount: Number(turn.recoveryAttemptCount || 0),
+      reason: String(reason || "generation_failed")
+    });
+    return true;
+  }
+
+  function retryHarnessNarrativeRecovery() {
+    const turn = state.harness?.activeTurn;
+    const context = getHarnessRecoveryContext();
+    if (
+      !turn
+      || turn.kind !== "produce_action"
+      || turn.status !== "recovery_required"
+      || !isHarnessOrdinaryAction(turn.action)
+      || !isHarnessTurnInActiveScope(turn, context)
+    ) {
+      showToast("无法恢复叙事", "当前恢复记录不属于这个存档，未发送任何请求。", "warn");
+      return false;
+    }
+    const prompt = resolveHarnessRecoveryPrompt(turn);
+    if (!prompt) {
+      showToast("无法恢复叙事", "原始行动提示词缺失或校验失败，未发送任何请求。", "warn");
+      return false;
+    }
+    if (hasConflictingHarnessRecoveryFlow()) {
+      showToast("模型请求处理中", "另一个主叙事请求仍在进行，请等待它结束后再恢复。", "warn");
+      return false;
+    }
+
+    const previousRequestId = String(turn.requestId || "");
+    const requestId = createRequestId();
+    const now = Date.now();
+    state.harness.activeTurn = {
+      ...turn,
+      status: "generating",
+      sessionEpoch: runtimeSessionEpoch,
+      requestId,
+      requestIds: appendHarnessRequestId(turn.requestIds, requestId),
+      recoveryAttemptCount: Number(turn.recoveryAttemptCount || 0) + 1,
+      recoveryStartedAt: now,
+      updatedAt: now
+    };
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = prompt;
+    aiReplyRetryCount = 0;
+    recordHarnessTrace("turn.recovery_started", {
+      turnId: turn.turnId || "",
+      requestId,
+      previousRequestId,
+      action: turn.action || "",
+      attemptCount: state.harness.activeTurn.recoveryAttemptCount
+    });
+
+    if (!requestHostPromptSend(prompt, requestId)) {
+      pendingAiRequestId = "";
+      state.pendingAiRequestId = "";
+      returnHarnessRecoveryAttemptToPending(requestId, "send_failed");
+      saveState("harness.recovery_send_failed");
+      render();
+      openHarnessRecoveryOverlay(state.harness.activeTurn);
+      showToast("叙事请求未发送", "恢复记录已保留，可以稍后再次尝试。", "warn");
+      return false;
+    }
+
+    closeHarnessRecoveryOverlay();
+    const actionNames = { lesson: "上课", training: "训练", rest: "休息" };
+    const actionName = actionNames[turn.action] || "普通行动";
+    openEventOverlay(
+      actionName,
+      "已重新发送原始行动提示词，等待 AI 回复",
+      "本次仅恢复叙事，不会重复结算数值、随机事件、时间或日志。"
+    );
+    return true;
   }
 
   function maybeShowHarnessRecoveryPrompt(options = {}) {
@@ -17230,6 +17348,17 @@ ${buildChoiceHardRules({ phase1: true })}`;
         sendAiReplyAck(requestId, false, true);
         return;
       }
+      if (returnHarnessRecoveryAttemptToPending(requestId, "invalid_reply")) {
+        aiReplyRetryCount = 0;
+        pendingAiRequestId = "";
+        state.pendingAiRequestId = "";
+        saveState("harness.recovery_invalid_reply");
+        render();
+        openHarnessRecoveryOverlay(state.harness.activeTurn);
+        showToast("叙事生成未完成", "没有收到有效正文，恢复记录已保留，可以再次尝试。", "warn");
+        sendAiReplyAck(requestId, false, false);
+        return;
+      }
       aiReplyRetryCount = 0;
       pendingAiRequestId = "";
       state.eventMode = "none";
@@ -17950,6 +18079,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
   });
   document.getElementById("harnessRecoveryCloseBtn")?.addEventListener("click", closeHarnessRecoveryOverlay);
   document.getElementById("harnessRecoveryDismissBtn")?.addEventListener("click", closeHarnessRecoveryOverlay);
+  document.getElementById("harnessRecoveryRetryBtn")?.addEventListener("click", retryHarnessNarrativeRecovery);
   document.getElementById("harnessRecoveryOverlay")?.addEventListener("click", (event) => {
     if (event.target.id === "harnessRecoveryOverlay") closeHarnessRecoveryOverlay();
   });

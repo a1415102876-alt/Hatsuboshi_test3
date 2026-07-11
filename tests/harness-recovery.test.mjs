@@ -287,7 +287,7 @@ test("recovery prompt is scheduled only after the active host scope and render a
 
 test("the independent recovery overlay closes without abandoning the turn", () => {
   assert.match(indexSource, /id="harnessRecoveryOverlay"/);
-  assert.match(indexSource, /id="harnessRecoveryRetryBtn"[^>]*disabled/);
+  assert.doesNotMatch(indexSource, /id="harnessRecoveryRetryBtn"[^>]*disabled/);
   assert.match(indexSource, /id="harnessRecoveryAbandonBtn"[^>]*disabled/);
   assert.match(indexSource, /id="harnessRecoveryDismissBtn"/);
 
@@ -310,4 +310,207 @@ test("the independent recovery overlay closes without abandoning the turn", () =
   const close = vm.runInNewContext(`(${closeRecovery})`, sandbox);
   close();
   assert.equal(node.hidden, true);
+});
+
+test("recovery retry preserves turn id, rotates request id, and sends only the frozen prompt", () => {
+  const turn = ordinaryTurn({
+    status: "recovery_required",
+    generationPrompt: "frozen ordinary prompt",
+    generationPromptLength: 22,
+    generationPromptStatus: "captured",
+    requestIds: ["request-old"],
+    recoveryAttemptCount: 0
+  });
+  const state = {
+    harness: { activeTurn: turn },
+    lastPrompt: "unrelated latest prompt",
+    pendingAiRequestId: ""
+  };
+  const sent = [];
+  const traces = [];
+  const sandbox = {
+    state,
+    runtimeSessionEpoch: "session-new",
+    pendingAiRequestId: "",
+    aiReplyRetryCount: 2,
+    HARNESS_RECOVERY_PROMPT_MAX_LENGTH: 120000,
+    Date: { now: () => 654321 },
+    createRequestId: () => "request-new",
+    getHarnessRecoveryContext: () => hostContext(),
+    isHarnessOrdinaryAction: (action) => ["lesson", "training", "rest"].includes(action),
+    requestHostPromptSend: (prompt, requestId) => {
+      sent.push({ prompt, requestId });
+      return true;
+    },
+    recordHarnessTrace: (type, detail) => traces.push({ type, detail }),
+    appendHarnessRequestId: vm.runInNewContext(`(${readFunction(appSource, "appendHarnessRequestId")})`),
+    saveState: () => {},
+    render: () => {},
+    closeHarnessRecoveryOverlay: () => {},
+    openEventOverlay: () => {},
+    showToast: () => {}
+  };
+  vm.runInNewContext([
+    readFunction(appSource, "isHarnessTurnInActiveScope"),
+    readFunction(appSource, "resolveHarnessRecoveryPrompt"),
+    readFunction(appSource, "hasConflictingHarnessRecoveryFlow"),
+    readFunction(appSource, "retryHarnessNarrativeRecovery"),
+    "this.retryHarnessNarrativeRecovery = retryHarnessNarrativeRecovery;"
+  ].join("\n"), sandbox);
+
+  assert.equal(sandbox.retryHarnessNarrativeRecovery(), true);
+  assert.equal(state.harness.activeTurn.turnId, "turn-1");
+  assert.equal(state.harness.activeTurn.requestId, "request-new");
+  assert.deepEqual(Array.from(state.harness.activeTurn.requestIds), ["request-old", "request-new"]);
+  assert.equal(state.harness.activeTurn.status, "generating");
+  assert.equal(state.harness.activeTurn.sessionEpoch, "session-new");
+  assert.equal(state.harness.activeTurn.recoveryAttemptCount, 1);
+  assert.equal(state.lastPrompt, "frozen ordinary prompt");
+  assert.deepEqual(sent, [{ prompt: "frozen ordinary prompt", requestId: "request-new" }]);
+  assert.equal(traces.at(-1)?.type, "turn.recovery_started");
+});
+
+test("recovery retry refuses missing or unowned prompts before creating a request", () => {
+  const retrySource = readFunction(appSource, "retryHarnessNarrativeRecovery");
+  assert.doesNotMatch(retrySource, /buildPrompt\s*\(/);
+  assert.doesNotMatch(retrySource, /triggerRegeneration\s*\(|regenerate/);
+
+  for (const overrides of [
+    { generationPrompt: "", generationPromptLength: 0, generationPromptStatus: "missing" },
+    { generationPrompt: "frozen", generationPromptLength: 6, generationPromptStatus: "captured", saveScope: "scope-b" }
+  ]) {
+    const state = { harness: { activeTurn: ordinaryTurn({ status: "recovery_required", ...overrides }) } };
+    let createCount = 0;
+    let sendCount = 0;
+    const sandbox = {
+      state,
+      runtimeSessionEpoch: "session-new",
+      pendingAiRequestId: "",
+      HARNESS_RECOVERY_PROMPT_MAX_LENGTH: 120000,
+      createRequestId: () => { createCount += 1; return "request-new"; },
+      getHarnessRecoveryContext: () => hostContext(),
+      isHarnessOrdinaryAction: (action) => ["lesson", "training", "rest"].includes(action),
+      appendHarnessRequestId: (ids, id) => [...ids, id],
+      requestHostPromptSend: () => { sendCount += 1; return true; },
+      showToast: () => {}
+    };
+    vm.runInNewContext([
+      readFunction(appSource, "isHarnessTurnInActiveScope"),
+      readFunction(appSource, "resolveHarnessRecoveryPrompt"),
+      readFunction(appSource, "hasConflictingHarnessRecoveryFlow"),
+      readFunction(appSource, "retryHarnessNarrativeRecovery"),
+      "this.retryHarnessNarrativeRecovery = retryHarnessNarrativeRecovery;"
+    ].join("\n"), sandbox);
+    assert.equal(sandbox.retryHarnessNarrativeRecovery(), false);
+    assert.equal(createCount, 0);
+    assert.equal(sendCount, 0);
+    assert.equal(state.harness.activeTurn.requestId, "request-old");
+  }
+});
+
+test("recovery conflict detection ignores UI-only overlays but blocks an occupied model channel", () => {
+  const conflict = vm.runInNewContext(`(${readFunction(appSource, "hasConflictingHarnessRecoveryFlow")})`, {
+    pendingAiRequestId: "",
+    state: { pendingAiRequestId: "" }
+  });
+  assert.equal(conflict(), false);
+
+  const occupied = vm.runInNewContext(`(${readFunction(appSource, "hasConflictingHarnessRecoveryFlow")})`, {
+    pendingAiRequestId: "phone-request",
+    state: { pendingAiRequestId: "phone-request", eventMode: "none" }
+  });
+  assert.equal(occupied(), true);
+  assert.doesNotMatch(readFunction(appSource, "hasConflictingHarnessRecoveryFlow"), /overlay|hidden|eventMode/);
+});
+
+test("synchronous recovery send failure returns the same turn to recovery_required", () => {
+  const state = {
+    harness: { activeTurn: ordinaryTurn({
+      status: "recovery_required",
+      generationPrompt: "frozen prompt",
+      generationPromptLength: 13,
+      generationPromptStatus: "captured",
+      requestIds: ["request-old"]
+    }) },
+    pendingAiRequestId: ""
+  };
+  const traces = [];
+  const sandbox = {
+    state,
+    runtimeSessionEpoch: "session-new",
+    pendingAiRequestId: "",
+    aiReplyRetryCount: 0,
+    HARNESS_RECOVERY_PROMPT_MAX_LENGTH: 120000,
+    Date: { now: () => 777 },
+    createRequestId: () => "request-new",
+    getHarnessRecoveryContext: () => hostContext(),
+    isHarnessOrdinaryAction: (action) => ["lesson", "training", "rest"].includes(action),
+    appendHarnessRequestId: vm.runInNewContext(`(${readFunction(appSource, "appendHarnessRequestId")})`),
+    requestHostPromptSend: () => false,
+    recordHarnessTrace: (type, detail) => traces.push({ type, detail }),
+    saveState: () => {},
+    render: () => {},
+    closeHarnessRecoveryOverlay: () => {},
+    openEventOverlay: () => {},
+    openHarnessRecoveryOverlay: () => {},
+    showToast: () => {}
+  };
+  vm.runInNewContext([
+    readFunction(appSource, "isHarnessTurnInActiveScope"),
+    readFunction(appSource, "resolveHarnessRecoveryPrompt"),
+    readFunction(appSource, "hasConflictingHarnessRecoveryFlow"),
+    readFunction(appSource, "returnHarnessRecoveryAttemptToPending"),
+    readFunction(appSource, "retryHarnessNarrativeRecovery"),
+    "this.retryHarnessNarrativeRecovery = retryHarnessNarrativeRecovery;"
+  ].join("\n"), sandbox);
+
+  assert.equal(sandbox.retryHarnessNarrativeRecovery(), false);
+  assert.equal(state.harness.activeTurn.turnId, "turn-1");
+  assert.equal(state.harness.activeTurn.status, "recovery_required");
+  assert.equal(state.harness.activeTurn.requestId, "");
+  assert.deepEqual(Array.from(state.harness.activeTurn.requestIds), ["request-old", "request-new"]);
+  assert.equal(traces.at(-1)?.type, "turn.recovery_send_failed");
+});
+
+test("retryable recovery validation exhaustion returns to recovery_required instead of failed", () => {
+  const helper = readFunction(appSource, "returnHarnessRecoveryAttemptToPending");
+  const state = { harness: { activeTurn: ordinaryTurn({
+    status: "generating",
+    sessionEpoch: "session-new",
+    requestId: "request-new",
+    recoveryAttemptCount: 1
+  }) } };
+  const traces = [];
+  const sandbox = {
+    state,
+    runtimeSessionEpoch: "session-new",
+    Date: { now: () => 999 },
+    recordHarnessTrace: (type, detail) => traces.push({ type, detail })
+  };
+  const returnToPending = vm.runInNewContext(`(${helper})`, sandbox);
+  assert.equal(returnToPending("request-new", "invalid_reply"), true);
+  assert.equal(state.harness.activeTurn.status, "recovery_required");
+  assert.equal(state.harness.activeTurn.requestId, "");
+  assert.equal(traces.at(-1)?.type, "turn.recovery_send_failed");
+
+  const normalState = { harness: { activeTurn: ordinaryTurn({
+    status: "generating",
+    sessionEpoch: "session-new",
+    requestId: "request-normal",
+    recoveryAttemptCount: 0
+  }) } };
+  const normal = vm.runInNewContext(`(${helper})`, {
+    state: normalState,
+    runtimeSessionEpoch: "session-new",
+    Date: { now: () => 1000 },
+    recordHarnessTrace: () => {}
+  });
+  assert.equal(normal("request-normal", "invalid_reply"), false);
+  assert.equal(normalState.harness.activeTurn.status, "generating");
+});
+
+test("recovery controls are enabled and wired without changing ordinary close behavior", () => {
+  assert.doesNotMatch(indexSource, /id="harnessRecoveryRetryBtn"[^>]*disabled/);
+  assert.match(appSource, /harnessRecoveryRetryBtn"\)\?\.addEventListener\("click", retryHarnessNarrativeRecovery\)/);
+  assert.doesNotMatch(readFunction(appSource, "closeHarnessRecoveryOverlay"), /abandoned|recovery_required|state\./);
 });
