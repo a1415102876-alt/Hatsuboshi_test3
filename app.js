@@ -2738,7 +2738,8 @@
     lastOverlay: null,
     lastMessage: "尚未记录 AI 桥接事件",
     promptHistory: [],
-    openingDispatches: []
+    openingDispatches: [],
+    hostGeneration: null
   };
   const secondaryApiDebug = {
     events: [],
@@ -5683,6 +5684,22 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       lastRejectReason: primaryModelChannelDebug.lastRejectReason
     };
   }
+
+  function normalizeHostGenerationDebugSnapshot(snapshot) {
+    snapshot = snapshot && typeof snapshot === "object" ? snapshot : {};
+    return {
+      adapter: String(snapshot.adapter || ""),
+      mode: String(snapshot.mode || ""),
+      status: String(snapshot.status || ""),
+      ageMs: Math.max(0, Number(snapshot.ageMs || 0)),
+      scope: String(snapshot.scope || ""),
+      ownerKind: String(snapshot.ownerKind || ""),
+      requestIdSuffix: String(snapshot.requestIdSuffix || "").slice(-8),
+      lastFailureReason: String(snapshot.lastFailureReason || ""),
+      lastCompensationReason: String(snapshot.lastCompensationReason || "")
+    };
+  }
+
   function acquirePrimaryEntryDispatch(requestId, ownerKind, options) {
     options = options && typeof options === "object" ? options : {};
     if (!isSillyTavernHost()) {
@@ -16338,6 +16355,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
       || liveStory.includes("正在重新生成");
     const phoneThread = getPhoneThreadDefinition(state.phoneChat?.activeThreadId);
     const primaryOwnerDebug = getPrimaryModelChannelDebugSnapshot();
+    const hostGenerationDebug = aiBridgeDebug.hostGeneration || {};
     return `
       ${buildDebugDiagnosisHtml()}
       <div class="vn-debug-grid">
@@ -16365,6 +16383,15 @@ ${buildChoiceHardRules({ phase1: true })}`;
             ["requestId 后缀", primaryOwnerDebug.requestIdSuffix || "无"],
             ["last release", primaryOwnerDebug.lastReleaseReason || "无"],
             ["last reject", primaryOwnerDebug.lastRejectReason || "无"],
+            ["host adapter", hostGenerationDebug.adapter || "无"],
+            ["host mode", hostGenerationDebug.mode || "无"],
+            ["host status", hostGenerationDebug.status || "无"],
+            ["host age", `${hostGenerationDebug.ageMs || 0} ms`],
+            ["host scope", hostGenerationDebug.scope || "无"],
+            ["host owner", hostGenerationDebug.ownerKind || "无"],
+            ["host request 后缀", hostGenerationDebug.requestIdSuffix || "无"],
+            ["host failure", hostGenerationDebug.lastFailureReason || "无"],
+            ["host compensation", hostGenerationDebug.lastCompensationReason || "无"],
             ["绑定角色卡", state.boundCharacter?.name || "未绑定"],
             ["最后消息", aiBridgeDebug.lastMessage]
           ])}</dl>
@@ -18946,6 +18973,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
   function routeHostAiPayload(payload) {
     if (!payload || payload.source !== "hatsuboshi-produce-host") return;
+    if (payload.type === "hostGenerationDebug") {
+      aiBridgeDebug.hostGeneration = normalizeHostGenerationDebugSnapshot(payload.snapshot);
+      refreshVnDebugView();
+      return;
+    }
     if (payload.type === "character") {
       console.log("[app.js] Applying character payload. Name:", payload.character?.name, "SaveScope:", payload.saveScope);
       applyHostCharacter(payload.character, payload.saveScope, payload.savedState, payload.hasSavedState);

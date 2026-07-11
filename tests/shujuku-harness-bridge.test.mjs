@@ -722,3 +722,138 @@ test("a stale host attempt instance cannot post or clear its replacement", async
   assert.equal(fixture.commits.length, 0);
   assert.equal(activeAttempts.get(attempt.attemptKey), replacement);
 });
+
+test("host attempt debug snapshot exposes only redacted lifecycle metadata", () => {
+  const context = {
+    HATSU_HOST_GENERATION_ADAPTER: "shujuku_v1",
+    hostGenerationAttemptDebug: {
+      current: {
+        requestId: "hatsu-request-1234567890abcdef",
+        channelLeaseId: "secret-full-lease",
+        ownerKind: "ordinary_action",
+        generationMode: "shujuku_same_layer",
+        status: "generating",
+        saveScope: "char-1-chat-a",
+        startedAt: 7500,
+        prompt: "secret prompt",
+        text: "secret narrative"
+      },
+      lastFailureReason: "assistant_timeout",
+      lastCompensationReason: "assistant_timeout"
+    }
+  };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "getHostGenerationAttemptDebugSnapshot"),
+    "this.snapshot = getHostGenerationAttemptDebugSnapshot(10000);"
+  ].join("\n"), context);
+
+  assert.deepEqual(clone(context.snapshot), {
+    adapter: "shujuku_v1",
+    mode: "shujuku_same_layer",
+    status: "generating",
+    ageMs: 2500,
+    scope: "char-1-chat-a",
+    ownerKind: "ordinary_action",
+    requestIdSuffix: "90abcdef",
+    lastFailureReason: "assistant_timeout",
+    lastCompensationReason: "assistant_timeout"
+  });
+  assert.doesNotMatch(
+    JSON.stringify(context.snapshot),
+    /secret prompt|secret narrative|secret-full-lease|hatsu-request-1234567890abcdef|channelLeaseId|prompt|text/iu
+  );
+});
+
+test("frontend host attempt debug normalization rejects narrative and full identifiers", () => {
+  const normalize = vm.runInNewContext(
+    `(${readFunction(appSource, "normalizeHostGenerationDebugSnapshot")})`
+  );
+  const result = normalize({
+    adapter: "shujuku_v1",
+    mode: "shujuku_same_layer",
+    status: "generating",
+    ageMs: 25,
+    scope: "scope-a",
+    ownerKind: "ordinary_action",
+    requestIdSuffix: "90abcdef",
+    lastFailureReason: "",
+    lastCompensationReason: "",
+    requestId: "full-request",
+    channelLeaseId: "full-lease",
+    prompt: "secret prompt",
+    text: "secret reply",
+    state: { day: 7 }
+  });
+  assert.deepEqual(clone(result), {
+    adapter: "shujuku_v1",
+    mode: "shujuku_same_layer",
+    status: "generating",
+    ageMs: 25,
+    scope: "scope-a",
+    ownerKind: "ordinary_action",
+    requestIdSuffix: "90abcdef",
+    lastFailureReason: "",
+    lastCompensationReason: ""
+  });
+});
+
+test("runtime adapter switch can route structured requests through the transactional rollback", async () => {
+  const calls = { quiet: 0, sameLayer: 0, transactional: 0 };
+  const context = {
+    HATSU_HOST_GENERATION_ADAPTER: "current_transactional",
+    requestPromptCache: new Map(),
+    createHostPromptCacheEntry: (envelope) => envelope,
+    recordHostGenerationAttemptDebug() {},
+    postHostGenerationAttemptDebug() {},
+    runOpeningQuietAttempt: async () => { calls.quiet += 1; },
+    runShujukuSameLayerAttempt: async () => { calls.sameLayer += 1; },
+    runTransactionalPrompt: async () => { calls.transactional += 1; return "transactional"; }
+  };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "runHostGenerationAttempt"),
+    "this.runAttempt = runHostGenerationAttempt;"
+  ].join("\n"), context);
+
+  const result = await context.runAttempt({
+    requestId: "req-1", channelLeaseId: "lease-1", saveScope: "scope-a",
+    ownerKind: "ordinary_action", generationMode: "shujuku_same_layer", prompt: "prompt"
+  });
+  assert.equal(result, "transactional");
+  assert.deepEqual(calls, { quiet: 0, sameLayer: 0, transactional: 1 });
+});
+
+test("a successful host attempt retains the last failure and compensation reasons", async () => {
+  const context = {
+    HATSU_HOST_GENERATION_ADAPTER: "current_transactional",
+    hostGenerationAttemptDebug: {
+      current: null,
+      lastFailureReason: "assistant_timeout",
+      lastCompensationReason: "assistant_timeout"
+    },
+    requestPromptCache: new Map(),
+    createHostPromptCacheEntry: (envelope) => envelope,
+    postHostGenerationAttemptDebug() {},
+    runTransactionalPrompt: async () => "transactional"
+  };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "getHostGenerationAttemptDebugSnapshot"),
+    readFunction(bridgeSource, "recordHostGenerationAttemptDebug"),
+    readFunction(bridgeSource, "runHostGenerationAttempt"),
+    "this.runAttempt = runHostGenerationAttempt;",
+    "this.getSnapshot = getHostGenerationAttemptDebugSnapshot;"
+  ].join("\n"), context);
+
+  await context.runAttempt({
+    requestId: "req-2",
+    channelLeaseId: "lease-2",
+    saveScope: "scope-a",
+    ownerKind: "regeneration",
+    generationMode: "shujuku_same_layer",
+    prompt: "prompt"
+  });
+
+  const snapshot = context.getSnapshot();
+  assert.equal(snapshot.status, "completed");
+  assert.equal(snapshot.lastFailureReason, "assistant_timeout");
+  assert.equal(snapshot.lastCompensationReason, "assistant_timeout");
+});

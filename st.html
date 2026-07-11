@@ -817,6 +817,14 @@
     let chatDomUpdateTimer = 0;
     const requestPromptCache = new Map();
     const activeHostGenerationAttempts = new Map();
+    const HATSU_HOST_GENERATION_ADAPTER = globalThis.HATSU_HOST_GENERATION_ADAPTER === 'current_transactional'
+      ? 'current_transactional'
+      : 'shujuku_v1';
+    const hostGenerationAttemptDebug = {
+      current: null,
+      lastFailureReason: '',
+      lastCompensationReason: ''
+    };
     const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer']);
     const SHUJUKU_PLANNING_TIMEOUT_MS = 120000;
     const SHUJUKU_ASSISTANT_TIMEOUT_MS = 120000;
@@ -870,6 +878,55 @@
         channelLeaseId: String(channelLeaseId || ''),
         prompt: cachedEntry.prompt,
         generationMode: cachedEntry.generationMode
+      });
+    }
+
+    function getHostGenerationAttemptDebugSnapshot(now = Date.now()) {
+      const current = hostGenerationAttemptDebug.current || {};
+      const requestId = String(current.requestId || '');
+      return {
+        adapter: String(typeof HATSU_HOST_GENERATION_ADAPTER === 'string' ? HATSU_HOST_GENERATION_ADAPTER : 'shujuku_v1'),
+        mode: String(current.generationMode || 'none'),
+        status: String(current.status || 'idle'),
+        ageMs: current.startedAt ? Math.max(0, Number(now) - Number(current.startedAt || now)) : 0,
+        scope: String(current.saveScope || ''),
+        ownerKind: String(current.ownerKind || 'none'),
+        requestIdSuffix: requestId ? requestId.slice(-8) : '',
+        lastFailureReason: String(hostGenerationAttemptDebug.lastFailureReason || ''),
+        lastCompensationReason: String(hostGenerationAttemptDebug.lastCompensationReason || '')
+      };
+    }
+
+    function recordHostGenerationAttemptDebug(envelope, status, options) {
+      options = options && typeof options === 'object' ? options : {};
+      const previous = hostGenerationAttemptDebug.current;
+      const sameAttempt = previous
+        && String(previous.requestId || '') === String(envelope?.requestId || '')
+        && String(previous.channelLeaseId || '') === String(envelope?.channelLeaseId || '')
+        && String(previous.saveScope || '') === String(envelope?.saveScope || '');
+      hostGenerationAttemptDebug.current = {
+        requestId: String(envelope?.requestId || ''),
+        channelLeaseId: String(envelope?.channelLeaseId || ''),
+        ownerKind: String(envelope?.ownerKind || 'legacy_main'),
+        generationMode: String(envelope?.generationMode || ''),
+        status: String(status || 'unknown'),
+        saveScope: String(envelope?.saveScope || ''),
+        startedAt: sameAttempt ? Number(previous.startedAt || Date.now()) : Date.now()
+      };
+      if (Object.prototype.hasOwnProperty.call(options, 'failureReason')) {
+        hostGenerationAttemptDebug.lastFailureReason = String(options.failureReason || '');
+      }
+      if (Object.prototype.hasOwnProperty.call(options, 'compensationReason')) {
+        hostGenerationAttemptDebug.lastCompensationReason = String(options.compensationReason || '');
+      }
+      return getHostGenerationAttemptDebugSnapshot();
+    }
+
+    function postHostGenerationAttemptDebug() {
+      postToFrame({
+        source: 'hatsuboshi-produce-host',
+        type: 'hostGenerationDebug',
+        snapshot: getHostGenerationAttemptDebugSnapshot()
       });
     }
 
@@ -1125,7 +1182,11 @@
       } catch (error) {
         const failedAttempt = attempt || attempts.get(envelope.attemptKey) || null;
         if (failedAttempt) {
-          await compensateAttempt(failedAttempt, String(error?.message || error || 'host_attempt_failed'), deps);
+          const compensationReason = String(error?.message || error || 'host_attempt_failed');
+          await compensateAttempt(failedAttempt, compensationReason, deps);
+          if (error && typeof error === 'object') {
+            error.hatsuCompensationReason = compensationReason;
+          }
         }
         throw error;
       }
@@ -1163,15 +1224,41 @@
       };
     }
 
-    async function runHostGenerationAttempt(envelope) {
+    async function runHostGenerationAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const recordDebug = deps.recordHostGenerationAttemptDebug
+        || (typeof recordHostGenerationAttemptDebug === 'function' ? recordHostGenerationAttemptDebug : () => {});
+      const postDebug = deps.postHostGenerationAttemptDebug
+        || (typeof postHostGenerationAttemptDebug === 'function' ? postHostGenerationAttemptDebug : () => {});
+      const adapter = typeof HATSU_HOST_GENERATION_ADAPTER === 'string'
+        ? HATSU_HOST_GENERATION_ADAPTER
+        : 'shujuku_v1';
       requestPromptCache.set(envelope.requestId, createHostPromptCacheEntry(envelope));
-      if (envelope.generationMode === 'opening_quiet') {
-        return runOpeningQuietAttempt(envelope);
+      recordDebug(envelope, 'running');
+      postDebug();
+      try {
+        let result;
+        if (adapter === 'current_transactional') {
+          result = await runTransactionalPrompt(envelope.prompt, envelope.requestId, envelope.channelLeaseId);
+        } else if (envelope.generationMode === 'opening_quiet') {
+          result = await runOpeningQuietAttempt(envelope);
+        } else if (envelope.generationMode === 'shujuku_same_layer') {
+          result = await runShujukuSameLayerAttempt(envelope);
+        } else {
+          result = await runTransactionalPrompt(envelope.prompt, envelope.requestId, envelope.channelLeaseId);
+        }
+        recordDebug(envelope, String(result?.status || 'completed'));
+        postDebug();
+        return result;
+      } catch (error) {
+        const failureReason = String(error?.message || error || 'host_attempt_failed');
+        recordDebug(envelope, 'failed', {
+          failureReason,
+          compensationReason: String(error?.hatsuCompensationReason || '')
+        });
+        postDebug();
+        throw error;
       }
-      if (envelope.generationMode === 'shujuku_same_layer') {
-        return runShujukuSameLayerAttempt(envelope);
-      }
-      return runTransactionalPrompt(envelope.prompt, envelope.requestId, envelope.channelLeaseId);
     }
     let promptTaskQueue = Promise.resolve();
 
