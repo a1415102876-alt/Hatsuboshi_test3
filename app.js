@@ -5594,6 +5594,12 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     "turn.completed_without_narrative",
     "turn.failed",
     "turn.rejected_duplicate",
+    "turn.recovery_required",
+    "turn.recovery_started",
+    "turn.recovery_send_failed",
+    "turn.prompt_rejected",
+    "turn.abandoned",
+    "turn.rejected_recovery_pending",
     "reply.rejected_stale"
   ]);
 
@@ -5660,6 +5666,26 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
 
   function isHarnessOrdinaryAction(action) {
     return ["lesson", "training", "rest"].includes(action);
+  }
+
+  function isHarnessTurnInActiveScope(turn, context = {}) {
+    if (!turn || typeof turn !== "object" || Array.isArray(turn)) return false;
+    if (context.isHost) {
+      const turnScope = String(turn.saveScope || "");
+      const activeScope = String(context.activeHostSaveScope || "");
+      return Boolean(turnScope && activeScope && turnScope === activeScope);
+    }
+    const turnStorageKey = String(turn.storageKey || "");
+    const activeKey = String(context.activeStorageKey || "");
+    return Boolean(turnStorageKey && activeKey && turnStorageKey === activeKey);
+  }
+
+  function getHarnessRecoveryDisposition(turn, context = {}) {
+    if (!turn || turn.kind !== "produce_action" || !isHarnessOrdinaryAction(turn.action)) return "none";
+    if (!isHarnessTurnInActiveScope(turn, context)) return "none";
+    if (turn.status === "recovery_required") return "pending";
+    if (turn.sessionEpoch === context.runtimeSessionEpoch) return "none";
+    return ["settled", "generating"].includes(turn.status) ? "transition" : "none";
   }
 
   function buildHarnessActionKey(action, attribute) {
