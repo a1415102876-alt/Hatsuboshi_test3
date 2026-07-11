@@ -375,3 +375,170 @@ test("same-layer preparation reuses an existing exact attempt without another fl
   assert.equal(creates, 1);
   assert.equal(chat.length, 1);
 });
+
+test("exact qrf observation ignores older floors and accepts only the stamped attempt floor", () => {
+  const chat = [
+    { is_user: true, qrf_plot: "older planning", extra: { hatsuAttemptKey: "old", hatsuSaveScope: "scope-a" } },
+    { is_user: false, mes: "older reply" },
+    { is_user: true, qrf_plot_tasks: ["unrelated"], extra: { hatsuAttemptKey: "other", hatsuSaveScope: "scope-a" } },
+    { is_user: false, mes: "other reply" },
+    { is_user: true, is_hidden: true, mes: "current", extra: {
+      hatsuAttemptKey: "req-1::lease-1::scope-a",
+      hatsuSaveScope: "scope-a",
+      _acu_true_same_layer: true
+    } }
+  ];
+  const context = { getContext: () => ({ chat }) };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "getExactBridgePlanningSnapshot"),
+    "this.snapshot = getExactBridgePlanningSnapshot;"
+  ].join("\n"), context);
+  const attempt = { userMessageId: 4, attemptKey: "req-1::lease-1::scope-a", saveScope: "scope-a" };
+
+  assert.equal(context.snapshot(attempt), null);
+  chat[4].qrf_plot = "current planning";
+  chat[4].qrf_plot_preset = { style: "idol" };
+  chat[4].qrf_plot_tasks = ["continue current turn"];
+  assert.deepEqual(clone(context.snapshot(attempt)), {
+    qrf_plot: "current planning",
+    qrf_plot_preset: { style: "idol" },
+    qrf_plot_tasks: ["continue current turn"]
+  });
+});
+
+test("MESSAGE_SENT emits extension source and retries the two-argument host signature", async () => {
+  const calls = [];
+  const context = {};
+  vm.runInNewContext([
+    readFunction(bridgeSource, "emitHostMessageSent"),
+    "this.emitSent = emitHostMessageSent;"
+  ].join("\n"), context);
+  await context.emitSent(4, {
+    context: {
+      eventTypes: { MESSAGE_SENT: "message_sent" },
+      eventSource: {
+        async emit(...args) {
+          calls.push(args);
+          if (args.length === 3) throw new Error("legacy signature");
+        }
+      }
+    }
+  });
+  assert.deepEqual(clone(calls), [
+    ["message_sent", 4, "extension"],
+    ["message_sent", 4]
+  ]);
+});
+
+test("native generation prefers TavernHelper trigger and falls back to host slash execution", async () => {
+  const helperCalls = [];
+  const fallbackCalls = [];
+  const context = {};
+  vm.runInNewContext([
+    readFunction(bridgeSource, "triggerNativeGeneration"),
+    "this.triggerNative = triggerNativeGeneration;"
+  ].join("\n"), context);
+
+  await context.triggerNative({
+    async triggerSlash(command) { helperCalls.push(command); }
+  }, { context: {} });
+  await context.triggerNative(null, {
+    context: {
+      async executeSlashCommandsWithOptions(command) { fallbackCalls.push(command); }
+    }
+  });
+  assert.deepEqual(helperCalls, ["/trigger await=true"]);
+  assert.deepEqual(fallbackCalls, ["/trigger await=true"]);
+});
+
+test("exact assistant selection rejects old hidden planning and incompatible floors", () => {
+  const chat = [
+    { is_user: false, mes: "old assistant", send_date: 50 },
+    { is_user: true, is_hidden: true, mes: "current prompt", send_date: 100, extra: {
+      hatsuAttemptKey: "attempt-a", hatsuSaveScope: "scope-a", _acu_true_same_layer: true
+    } },
+    { is_user: false, is_hidden: true, mes: "qrf_plot planning", send_date: 101 },
+    { is_user: false, mes: "incompatible", send_date: 102 },
+    { is_user: false, mes: "valid native narrative", send_date: 103 }
+  ];
+  const context = {};
+  vm.runInNewContext([
+    readFunction(bridgeSource, "looksLikePlanningOrRecallText"),
+    readFunction(bridgeSource, "findExactBridgeAssistant"),
+    "this.findAssistant = findExactBridgeAssistant;"
+  ].join("\n"), context);
+  const hit = context.findAssistant({
+    userMessageId: 1,
+    attemptKey: "attempt-a",
+    saveScope: "scope-a",
+    prompt: "current prompt",
+    startedAt: 100
+  }, {
+    context: { chat },
+    getMessageRawText: (message) => message.mes,
+    isGeneratedTextCompatibleWithPrompt: (_prompt, text) => text === "valid native narrative"
+  });
+  assert.deepEqual(clone(hit), {
+    index: 4,
+    text: "valid native narrative",
+    rawText: "valid native narrative",
+    renderedText: ""
+  });
+});
+
+test("same-layer generation preserves event order and returns the native assistant without duplication", async () => {
+  const order = [];
+  const commits = [];
+  let syntheticAssistantCreates = 0;
+  const attempt = {
+    requestId: "req-1",
+    channelLeaseId: "lease-1",
+    saveScope: "scope-a",
+    generationMode: "shujuku_same_layer",
+    prompt: "current prompt",
+    attemptKey: "req-1::lease-1::scope-a",
+    status: "prepared",
+    userMessageId: 4,
+    assistantMessageId: null,
+    startedAt: 100
+  };
+  const context = {};
+  vm.runInNewContext([
+    readFunction(bridgeSource, "runShujukuSameLayerAttempt"),
+    "this.runSameLayer = runShujukuSameLayerAttempt;"
+  ].join("\n"), context);
+
+  const result = await context.runSameLayer(attempt, {
+    tavernHelper: {},
+    async prepareSameLayerAttempt() { order.push("persist-user"); return attempt; },
+    async emitHostMessageSent() { order.push("message-sent"); },
+    waitForExactBridgePlanning() {
+      order.push("wait-qrf");
+      return Promise.resolve({ qrf_plot: "planning" });
+    },
+    async triggerNativeGeneration() { order.push("trigger"); },
+    async waitForExactBridgeAssistant() {
+      order.push("wait-assistant");
+      return { index: 5, text: "native reply", rawText: "native reply", renderedText: "" };
+    },
+    stampTransactionalExtra() { order.push("stamp-assistant"); },
+    async persistChatSilently() { order.push("persist-assistant"); },
+    postCommittedReply(...args) { commits.push(args); },
+    createAssistantFloor() { syntheticAssistantCreates += 1; }
+  });
+
+  assert.deepEqual(order.slice(0, 4), ["persist-user", "message-sent", "wait-qrf", "trigger"]);
+  assert.equal(result.assistantMessageId, 5);
+  assert.equal(attempt.status, "replied");
+  assert.equal(syntheticAssistantCreates, 0);
+  assert.equal(commits.length, 1);
+  assert.equal(commits[0][0], "req-1");
+  assert.equal(commits[0][1], "native reply");
+  assert.deepEqual(clone(commits[0][2]), {
+    isFinal: true,
+    rawText: "native reply",
+    renderedText: "",
+    messageId: 5,
+    channelLeaseId: "lease-1"
+  });
+});

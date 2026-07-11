@@ -824,6 +824,8 @@
     const requestPromptCache = new Map();
     const activeHostGenerationAttempts = new Map();
     const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer']);
+    const SHUJUKU_PLANNING_TIMEOUT_MS = 120000;
+    const SHUJUKU_ASSISTANT_TIMEOUT_MS = 120000;
 
     function createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope) {
       return [requestId, channelLeaseId, saveScope].map((value) => String(value || '')).join('::');
@@ -906,6 +908,156 @@
       }
     }
 
+    function getExactBridgePlanningSnapshot(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const message = context?.chat?.[attempt?.userMessageId];
+      if (!message || message.is_user !== true || message?.extra?.hatsuBridgeAbandoned) return null;
+      if (String(message?.extra?.hatsuAttemptKey || '') !== String(attempt?.attemptKey || '')) return null;
+      if (String(message?.extra?.hatsuSaveScope || '') !== String(attempt?.saveScope || '')) return null;
+      if (message?.extra?._acu_true_same_layer !== true) return null;
+      const hasValue = (value) => {
+        if (value == null) return false;
+        if (typeof value === 'string') return value.trim().length > 0;
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === 'object') return Object.keys(value).length > 0;
+        return true;
+      };
+      const keys = Object.keys(message).filter((key) => /^qrf_plot/.test(key) && hasValue(message[key]));
+      if (!keys.length) return null;
+      return keys.reduce((snapshot, key) => {
+        snapshot[key] = message[key];
+        return snapshot;
+      }, {});
+    }
+
+    async function waitForExactBridgePlanning(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const timeoutMs = Math.max(1, Number(deps.timeoutMs || SHUJUKU_PLANNING_TIMEOUT_MS));
+      const intervalMs = Math.max(1, Number(deps.intervalMs || 250));
+      const sleep = deps.sleep || ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        const snapshot = getExactBridgePlanningSnapshot(attempt, deps);
+        if (snapshot) return snapshot;
+        await sleep(intervalMs);
+      }
+      return null;
+    }
+
+    async function emitHostMessageSent(messageId, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const eventSource = deps.eventSource || context?.eventSource;
+      const eventTypes = deps.eventTypes || context?.eventTypes || {};
+      const messageSent = eventTypes.MESSAGE_SENT || 'message_sent';
+      if (!eventSource || typeof eventSource.emit !== 'function') {
+        throw new Error('message_sent_unavailable');
+      }
+      try {
+        await eventSource.emit(messageSent, messageId, 'extension');
+      } catch (error) {
+        await eventSource.emit(messageSent, messageId);
+      }
+    }
+
+    async function triggerNativeGeneration(tavernHelper, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const helper = tavernHelper || deps.tavernHelper;
+      if (helper && typeof helper.triggerSlash === 'function') {
+        await helper.triggerSlash('/trigger await=true');
+        return;
+      }
+      const context = deps.context || getContext();
+      if (typeof context?.executeSlashCommandsWithOptions === 'function') {
+        await context.executeSlashCommandsWithOptions('/trigger await=true');
+        return;
+      }
+      throw new Error('native_trigger_unavailable');
+    }
+
+    function looksLikePlanningOrRecallText(text) {
+      const value = String(text || '').trim();
+      if (!value) return false;
+      const head = value.slice(0, 1200);
+      return /(?:剧情推测|剧情规划|记忆召回|补充信息|qrf_plot|数据库|worldbook|shujuku|recall|supplement)/i.test(head)
+        && !/【\s*初星正文开始\s*】|<story\b|<dialogue\b|<narration\b/i.test(value);
+    }
+
+    function findExactBridgeAssistant(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const chat = context?.chat;
+      if (!Array.isArray(chat)) return null;
+      const readText = deps.getMessageRawText || getMessageRawText;
+      const validateText = deps.isGeneratedTextCompatibleWithPrompt || isGeneratedTextCompatibleWithPrompt;
+      for (let index = Number(attempt?.userMessageId) + 1; index < chat.length; index += 1) {
+        const message = chat[index];
+        if (!message || message.is_user || message.is_hidden) continue;
+        if (message?.extra?._acu_true_same_layer || message?.extra?.hatsuBridgeAbandoned) continue;
+        const messageAttemptKey = String(message?.extra?.hatsuAttemptKey || '');
+        if (messageAttemptKey && messageAttemptKey !== String(attempt?.attemptKey || '')) continue;
+        const messageAt = Number(message?.send_date || 0);
+        if (Number(attempt?.startedAt) > 0 && Number.isFinite(messageAt) && messageAt > 0 && messageAt + 5 < Number(attempt.startedAt)) continue;
+        const rawText = String(readText(message) || '').trim();
+        if (!rawText || looksLikePlanningOrRecallText(rawText)) continue;
+        if (!validateText(attempt.prompt, rawText)) continue;
+        return { index, text: rawText, rawText, renderedText: '' };
+      }
+      return null;
+    }
+
+    async function waitForExactBridgeAssistant(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const timeoutMs = Math.max(1, Number(deps.timeoutMs || SHUJUKU_ASSISTANT_TIMEOUT_MS));
+      const intervalMs = Math.max(1, Number(deps.intervalMs || 500));
+      const sleep = deps.sleep || ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        const hit = findExactBridgeAssistant(attempt, deps);
+        if (hit) return hit;
+        await sleep(intervalMs);
+      }
+      return null;
+    }
+
+    async function runShujukuSameLayerAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const prepareAttempt = deps.prepareSameLayerAttempt || prepareSameLayerAttempt;
+      const emitMessageSent = deps.emitHostMessageSent || emitHostMessageSent;
+      const waitForPlanning = deps.waitForExactBridgePlanning || waitForExactBridgePlanning;
+      const triggerGeneration = deps.triggerNativeGeneration || triggerNativeGeneration;
+      const waitForAssistant = deps.waitForExactBridgeAssistant || waitForExactBridgeAssistant;
+      const stampMessage = deps.stampTransactionalExtra || stampTransactionalExtra;
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const commitReply = deps.postCommittedReply || postCommittedReply;
+      const tavernHelper = deps.tavernHelper || getTavernHelper();
+
+      const attempt = await prepareAttempt(envelope, deps);
+      await emitMessageSent(attempt.userMessageId, deps);
+      attempt.status = 'planning';
+      const planningPromise = waitForPlanning(attempt, deps);
+      await triggerGeneration(tavernHelper, deps);
+      attempt.status = 'generating';
+      const planning = await planningPromise;
+      if (!planning) throw new Error('shujuku_planning_timeout');
+      const assistant = await waitForAssistant(attempt, deps);
+      if (!assistant?.text) throw new Error('shujuku_assistant_timeout');
+      stampMessage(assistant.index, 'assistant', attempt.requestId, attempt);
+      await persistChat();
+      attempt.assistantMessageId = assistant.index;
+      attempt.status = 'assistant_committed';
+      commitReply(attempt.requestId, assistant.text, {
+        isFinal: true,
+        rawText: assistant.rawText || assistant.text,
+        renderedText: assistant.renderedText || '',
+        messageId: assistant.index,
+        channelLeaseId: attempt.channelLeaseId
+      });
+      attempt.status = 'replied';
+      return attempt;
+    }
+
     async function runOpeningQuietAttempt(envelope, deps) {
       deps = deps && typeof deps === 'object' ? deps : {};
       const context = deps.context || getContext();
@@ -942,6 +1094,9 @@
       requestPromptCache.set(envelope.requestId, createHostPromptCacheEntry(envelope));
       if (envelope.generationMode === 'opening_quiet') {
         return runOpeningQuietAttempt(envelope);
+      }
+      if (envelope.generationMode === 'shujuku_same_layer') {
+        return runShujukuSameLayerAttempt(envelope);
       }
       return runTransactionalPrompt(envelope.prompt, envelope.requestId, envelope.channelLeaseId);
     }
@@ -1568,7 +1723,7 @@
           hatsuTxnAt: targetMessage?.extra?.hatsuTxnAt || Date.now(),
           ...(attemptKey ? { hatsuAttemptKey: attemptKey } : {}),
           ...(saveScope ? { hatsuSaveScope: saveScope } : {}),
-          ...(attemptKey ? { _acu_true_same_layer: true } : {})
+          ...(attemptKey && role === 'user' ? { _acu_true_same_layer: true } : {})
         };
         if (attemptKey && role === 'user') targetMessage.is_hidden = true;
       }
