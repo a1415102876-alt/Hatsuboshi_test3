@@ -5516,6 +5516,9 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const requestId = createRequestId();
     const story = buildPendingStory(actionName, resultSummary, randomEvent, actionContext);
     const prompt = buildPrompt(action, attribute, resultText, randomEvent, actionContext);
+    const harnessPromptCapture = isHarnessOrdinaryAction(action)
+      ? captureHarnessGenerationPrompt(prompt)
+      : null;
 
     state.lastStory = story;
     state.lastPrompt = prompt;
@@ -5553,8 +5556,15 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     state.log = state.log.slice(0, 24);
     rollSpCandidates();
     if (isHarnessOrdinaryAction(action)) {
+      if (harnessPromptCapture?.generationPromptStatus !== "captured") {
+        recordHarnessTrace("turn.prompt_rejected", {
+          promptLength: harnessPromptCapture?.generationPromptLength || 0,
+          promptStatus: harnessPromptCapture?.generationPromptStatus || "missing"
+        });
+      }
       markHarnessProduceTurn("settled", {
-        settledPersistenceRevision: state.harness.persistenceRevision + 1
+        settledPersistenceRevision: state.harness.persistenceRevision + 1,
+        ...harnessPromptCapture
       });
     }
     saveState();
@@ -5568,7 +5578,10 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     }
     pendingAiRequestId = requestId;
     if (isHarnessOrdinaryAction(action)) {
-      markHarnessProduceTurn("generating", { requestId });
+      markHarnessProduceTurn("generating", {
+        requestId,
+        requestIds: appendHarnessRequestId(state.harness?.activeTurn?.requestIds, requestId)
+      });
     }
     openEventOverlay(actionName, buildAiWaitingResult(resultSummary), buildAiWaitingStory(story));
     if (!requestHostPromptSend(prompt, requestId)) {
@@ -5585,6 +5598,8 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   function createRequestId() {
     return `hatsu-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
+
+  const HARNESS_RECOVERY_PROMPT_MAX_LENGTH = 120000;
 
   const HARNESS_PERSISTED_TRACE_TYPES = new Set([
     "turn.prepared",
@@ -5622,10 +5637,32 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     };
   }
 
+  function captureHarnessGenerationPrompt(promptText) {
+    const prompt = String(promptText || "");
+    const generationPromptLength = prompt.length;
+    if (!prompt.trim()) {
+      return { generationPrompt: "", generationPromptLength, generationPromptStatus: "missing" };
+    }
+    if (generationPromptLength > HARNESS_RECOVERY_PROMPT_MAX_LENGTH) {
+      return { generationPrompt: "", generationPromptLength, generationPromptStatus: "too_large" };
+    }
+    return { generationPrompt: prompt, generationPromptLength, generationPromptStatus: "captured" };
+  }
+
+  function appendHarnessRequestId(requestIds, requestId) {
+    const existing = Array.isArray(requestIds)
+      ? requestIds.map((value) => String(value || "")).filter(Boolean)
+      : [];
+    const nextRequestId = String(requestId || "");
+    if (!nextRequestId) return existing.slice(-6);
+    return [...existing.filter((value) => value !== nextRequestId), nextRequestId].slice(-6);
+  }
+
   function sanitizeHarnessDetail(detail) {
     const source = detail && typeof detail === "object" && !Array.isArray(detail) ? detail : {};
     return Object.fromEntries(Object.entries(source).filter(([key, value]) => {
-      if (/^(?:prompt|promptText|text|rawText|renderedText)$/i.test(key) || /api.?key/i.test(key)) return false;
+      const isAllowedPromptMetadata = /^(?:promptLength|promptStatus)$/i.test(key);
+      if ((/prompt/i.test(key) && !isAllowedPromptMetadata) || /^(?:text|rawText|renderedText)$/i.test(key) || /api.?key/i.test(key)) return false;
       return value === null || ["string", "number", "boolean"].includes(typeof value);
     }));
   }
@@ -5739,9 +5776,15 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       attribute: ["Vo", "Da", "Vi"].includes(attribute) ? attribute : null,
       requestId: "",
       saveScope: String(activeHostSaveScope || ""),
+      storageKey: String(activeStorageKey || ""),
       sessionEpoch: runtimeSessionEpoch,
       startPersistenceRevision: state.harness.persistenceRevision,
       settledPersistenceRevision: null,
+      generationPrompt: "",
+      generationPromptLength: 0,
+      generationPromptStatus: "missing",
+      requestIds: [],
+      recoveryAttemptCount: 0,
       snapshot: buildHarnessPreTurnSnapshot(),
       createdAt: now,
       updatedAt: now

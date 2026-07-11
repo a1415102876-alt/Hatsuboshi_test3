@@ -213,6 +213,7 @@ test("beginning a different ordinary action is still rejected by the global lock
     state,
     runtimeSessionEpoch: "session-1",
     activeHostSaveScope: "scope-1",
+    activeStorageKey: "hatsuProduceLocalState:scope-1",
     isHarnessTurnBlocking,
     isHybridFacilityActive: () => false,
     createHarnessId: () => "turn-new",
