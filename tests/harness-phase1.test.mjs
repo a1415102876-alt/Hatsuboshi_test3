@@ -165,8 +165,117 @@ test("phase zero observations log metadata without persisting routine events", (
 
 test("current-session ordinary turn is a global single-flight lock", () => {
   const isHarnessTurnBlocking = vm.runInNewContext(`(${readFunction(appSource, "isHarnessTurnBlocking")})`);
+  assert.equal(isHarnessTurnBlocking({ status: "prepared", sessionEpoch: "s1", actionKey: "rest" }, "s1"), true);
   assert.equal(isHarnessTurnBlocking({ status: "generating", sessionEpoch: "s1", actionKey: "lesson" }, "s1"), true);
   assert.equal(isHarnessTurnBlocking({ status: "settled", sessionEpoch: "s1", actionKey: "rest" }, "s1"), true);
   assert.equal(isHarnessTurnBlocking({ status: "generating", sessionEpoch: "old" }, "s1"), false);
   assert.equal(isHarnessTurnBlocking({ status: "completed", sessionEpoch: "s1" }, "s1"), false);
+  assert.equal(isHarnessTurnBlocking({ status: "completed_without_narrative", sessionEpoch: "s1" }, "s1"), false);
+  assert.equal(isHarnessTurnBlocking({ status: "failed", sessionEpoch: "s1" }, "s1"), false);
+});
+
+test("ordinary action classification excludes side flows", () => {
+  const isHarnessOrdinaryAction = vm.runInNewContext(`(${readFunction(appSource, "isHarnessOrdinaryAction")})`);
+  assert.equal(isHarnessOrdinaryAction("lesson"), true);
+  assert.equal(isHarnessOrdinaryAction("training"), true);
+  assert.equal(isHarnessOrdinaryAction("rest"), true);
+  assert.equal(isHarnessOrdinaryAction("outing"), false);
+  assert.equal(isHarnessOrdinaryAction("companion"), false);
+  assert.equal(isHarnessOrdinaryAction("phonechat"), false);
+  assert.equal(isHarnessOrdinaryAction("broadcast"), false);
+});
+
+test("beginning a different ordinary action is still rejected by the global lock", () => {
+  const isHarnessTurnBlocking = vm.runInNewContext(`(${readFunction(appSource, "isHarnessTurnBlocking")})`);
+  const state = {
+    day: 4,
+    round: 2,
+    stamina: 72,
+    stress: 8,
+    trust: 25,
+    Vo: 300,
+    Da: 320,
+    Vi: 340,
+    sp: { Vo: true, Da: false, Vi: false },
+    harness: {
+      persistenceRevision: 9,
+      activeTurn: {
+        turnId: "turn-lesson",
+        status: "generating",
+        actionKey: "produce:4:2:lesson:Vo",
+        sessionEpoch: "session-1"
+      }
+    }
+  };
+  const trace = [];
+  const toasts = [];
+  const sandbox = {
+    state,
+    runtimeSessionEpoch: "session-1",
+    activeHostSaveScope: "scope-1",
+    isHarnessTurnBlocking,
+    isHybridFacilityActive: () => false,
+    createHarnessId: () => "turn-new",
+    recordHarnessTrace: (type, detail) => trace.push({ type, detail }),
+    debugHarnessEvent() {},
+    showToast: (...args) => toasts.push(args)
+  };
+  vm.runInNewContext([
+    readFunction(appSource, "buildHarnessActionKey"),
+    readFunction(appSource, "buildHarnessPreTurnSnapshot"),
+    readFunction(appSource, "beginHarnessProduceAction"),
+    "this.beginHarnessProduceAction = beginHarnessProduceAction;"
+  ].join("\n"), sandbox);
+
+  assert.deepEqual(normalize(sandbox.beginHarnessProduceAction("training", "Da")), { ok: false });
+  assert.equal(state.harness.activeTurn.turnId, "turn-lesson");
+  assert.equal(trace[0].type, "turn.rejected_duplicate");
+  assert.equal(toasts.length, 1);
+
+  state.harness.activeTurn.status = "completed";
+  assert.deepEqual(normalize(sandbox.beginHarnessProduceAction("rest", null)), {
+    ok: true,
+    turnId: "turn-new"
+  });
+  assert.equal(state.harness.activeTurn.status, "prepared");
+  assert.equal(state.harness.activeTurn.actionKey, "produce:4:2:rest:-");
+  assert.equal(state.harness.activeTurn.snapshot.day, 4);
+  assert.equal(state.harness.activeTurn.snapshot.stamina, 72);
+  assert.equal(state.harness.activeTurn.snapshot.sp.Vo, true);
+  assert.equal(state.harness.activeTurn.snapshot.log, undefined);
+});
+
+test("settleAction guards ordinary actions before deterministic state writes", () => {
+  const settlement = readSection("function settleAction(", "function createRequestId(");
+  const guardIndex = settlement.indexOf("beginHarnessProduceAction(action, attribute)");
+  const pendingContextIndex = settlement.indexOf("state.pendingActionContext = {");
+  const deltaWriteIndex = settlement.indexOf("Object.entries(delta).forEach");
+  assert.match(settlement, /if \(isHarnessOrdinaryAction\(action\)\)/);
+  assert.ok(guardIndex >= 0 && guardIndex < pendingContextIndex);
+  assert.ok(guardIndex < deltaWriteIndex);
+  assert.equal((appSource.match(/beginHarnessProduceAction\(/g) || []).length, 2);
+});
+
+test("ordinary settlement records settled and generating around existing saves", () => {
+  const settlement = readSection("function settleAction(", "function createRequestId(");
+  const ordinaryStart = settlement.indexOf("const delta = {};");
+  const ordinary = settlement.slice(ordinaryStart);
+  const settledIndex = ordinary.indexOf('markHarnessProduceTurn("settled"');
+  const firstSaveIndex = ordinary.indexOf("saveState();");
+  const pendingIndex = ordinary.indexOf("pendingAiRequestId = requestId;");
+  const generatingIndex = ordinary.indexOf('markHarnessProduceTurn("generating"');
+  assert.ok(settledIndex >= 0 && settledIndex < firstSaveIndex);
+  assert.match(ordinary, /settledPersistenceRevision:\s*state\.harness\.persistenceRevision \+ 1/);
+  assert.ok(firstSaveIndex < pendingIndex && pendingIndex < generatingIndex);
+  assert.ok(generatingIndex < ordinary.indexOf("openEventOverlay(", generatingIndex));
+});
+
+test("ordinary action terminal states cover skip, success, and exhausted retry failure", () => {
+  const finalize = readFunction(appSource, "finalizeProduceActionWithoutAi");
+  const apply = readSection("function applyAiReply(", "function sendAiReplyAck(");
+  const skippedIndex = finalize.indexOf('markHarnessProduceTurn("completed_without_narrative"');
+  assert.ok(skippedIndex >= 0 && skippedIndex < finalize.indexOf("saveState();"));
+  assert.match(apply, /markHarnessProduceTurn\("failed",\s*\{\},\s*requestId\)/);
+  assert.match(apply, /markHarnessProduceTurn\("completed",\s*\{\},\s*requestId\)/);
+  assert.match(readFunction(appSource, "markHarnessProduceTurn"), /turn\.requestId !== expectedRequestId/);
 });

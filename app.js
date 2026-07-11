@@ -5313,6 +5313,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     if (isHybridFacilityActive()) {
       exitHybridFacility();
     }
+    markHarnessProduceTurn("completed_without_narrative");
     saveState();
     render();
     const toastDetail = isHybridCampusMode()
@@ -5366,6 +5367,11 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     if (action === "companion" && !String(actionContext.companionTopic || "").trim()) {
       openCompanionOverlay();
       return;
+    }
+
+    if (isHarnessOrdinaryAction(action)) {
+      const turnStart = beginHarnessProduceAction(action, attribute);
+      if (!turnStart.ok) return;
     }
 
     state.pendingActionContext = {
@@ -5546,6 +5552,11 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     }
     state.log = state.log.slice(0, 24);
     rollSpCandidates();
+    if (isHarnessOrdinaryAction(action)) {
+      markHarnessProduceTurn("settled", {
+        settledPersistenceRevision: state.harness.persistenceRevision + 1
+      });
+    }
     saveState();
     render();
     if (["lesson", "training"].includes(action) && isSkipLessonTrainingAiStoryEnabled()) {
@@ -5556,6 +5567,9 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       return;
     }
     pendingAiRequestId = requestId;
+    if (isHarnessOrdinaryAction(action)) {
+      markHarnessProduceTurn("generating", { requestId });
+    }
     openEventOverlay(actionName, buildAiWaitingResult(resultSummary), buildAiWaitingStory(story));
     if (!requestHostPromptSend(prompt, requestId)) {
       openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制提示词后手动发送。");
@@ -5633,6 +5647,104 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       detail: safeDetail
     });
     state.harness.trace = state.harness.trace.slice(0, 40);
+    return true;
+  }
+
+  function isHarnessTurnBlocking(turn, currentSessionEpoch) {
+    return Boolean(
+      turn
+      && turn.sessionEpoch === currentSessionEpoch
+      && ["prepared", "settled", "generating"].includes(turn.status)
+    );
+  }
+
+  function isHarnessOrdinaryAction(action) {
+    return ["lesson", "training", "rest"].includes(action);
+  }
+
+  function buildHarnessActionKey(action, attribute) {
+    const schedule = isHybridFacilityActive()
+      ? `free:${state.freeMode.postLiveDay}:${state.freeMode.clockMinutes}`
+      : `produce:${state.day}:${state.round}`;
+    return `${schedule}:${action}:${attribute || "-"}`;
+  }
+
+  function buildHarnessPreTurnSnapshot() {
+    const hybridFacility = isHybridFacilityActive();
+    return {
+      day: Number(state.day) || 1,
+      round: Number(state.round) || 1,
+      postLiveDay: hybridFacility ? Number(state.freeMode?.postLiveDay) || 1 : null,
+      clockMinutes: hybridFacility ? Number(state.freeMode?.clockMinutes) || 0 : null,
+      stamina: Number(state.stamina) || 0,
+      stress: Number(state.stress) || 0,
+      trust: Number(state.trust) || 0,
+      Vo: Number(state.Vo) || 0,
+      Da: Number(state.Da) || 0,
+      Vi: Number(state.Vi) || 0,
+      sp: {
+        Vo: Boolean(state.sp?.Vo),
+        Da: Boolean(state.sp?.Da),
+        Vi: Boolean(state.sp?.Vi)
+      }
+    };
+  }
+
+  function beginHarnessProduceAction(action, attribute) {
+    const actionKey = buildHarnessActionKey(action, attribute);
+    const blockingTurn = state.harness?.activeTurn;
+    if (isHarnessTurnBlocking(blockingTurn, runtimeSessionEpoch)) {
+      recordHarnessTrace("turn.rejected_duplicate", {
+        turnId: blockingTurn.turnId || "",
+        action,
+        actionKey
+      });
+      showToast("行动处理中", "当前行动仍在结算或等待剧情回复，请勿重复提交。", "warn");
+      return { ok: false };
+    }
+    const now = Date.now();
+    const turnId = createHarnessId("turn");
+    state.harness.activeTurn = {
+      turnId,
+      kind: "produce_action",
+      status: "prepared",
+      actionKey,
+      action,
+      attribute: ["Vo", "Da", "Vi"].includes(attribute) ? attribute : null,
+      requestId: "",
+      saveScope: String(activeHostSaveScope || ""),
+      sessionEpoch: runtimeSessionEpoch,
+      startPersistenceRevision: state.harness.persistenceRevision,
+      settledPersistenceRevision: null,
+      snapshot: buildHarnessPreTurnSnapshot(),
+      createdAt: now,
+      updatedAt: now
+    };
+    recordHarnessTrace("turn.prepared", { turnId, action, actionKey });
+    debugHarnessEvent("turn.prepared", { turnId, action, actionKey });
+    return { ok: true, turnId };
+  }
+
+  function markHarnessProduceTurn(status, patch = {}, expectedRequestId = "") {
+    const turn = state.harness?.activeTurn;
+    if (!turn || turn.kind !== "produce_action" || turn.sessionEpoch !== runtimeSessionEpoch) return false;
+    if (expectedRequestId && turn.requestId !== expectedRequestId) return false;
+    state.harness.activeTurn = {
+      ...turn,
+      ...patch,
+      status,
+      updatedAt: Date.now()
+    };
+    recordHarnessTrace(`turn.${status}`, {
+      turnId: turn.turnId || "",
+      requestId: state.harness.activeTurn.requestId || "",
+      action: turn.action || "",
+      actionKey: turn.actionKey || ""
+    });
+    debugHarnessEvent(`turn.${status}`, {
+      turnId: turn.turnId || "",
+      requestId: state.harness.activeTurn.requestId || ""
+    });
     return true;
   }
 
@@ -16983,6 +17095,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
       const errorText = "生成剧情失败，未获取到酒馆角色的有效回复。请点击右侧“编辑提示词重发”重试。";
       state.lastStory = errorText;
       if (state.activeStoryNode) state.activeStoryNode.ready = true;
+      markHarnessProduceTurn("failed", {}, requestId);
       saveState();
       render();
       const node = state.activeStoryNode;
@@ -17015,6 +17128,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (state.log[0]) {
       state.log[0].aiReply = reply;
     }
+    markHarnessProduceTurn("completed", {}, requestId);
     saveState();
     render();
     const node = state.activeStoryNode;
