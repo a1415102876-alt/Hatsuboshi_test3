@@ -507,3 +507,134 @@ test("new migrated owner kinds have stable busy labels", () => {
   assert.equal(describe({ ownerKind: "manual_prompt" }), "编辑后的剧情请求正在生成");
   assert.equal(describe({ ownerKind: "regeneration" }), "剧情正在重新生成");
 });
+function makeOpeningEntryContext({ acquireOk = true } = {}) {
+  const calls = {
+    order: [], acquire: 0, debug: 0, unlock: 0, ensure: 0, refresh: 0,
+    save: 0, render: 0, close: 0, open: 0, send: [], fallback: 0
+  };
+  const context = {
+    state: {
+      idol: "idol-a",
+      day: 1,
+      affinity: { unlocked: [] },
+      activeStoryNode: { type: "existing", ready: true },
+      lastPrompt: "old prompt",
+      lastStory: "old story",
+      eventMode: "none",
+      choiceStep: 0,
+      bondChoiceRound: 0,
+      bondFirstChoiceText: "old",
+      pendingOptionTexts: ["old"],
+      selectedChoiceText: "old",
+      selectedChoiceRating: "old"
+    },
+    affinityNodes: { 0: { title: "opening", timing: "start" } },
+    BOND_80_DAY: 20,
+    recordDebugOpeningDispatch() { calls.debug += 1; calls.order.push("debug"); },
+    markAffinityUnlocked(threshold) {
+      calls.unlock += 1;
+      calls.order.push("unlock");
+      if (!context.state.affinity.unlocked.includes(threshold)) context.state.affinity.unlocked.push(threshold);
+    },
+    buildOpeningPrompt() { calls.order.push("build"); return "opening prompt"; },
+    buildAffinityPrompt() { throw new Error("threshold zero must use opening prompt"); },
+    createRequestId() { calls.order.push("request-id"); return "req-opening"; },
+    acquirePrimaryEntryDispatch(requestId, ownerKind) {
+      calls.acquire += 1;
+      calls.order.push("acquire");
+      assert.equal(requestId, "req-opening");
+      assert.equal(ownerKind, "opening");
+      return acquireOk
+        ? { ok: true, owner: { requestId, ownerKind, channelLeaseId: "lease-opening" } }
+        : { ok: false, owner: null };
+    },
+    ensureStateShape() { calls.ensure += 1; calls.order.push("ensure"); context.state.shapeTouched = true; },
+    refreshAffinityUnlocks() {
+      calls.refresh += 1;
+      calls.order.push("refresh");
+      if (!context.state.affinity.unlocked.includes(0)) context.state.affinity.unlocked.push(0);
+    },
+    showToast() { calls.order.push("toast"); },
+    specialBondRoutesFor() { return null; },
+    saveState() { calls.save += 1; calls.order.push("save"); },
+    closeModal() { calls.close += 1; calls.order.push("close"); },
+    render() { calls.render += 1; calls.order.push("render"); },
+    buildAiWaitingStory(text) { return text; },
+    openEventOverlay() { calls.open += 1; calls.order.push("open"); },
+    requestHostPromptSend(...args) { calls.send.push(args); calls.order.push("send"); return true; },
+    openAiPromptOverlay() { calls.fallback += 1; calls.order.push("fallback"); }
+  };
+  vm.runInNewContext([
+    "let pendingAiRequestId = 'pending-before';",
+    readFunction(appSource, "startOpeningStory"),
+    readFunction(appSource, "triggerAffinityStory"),
+    "this.start = startOpeningStory;",
+    "this.trigger = triggerAffinityStory;",
+    "this.getPending = () => pendingAiRequestId;"
+  ].join("\n"), context);
+  return { context, calls };
+}
+
+test("start opening rejects an occupied owner before all state and UI writes", () => {
+  const { context, calls } = makeOpeningEntryContext({ acquireOk: false });
+  const before = clone(context.state);
+
+  context.start();
+
+  assert.deepEqual(clone(context.state), before);
+  assert.equal(context.getPending(), "pending-before");
+  assert.equal(calls.acquire, 1);
+  assert.equal(calls.debug, 0);
+  assert.equal(calls.unlock, 0);
+  assert.equal(calls.save, 0);
+  assert.equal(calls.render, 0);
+  assert.equal(calls.open, 0);
+  assert.equal(calls.send.length, 0);
+});
+
+test("affinity zero rejects an occupied owner before refresh debug state and UI writes", () => {
+  const { context, calls } = makeOpeningEntryContext({ acquireOk: false });
+  const before = clone(context.state);
+
+  context.trigger(0);
+
+  assert.deepEqual(clone(context.state), before);
+  assert.equal(context.getPending(), "pending-before");
+  assert.equal(calls.acquire, 1);
+  assert.equal(calls.ensure, 0);
+  assert.equal(calls.refresh, 0);
+  assert.equal(calls.debug, 0);
+  assert.equal(calls.save, 0);
+  assert.equal(calls.open, 0);
+  assert.equal(calls.send.length, 0);
+});
+
+test("both opening entries dispatch the opening quiet mode with the formal lease", () => {
+  const first = makeOpeningEntryContext();
+  first.context.start();
+  assert.deepEqual(clone(first.calls.send[0][2]), {
+    channelLeaseId: "lease-opening",
+    ownerKind: "opening",
+    generationMode: "opening_quiet"
+  });
+  assert.ok(first.calls.order.indexOf("build") < first.calls.order.indexOf("acquire"));
+  assert.ok(first.calls.order.indexOf("acquire") < first.calls.order.indexOf("debug"));
+  assert.ok(first.calls.order.indexOf("acquire") < first.calls.order.indexOf("unlock"));
+  assert.ok(first.calls.order.indexOf("acquire") < first.calls.order.indexOf("save"));
+
+  const second = makeOpeningEntryContext();
+  second.context.trigger(0);
+  assert.deepEqual(clone(second.calls.send[0][2]), {
+    channelLeaseId: "lease-opening",
+    ownerKind: "opening",
+    generationMode: "opening_quiet"
+  });
+  assert.ok(second.calls.order.indexOf("build") < second.calls.order.indexOf("acquire"));
+  assert.ok(second.calls.order.indexOf("acquire") < second.calls.order.indexOf("ensure"));
+  assert.ok(second.calls.order.indexOf("acquire") < second.calls.order.indexOf("debug"));
+});
+
+test("opening owner has a dedicated busy label", () => {
+  const describe = vm.runInNewContext(`(${readFunction(appSource, "describePrimaryModelOwner")})`);
+  assert.notEqual(describe({ ownerKind: "opening" }), describe({ ownerKind: "legacy_main" }));
+});

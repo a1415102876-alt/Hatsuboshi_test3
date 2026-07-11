@@ -651,7 +651,19 @@
           if (cachedPrompt) {
             queuePromptTask(async () => {
               try {
-                await runTransactionalPrompt(cachedPromptText, reqId, channelLeaseId);
+                if (typeof cachedPrompt === 'object') {
+                  const regenerationEnvelope = normalizeHostGenerationEnvelope({
+                    ...cachedPrompt,
+                    requestId: reqId,
+                    channelLeaseId,
+                    generationMode: cachedPrompt.generationMode,
+                    prompt: cachedPromptText
+                  });
+                  if (!regenerationEnvelope.ok) throw new Error(regenerationEnvelope.reason);
+                  await runHostGenerationAttempt(regenerationEnvelope);
+                } else {
+                  await runTransactionalPrompt(cachedPromptText, reqId, channelLeaseId);
+                }
               } catch (error) {
                 postPrimaryAiError(reqId, channelLeaseId, error);
               }
@@ -851,8 +863,43 @@
       };
     }
 
+    async function runOpeningQuietAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const generateQuietPrompt = deps.generateQuietPrompt || context?.generateQuietPrompt;
+      const extractReply = deps.extractReplyTextFromGenerated || extractReplyTextFromGenerated;
+      const commitReply = deps.postCommittedReply || postCommittedReply;
+      if (!context || typeof generateQuietPrompt !== 'function') {
+        throw new Error('opening_quiet_unavailable');
+      }
+      const generated = await generateQuietPrompt.call(context, {
+        quietPrompt: envelope.prompt,
+        quietToLoud: false,
+        skipWIAN: false,
+        removeReasoning: true
+      });
+      const text = extractReply(generated);
+      if (!text) throw new Error('opening_quiet_empty');
+      commitReply(envelope.requestId, text, {
+        isFinal: true,
+        rawText: text,
+        renderedText: '',
+        messageId: null,
+        channelLeaseId: envelope.channelLeaseId
+      });
+      return {
+        requestId: envelope.requestId,
+        channelLeaseId: envelope.channelLeaseId,
+        text,
+        messageId: null
+      };
+    }
+
     async function runHostGenerationAttempt(envelope) {
       requestPromptCache.set(envelope.requestId, createHostPromptCacheEntry(envelope));
+      if (envelope.generationMode === 'opening_quiet') {
+        return runOpeningQuietAttempt(envelope);
+      }
       return runTransactionalPrompt(envelope.prompt, envelope.requestId, envelope.channelLeaseId);
     }
     let promptTaskQueue = Promise.resolve();
@@ -1007,6 +1054,7 @@
     }
 
     function resolveAssistantMessageId(explicitId) {
+      if (explicitId === null) return -1;
       const id = Number(explicitId);
       if (Number.isInteger(id) && id >= 0) return id;
       const chat = getContext()?.chat;

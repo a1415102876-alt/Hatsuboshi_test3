@@ -5814,6 +5814,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   function describePrimaryModelOwner(owner) {
     const labels = {
       ordinary_action: "上一项育成行动仍在生成剧情",
+      opening: "担当开场剧情正在生成",
       ordinary_recovery: "上一项行动正在恢复叙事",
       phone_chat: "手机私聊正在等待回复",
       broadcast: "广播完整稿正在生成",
@@ -7787,10 +7788,12 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   }
 
   function startOpeningStory(source = "startOpeningStory") {
-    recordDebugOpeningDispatch(source);
-    markAffinityUnlocked(0);
     const prompt = buildOpeningPrompt();
     const requestId = createRequestId();
+    const dispatch = acquirePrimaryEntryDispatch(requestId, "opening");
+    if (!dispatch.ok) return false;
+    recordDebugOpeningDispatch(source);
+    markAffinityUnlocked(0);
     state.activeStoryNode = { type: "affinity", threshold: 0, ready: false };
     state.lastPrompt = prompt;
     state.lastStory = `${state.idol}的担当开场正在生成。`;
@@ -7798,20 +7801,37 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     render();
     pendingAiRequestId = requestId;
     openEventOverlay("好感度 0：担当开场", "已向当前角色卡发送开场剧情请求。", buildAiWaitingStory("选择担当偶像后，开场剧情将由 AI 生成。"));
-    if (!requestHostPromptSend(prompt, requestId)) {
+    if (!requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: dispatch.owner?.channelLeaseId || "",
+      ownerKind: "opening",
+      generationMode: "opening_quiet"
+    })) {
       state.activeStoryNode.ready = true;
       saveState();
       openEventOverlay("好感度 0：担当开场", "当前页面未连接 SillyTavern。提示词已准备，可手动发送给 AI；本地测试时也可以确认进入育成。", "开场剧情等待手动生成。你可以在提示词窗口复制或编辑好感度0开场提示词。");
       openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制好感度0开场提示词后手动发送。");
     }
+    return true;
   }
 
   function triggerAffinityStory(threshold) {
+    let prompt = "";
+    let requestId = "";
+    let openingDispatch = null;
+    if (threshold === 0) {
+      prompt = buildOpeningPrompt();
+      requestId = createRequestId();
+      openingDispatch = acquirePrimaryEntryDispatch(requestId, "opening");
+      if (!openingDispatch.ok) return false;
+    }
     ensureStateShape();
     refreshAffinityUnlocks();
     if (!state.affinity.unlocked.includes(threshold)) {
+      if (openingDispatch?.owner) {
+        releasePrimaryModelChannel(requestId, openingDispatch.owner.channelLeaseId, "opening_not_unlocked");
+      }
       showToast("剧情尚未解锁", affinityNodes[threshold]?.timing || "继续推进育成即可解锁。", "warn");
-      return;
+      return false;
     }
     if (threshold === 80 && state.day < BOND_80_DAY) {
       showToast("羁绊尚未到时", `好感度 80 羁绊将在第 ${BOND_80_DAY} 天（First Live 前夜）触发。`, "warn");
@@ -7821,8 +7841,8 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       recordDebugOpeningDispatch("triggerAffinityStory(0)");
     }
     const node = affinityNodes[threshold];
-    const prompt = threshold === 0 ? buildOpeningPrompt() : buildAffinityPrompt(threshold);
-    const requestId = createRequestId();
+    if (!prompt) prompt = buildAffinityPrompt(threshold);
+    if (!requestId) requestId = createRequestId();
     state.activeStoryNode = { type: "affinity", threshold, ready: false };
     if (specialBondRoutesFor()?.[threshold]) {
       state.eventMode = "choice_prompt";
@@ -7850,9 +7870,15 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     render();
     pendingAiRequestId = requestId;
     openEventOverlay(`好感度 ${threshold}：${node.title}`, `已向当前角色卡发送${node.title}剧情请求。`, buildAiWaitingStory(`${node.title}剧情正文等待 AI 回复。`));
-    if (!requestHostPromptSend(prompt, requestId)) {
+    const dispatchOptions = threshold === 0 ? {
+      channelLeaseId: openingDispatch?.owner?.channelLeaseId || "",
+      ownerKind: "opening",
+      generationMode: "opening_quiet"
+    } : undefined;
+    if (!requestHostPromptSend(prompt, requestId, dispatchOptions)) {
       openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制好感度剧情提示词后手动发送。");
     }
+    return true;
   }
 
   // First Live 演出视频：仅使用远程 CDN，本地不 bundled 视频资源
