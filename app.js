@@ -16643,7 +16643,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
   }
 
-  function applyAiReply(text, requestId = "", rawText = "", renderedText = "", isFinal = true, variableCommands = []) {
+  function applyAiReply(text, requestId = "", rawText = "", renderedText = "", isFinal = true, variableCommands = [], messageId = null) {
     debugHarnessEvent("reply.received", {
       requestId,
       isFinal: Boolean(isFinal),
@@ -16675,6 +16675,9 @@ ${buildChoiceHardRules({ phase1: true })}`;
       recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source: "", accepted: false });
       sendAiReplyAck(requestId, false, false);
       return;
+    }
+    if (shouldRequestChronicleUpdate(acceptedRequest, isFinal)) {
+      requestChronicleUpdate(rawText, renderedText, text, messageId);
     }
     const replyCandidates = collectAiReplyCandidates(text, rawText, renderedText);
     // 选项/任务等仍优先选能解析出完整 payload 的候选；正文提取会对全部候选做合并解析。
@@ -17174,6 +17177,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const activeRequestId = currentRequestId || state.pendingAiRequestId;
     if (!activeRequestId) return false;
     return requestId === activeRequestId;
+  }
+
+  function shouldRequestChronicleUpdate(acceptedRequest, isFinal) {
+    return Boolean(acceptedRequest && isFinal);
   }
 
   function showToast(title, message, tone = "info") {
@@ -18158,16 +18165,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
     if (shouldSkipCommittedReply(payload)) return;
     if (payload.type === "aiReply" || payload.type === "aiReplyCommitted") {
-      if (payload.isFinal !== false) {
-        requestChronicleUpdate(payload.rawText, payload.renderedText, payload.text, payload.messageId);
-      }
       applyAiReply(
         payload.text,
         payload.requestId,
         payload.rawText,
         payload.renderedText,
         payload.isFinal,
-        payload.variableCommands
+        payload.variableCommands,
+        payload.messageId
       );
     }
   }

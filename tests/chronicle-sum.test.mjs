@@ -127,5 +127,11 @@ test("requestId-rejected stale reply cannot request a chronicle write", () => {
 test("chronicle decision helper rejects stale requests", () => {
   const shouldRequest = vm.runInNewContext(`(${readFunction(appSource, "shouldRequestChronicleUpdate")})`);
   assert.equal(shouldRequest(false, true), false);
+  assert.equal(shouldRequest(true, false), false);
   assert.equal(shouldRequest(true, true), true);
+});
+
+test("host reply route forwards message id to accepted reply handling", () => {
+  const route = readFunction(appSource, "routeHostAiPayload");
+  assert.match(route, /payload\.variableCommands,\s*payload\.messageId\s*\)/);
 });
