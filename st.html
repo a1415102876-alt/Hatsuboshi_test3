@@ -806,6 +806,33 @@
     let chatDomObserver = null;
     let chatDomUpdateTimer = 0;
     const requestPromptCache = new Map();
+    const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer']);
+
+    function createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope) {
+      return [requestId, channelLeaseId, saveScope].map((value) => String(value || '')).join('::');
+    }
+
+    function normalizeHostGenerationEnvelope(data) {
+      const requestId = String(data?.requestId || '');
+      const channelLeaseId = String(data?.channelLeaseId || '');
+      const saveScope = String(data?.saveScope || '');
+      const generationMode = String(data?.generationMode || '');
+      const prompt = String(data?.prompt || '');
+      if (!requestId || !channelLeaseId || !saveScope || !prompt.trim() || !HOST_GENERATION_MODES.has(generationMode)) {
+        return { ok: false, reason: 'invalid_generation_envelope' };
+      }
+      return {
+        ok: true,
+        requestId,
+        channelLeaseId,
+        saveScope,
+        ownerKind: String(data?.ownerKind || 'legacy_main'),
+        generationMode,
+        prompt,
+        turnId: String(data?.turnId || ''),
+        attemptKey: createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope)
+      };
+    }
     let promptTaskQueue = Promise.resolve();
 
     function getSillyTavernGlobal() {
