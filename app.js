@@ -18935,6 +18935,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
     return false;
   }
 
+  function isCurrentPrimaryHostPayload(payload) {
+    return Boolean(
+      payload?.requestId
+      && payload?.channelLeaseId
+      && isPrimaryModelLeaseCurrent(payload.requestId, payload.channelLeaseId)
+    );
+  }
+
   function routeHostAiPayload(payload) {
     if (!payload || payload.source !== "hatsuboshi-produce-host") return;
     if (payload.type === "character") {
@@ -18965,6 +18973,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
     if (shouldSkipCommittedReply(payload)) return;
     if (payload.type === "aiReply" || payload.type === "aiReplyCommitted") {
+      if (!isCurrentPrimaryHostPayload(payload)) {
+        debugHarnessEvent("reply.rejected_stale", {
+          requestId: String(payload.requestId || ""),
+          channelLeaseId: String(payload.channelLeaseId || ""),
+          reason: "primary_lease_mismatch"
+        });
+        return;
+      }
       activeInboundPrimaryChannelLeaseId = String(payload.channelLeaseId || "");
       try {
         applyAiReply(

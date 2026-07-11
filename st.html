@@ -890,6 +890,7 @@
       const readContext = deps.getContext || getContext;
       try {
         const messageId = await createMessage('user', envelope.prompt, envelope.requestId, attempt);
+        attempt.userMessageId = messageId;
         const targetMessage = readContext()?.chat?.[messageId];
         if (!targetMessage || targetMessage.is_user !== true) {
           throw new Error('same_layer_user_floor_missing');
@@ -897,11 +898,12 @@
         targetMessage.is_hidden = true;
         stampMessage(messageId, 'user', envelope.requestId, attempt);
         await persistChat();
-        attempt.userMessageId = messageId;
         attempt.status = 'user_floor_committed';
         return attempt;
       } catch (error) {
-        if (attempts.get(attempt.attemptKey) === attempt) {
+        attempt.status = 'failed';
+        attempt.failureReason = String(error?.message || error || 'prepare_failed');
+        if (attempt.userMessageId == null && attempts.get(attempt.attemptKey) === attempt) {
           attempts.delete(attempt.attemptKey);
         }
         throw error;
@@ -929,6 +931,53 @@
         snapshot[key] = message[key];
         return snapshot;
       }, {});
+    }
+
+    async function compensateHostGenerationAttempt(attempt, reason, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      if (!attempt) return null;
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
+      const context = deps.context || getContext();
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const chat = context?.chat;
+      const messageId = Number(attempt.userMessageId);
+      const message = Array.isArray(chat) && Number.isInteger(messageId) ? chat[messageId] : null;
+      const exactFloor = Boolean(
+        message
+        && message.is_user === true
+        && String(message?.extra?.hatsuAttemptKey || '') === String(attempt.attemptKey || '')
+        && String(message?.extra?.hatsuSaveScope || '') === String(attempt.saveScope || '')
+      );
+      const planning = exactFloor
+        ? getExactBridgePlanningSnapshot(attempt, { ...deps, context })
+        : null;
+      let mutated = false;
+      if (exactFloor && planning) {
+        message.is_hidden = true;
+        message.extra = {
+          ...(message.extra || {}),
+          hatsuBridgeAbandoned: true,
+          hatsuBridgeFailureReason: String(reason || 'host_attempt_failed')
+        };
+        mutated = true;
+      } else if (exactFloor) {
+        chat.splice(messageId, 1);
+        mutated = true;
+        try {
+          const mainDoc = deps.mainDocument || getHostMainDocument();
+          mainDoc?.querySelector?.(`#chat > .mes[mesid="${messageId}"]`)?.remove?.();
+        } catch (error) {
+          // DOM cleanup failure does not change compensation state.
+        }
+      }
+      if (mutated && context?.chatMetadata) context.chatMetadata.tainted = true;
+      attempt.status = 'compensated';
+      attempt.failureReason = String(reason || 'host_attempt_failed');
+      if (attempts.get(attempt.attemptKey) === attempt) {
+        attempts.delete(attempt.attemptKey);
+      }
+      if (mutated) await persistChat();
+      return attempt;
     }
 
     async function waitForExactBridgePlanning(attempt, deps) {
@@ -1023,6 +1072,7 @@
 
     async function runShujukuSameLayerAttempt(envelope, deps) {
       deps = deps && typeof deps === 'object' ? deps : {};
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
       const prepareAttempt = deps.prepareSameLayerAttempt || prepareSameLayerAttempt;
       const emitMessageSent = deps.emitHostMessageSent || emitHostMessageSent;
       const waitForPlanning = deps.waitForExactBridgePlanning || waitForExactBridgePlanning;
@@ -1031,31 +1081,47 @@
       const stampMessage = deps.stampTransactionalExtra || stampTransactionalExtra;
       const persistChat = deps.persistChatSilently || persistChatSilently;
       const commitReply = deps.postCommittedReply || postCommittedReply;
+      const readContextInfo = deps.getCurrentContextInfo || getCurrentContextInfo;
+      const compensateAttempt = deps.compensateHostGenerationAttempt || compensateHostGenerationAttempt;
       const tavernHelper = deps.tavernHelper || getTavernHelper();
-
-      const attempt = await prepareAttempt(envelope, deps);
-      await emitMessageSent(attempt.userMessageId, deps);
-      attempt.status = 'planning';
-      const planningPromise = waitForPlanning(attempt, deps);
-      await triggerGeneration(tavernHelper, deps);
-      attempt.status = 'generating';
-      const planning = await planningPromise;
-      if (!planning) throw new Error('shujuku_planning_timeout');
-      const assistant = await waitForAssistant(attempt, deps);
-      if (!assistant?.text) throw new Error('shujuku_assistant_timeout');
-      stampMessage(assistant.index, 'assistant', attempt.requestId, attempt);
-      await persistChat();
-      attempt.assistantMessageId = assistant.index;
-      attempt.status = 'assistant_committed';
-      commitReply(attempt.requestId, assistant.text, {
-        isFinal: true,
-        rawText: assistant.rawText || assistant.text,
-        renderedText: assistant.renderedText || '',
-        messageId: assistant.index,
-        channelLeaseId: attempt.channelLeaseId
-      });
-      attempt.status = 'replied';
-      return attempt;
+      let attempt = null;
+      try {
+        attempt = await prepareAttempt(envelope, deps);
+        await emitMessageSent(attempt.userMessageId, deps);
+        attempt.status = 'planning';
+        const planningPromise = waitForPlanning(attempt, deps);
+        await triggerGeneration(tavernHelper, deps);
+        attempt.status = 'generating';
+        const planning = await planningPromise;
+        if (!planning) throw new Error('shujuku_planning_timeout');
+        const assistant = await waitForAssistant(attempt, deps);
+        if (!assistant?.text) throw new Error('shujuku_assistant_timeout');
+        if (String(readContextInfo()?.saveScope || '') !== String(attempt.saveScope || '')) {
+          throw new Error('save_scope_changed');
+        }
+        if (attempts.get(attempt.attemptKey) !== attempt) {
+          throw new Error('stale_host_attempt');
+        }
+        stampMessage(assistant.index, 'assistant', attempt.requestId, attempt);
+        await persistChat();
+        attempt.assistantMessageId = assistant.index;
+        attempt.status = 'assistant_committed';
+        commitReply(attempt.requestId, assistant.text, {
+          isFinal: true,
+          rawText: assistant.rawText || assistant.text,
+          renderedText: assistant.renderedText || '',
+          messageId: assistant.index,
+          channelLeaseId: attempt.channelLeaseId
+        });
+        attempt.status = 'replied';
+        return attempt;
+      } catch (error) {
+        const failedAttempt = attempt || attempts.get(envelope.attemptKey) || null;
+        if (failedAttempt) {
+          await compensateAttempt(failedAttempt, String(error?.message || error || 'host_attempt_failed'), deps);
+        }
+        throw error;
+      }
     }
 
     async function runOpeningQuietAttempt(envelope, deps) {

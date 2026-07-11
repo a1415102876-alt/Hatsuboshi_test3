@@ -189,3 +189,29 @@ test("missing regenerate cache fails the exact primary lease immediately", () =>
   assert.match(handler, /if \(cachedPrompt\)[\s\S]*else\s*\{[\s\S]*postPrimaryAiError\(reqId, channelLeaseId/);
   assert.match(handler, /regenerate_cache_missing/);
 });
+
+test("frontend rejects an old lease before applying a reply with the reused request id", () => {
+  const context = {
+    isPrimaryModelLeaseCurrent: (requestId, leaseId) => requestId === "req-1" && leaseId === "lease-new"
+  };
+  vm.runInNewContext([
+    readFunction(appSource, "isCurrentPrimaryHostPayload"),
+    "this.acceptPayload = isCurrentPrimaryHostPayload;"
+  ].join("\n"), context);
+
+  assert.equal(context.acceptPayload({
+    type: "aiReplyCommitted",
+    requestId: "req-1",
+    channelLeaseId: "lease-old"
+  }), false);
+  assert.equal(context.acceptPayload({
+    type: "aiReplyCommitted",
+    requestId: "req-1",
+    channelLeaseId: "lease-new"
+  }), true);
+
+  const route = readFunction(appSource, "routeHostAiPayload");
+  const gateIndex = route.indexOf("isCurrentPrimaryHostPayload(payload)");
+  const applyIndex = route.indexOf("applyAiReply(");
+  assert.ok(gateIndex >= 0 && gateIndex < applyIndex);
+});

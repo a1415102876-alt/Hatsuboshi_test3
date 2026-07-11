@@ -502,6 +502,7 @@ test("same-layer generation preserves event order and returns the native assista
     assistantMessageId: null,
     startedAt: 100
   };
+  const activeAttempts = new Map([[attempt.attemptKey, attempt]]);
   const context = {};
   vm.runInNewContext([
     readFunction(bridgeSource, "runShujukuSameLayerAttempt"),
@@ -510,6 +511,9 @@ test("same-layer generation preserves event order and returns the native assista
 
   const result = await context.runSameLayer(attempt, {
     tavernHelper: {},
+    activeAttempts,
+    getCurrentContextInfo: () => ({ saveScope: "scope-a" }),
+    async compensateHostGenerationAttempt() { assert.fail("success path must not compensate"); },
     async prepareSameLayerAttempt() { order.push("persist-user"); return attempt; },
     async emitHostMessageSent() { order.push("message-sent"); },
     waitForExactBridgePlanning() {
@@ -541,4 +545,147 @@ test("same-layer generation preserves event order and returns the native assista
     messageId: 5,
     channelLeaseId: "lease-1"
   });
+});
+
+test("failure before planning removes the exact unmodified hidden user floor", async () => {
+  const attempt = {
+    requestId: "req-1", channelLeaseId: "lease-1", saveScope: "scope-a",
+    attemptKey: "req-1::lease-1::scope-a", userMessageId: 1, status: "user_floor_committed"
+  };
+  const chat = [
+    { is_user: false, mes: "older" },
+    { is_user: true, is_hidden: true, mes: "current", extra: {
+      hatsuRequestId: "req-1", hatsuAttemptKey: attempt.attemptKey,
+      hatsuSaveScope: "scope-a", _acu_true_same_layer: true
+    } }
+  ];
+  const activeAttempts = new Map([[attempt.attemptKey, attempt]]);
+  let persisted = 0;
+  const context = { getContext: () => ({ chat, chatMetadata: {} }) };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "getExactBridgePlanningSnapshot"),
+    readFunction(bridgeSource, "compensateHostGenerationAttempt"),
+    "this.compensate = compensateHostGenerationAttempt;"
+  ].join("\n"), context);
+
+  const result = await context.compensate(attempt, "trigger_failed", {
+    activeAttempts,
+    context: context.getContext(),
+    async persistChatSilently() { persisted += 1; }
+  });
+  assert.equal(result.status, "compensated");
+  assert.equal(chat.some((message) => message?.extra?.hatsuAttemptKey === attempt.attemptKey), false);
+  assert.equal(activeAttempts.has(attempt.attemptKey), false);
+  assert.equal(persisted, 1);
+});
+
+test("failure after qrf preserves but abandons the planning floor", async () => {
+  const attempt = {
+    requestId: "req-1", channelLeaseId: "lease-1", saveScope: "scope-a",
+    attemptKey: "req-1::lease-1::scope-a", userMessageId: 0, status: "generating"
+  };
+  const chat = [{
+    is_user: true,
+    is_hidden: true,
+    mes: "current",
+    qrf_plot: "planning",
+    extra: {
+      hatsuRequestId: "req-1", hatsuAttemptKey: attempt.attemptKey,
+      hatsuSaveScope: "scope-a", _acu_true_same_layer: true
+    }
+  }];
+  const activeAttempts = new Map([[attempt.attemptKey, attempt]]);
+  const context = { getContext: () => ({ chat, chatMetadata: {} }) };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "getExactBridgePlanningSnapshot"),
+    readFunction(bridgeSource, "compensateHostGenerationAttempt"),
+    "this.compensate = compensateHostGenerationAttempt;"
+  ].join("\n"), context);
+
+  const result = await context.compensate(attempt, "assistant_timeout", {
+    activeAttempts,
+    context: context.getContext(),
+    async persistChatSilently() {}
+  });
+  assert.equal(result.status, "compensated");
+  assert.equal(chat[0].is_hidden, true);
+  assert.equal(chat[0].extra.hatsuBridgeAbandoned, true);
+  assert.equal(chat[0].extra.hatsuBridgeFailureReason, "assistant_timeout");
+  assert.equal(chat[0].qrf_plot, "planning");
+  assert.equal(activeAttempts.has(attempt.attemptKey), false);
+});
+
+function makeCompletedSameLayerDeps(attempt, activeAttempts, options = {}) {
+  const commits = [];
+  const compensations = [];
+  return {
+    commits,
+    compensations,
+    deps: {
+      tavernHelper: {},
+      activeAttempts,
+      async prepareSameLayerAttempt() { return attempt; },
+      async emitHostMessageSent() {},
+      waitForExactBridgePlanning() { return Promise.resolve({ qrf_plot: "planning" }); },
+      async triggerNativeGeneration() {},
+      async waitForExactBridgeAssistant() {
+        return { index: 2, text: "native reply", rawText: "native reply", renderedText: "" };
+      },
+      stampTransactionalExtra() {},
+      async persistChatSilently() {},
+      getCurrentContextInfo: () => ({ saveScope: options.currentScope || "scope-a" }),
+      async compensateHostGenerationAttempt(currentAttempt, reason) {
+        compensations.push({ currentAttempt, reason });
+        currentAttempt.status = "compensated";
+        return currentAttempt;
+      },
+      postCommittedReply(...args) { commits.push(args); }
+    }
+  };
+}
+
+test("same-layer completion rejects a changed save scope before posting", async () => {
+  const attempt = {
+    requestId: "req-1", channelLeaseId: "lease-1", saveScope: "scope-a",
+    attemptKey: "req-1::lease-1::scope-a", userMessageId: 1,
+    prompt: "current prompt", status: "user_floor_committed", startedAt: 100
+  };
+  const activeAttempts = new Map([[attempt.attemptKey, attempt]]);
+  const fixture = makeCompletedSameLayerDeps(attempt, activeAttempts, { currentScope: "scope-b" });
+  const context = {};
+  vm.runInNewContext([
+    readFunction(bridgeSource, "runShujukuSameLayerAttempt"),
+    "this.runSameLayer = runShujukuSameLayerAttempt;"
+  ].join("\n"), context);
+
+  await assert.rejects(
+    () => context.runSameLayer(attempt, fixture.deps),
+    /save_scope_changed/
+  );
+  assert.equal(fixture.commits.length, 0);
+  assert.equal(fixture.compensations.length, 1);
+  assert.equal(fixture.compensations[0].reason, "save_scope_changed");
+});
+
+test("a stale host attempt instance cannot post or clear its replacement", async () => {
+  const attempt = {
+    requestId: "req-1", channelLeaseId: "lease-old", saveScope: "scope-a",
+    attemptKey: "req-1::lease-old::scope-a", userMessageId: 1,
+    prompt: "current prompt", status: "user_floor_committed", startedAt: 100
+  };
+  const replacement = { ...attempt, channelLeaseId: "lease-new" };
+  const activeAttempts = new Map([[attempt.attemptKey, replacement]]);
+  const fixture = makeCompletedSameLayerDeps(attempt, activeAttempts);
+  const context = {};
+  vm.runInNewContext([
+    readFunction(bridgeSource, "runShujukuSameLayerAttempt"),
+    "this.runSameLayer = runShujukuSameLayerAttempt;"
+  ].join("\n"), context);
+
+  await assert.rejects(
+    () => context.runSameLayer(attempt, fixture.deps),
+    /stale_host_attempt/
+  );
+  assert.equal(fixture.commits.length, 0);
+  assert.equal(activeAttempts.get(attempt.attemptKey), replacement);
 });
