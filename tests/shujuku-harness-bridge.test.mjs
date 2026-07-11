@@ -7,7 +7,7 @@ const bridgeSource = readFileSync(new URL("../st.html", import.meta.url), "utf8"
 const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
 function readFunction(source, functionName) {
-  const declaration = `function ${functionName}`;
+  const declaration = `function ${functionName}(`;
   let start = source.indexOf(declaration);
   assert.notEqual(start, -1, `${functionName} must exist`);
   if (source.slice(Math.max(0, start - 6), start) === 'async ') start -= 6;
@@ -283,4 +283,95 @@ test("structured host regeneration preserves the cached generation mode with the
   assert.match(regenerateBlock, /runHostGenerationAttempt\(regenerationEnvelope\)/);
   assert.match(regenerateBlock, /typeof cachedPrompt === 'object'/);
   assert.match(regenerateBlock, /runTransactionalPrompt\(cachedPromptText, reqId, channelLeaseId\)/);
+});
+
+test("same-layer preparation commits one exact hidden user floor", async () => {
+  const chat = [
+    { is_user: true, mes: "old user" },
+    { is_user: false, mes: "old assistant" },
+    { is_user: true, mes: "older prompt" },
+    { is_user: false, mes: "older reply" }
+  ];
+  const activeAttempts = new Map();
+  const calls = { create: 0, persist: 0 };
+  const context = {
+    getContext: () => ({ chat, chatMetadata: {} })
+  };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "createHostGenerationAttempt"),
+    readFunction(bridgeSource, "stampTransactionalExtra"),
+    readFunction(bridgeSource, "prepareSameLayerAttempt"),
+    "this.createAttempt = createHostGenerationAttempt;",
+    "this.stamp = stampTransactionalExtra;",
+    "this.prepare = prepareSameLayerAttempt;"
+  ].join("\n"), context);
+  const envelope = {
+    requestId: "req-1",
+    channelLeaseId: "lease-1",
+    saveScope: "scope-a",
+    ownerKind: "ordinary_action",
+    generationMode: "shujuku_same_layer",
+    prompt: "current prompt",
+    turnId: "turn-1",
+    attemptKey: "req-1::lease-1::scope-a"
+  };
+  const deps = {
+    activeAttempts,
+    getContext: context.getContext,
+    stampTransactionalExtra: context.stamp,
+    async createSilentChatMessage(role, text) {
+      calls.create += 1;
+      chat.push({ is_user: role === "user", is_hidden: false, mes: text, extra: {} });
+      return chat.length - 1;
+    },
+    async persistChatSilently() { calls.persist += 1; }
+  };
+
+  const attempt = await context.prepare(envelope, deps);
+
+  assert.equal(attempt.status, "user_floor_committed");
+  assert.equal(attempt.userMessageId, 4);
+  assert.equal(chat[4].is_user, true);
+  assert.equal(chat[4].is_hidden, true);
+  assert.equal(chat[4].extra.hatsuRequestId, "req-1");
+  assert.equal(chat[4].extra.hatsuAttemptKey, "req-1::lease-1::scope-a");
+  assert.equal(chat[4].extra.hatsuSaveScope, "scope-a");
+  assert.equal(chat[4].extra._acu_true_same_layer, true);
+  assert.equal(calls.create, 1);
+  assert.equal(calls.persist, 1);
+});
+
+test("same-layer preparation reuses an existing exact attempt without another floor", async () => {
+  const chat = [];
+  const activeAttempts = new Map();
+  let creates = 0;
+  const context = { getContext: () => ({ chat, chatMetadata: {} }) };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "createHostGenerationAttempt"),
+    readFunction(bridgeSource, "stampTransactionalExtra"),
+    readFunction(bridgeSource, "prepareSameLayerAttempt"),
+    "this.stamp = stampTransactionalExtra;",
+    "this.prepare = prepareSameLayerAttempt;"
+  ].join("\n"), context);
+  const envelope = {
+    requestId: "req-1", channelLeaseId: "lease-1", saveScope: "scope-a",
+    generationMode: "shujuku_same_layer", prompt: "current prompt",
+    attemptKey: "req-1::lease-1::scope-a"
+  };
+  const deps = {
+    activeAttempts,
+    getContext: context.getContext,
+    stampTransactionalExtra: context.stamp,
+    async createSilentChatMessage(role, text) {
+      creates += 1;
+      chat.push({ is_user: role === "user", mes: text, extra: {} });
+      return chat.length - 1;
+    },
+    async persistChatSilently() {}
+  };
+  const first = await context.prepare(envelope, deps);
+  const second = await context.prepare(envelope, deps);
+  assert.equal(second, first);
+  assert.equal(creates, 1);
+  assert.equal(chat.length, 1);
 });

@@ -822,6 +822,7 @@
     let chatDomObserver = null;
     let chatDomUpdateTimer = 0;
     const requestPromptCache = new Map();
+    const activeHostGenerationAttempts = new Map();
     const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer']);
 
     function createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope) {
@@ -861,6 +862,48 @@
         channelLeaseId: envelope.channelLeaseId,
         attemptKey: envelope.attemptKey
       };
+    }
+
+    function createHostGenerationAttempt(envelope) {
+      return {
+        ...envelope,
+        status: 'prepared',
+        userMessageId: null,
+        assistantMessageId: null,
+        startedAt: Date.now()
+      };
+    }
+
+    async function prepareSameLayerAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
+      const existing = attempts.get(envelope.attemptKey);
+      if (existing) return existing;
+
+      const attempt = createHostGenerationAttempt(envelope);
+      attempts.set(attempt.attemptKey, attempt);
+      const createMessage = deps.createSilentChatMessage || createSilentChatMessage;
+      const stampMessage = deps.stampTransactionalExtra || stampTransactionalExtra;
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const readContext = deps.getContext || getContext;
+      try {
+        const messageId = await createMessage('user', envelope.prompt, envelope.requestId, attempt);
+        const targetMessage = readContext()?.chat?.[messageId];
+        if (!targetMessage || targetMessage.is_user !== true) {
+          throw new Error('same_layer_user_floor_missing');
+        }
+        targetMessage.is_hidden = true;
+        stampMessage(messageId, 'user', envelope.requestId, attempt);
+        await persistChat();
+        attempt.userMessageId = messageId;
+        attempt.status = 'user_floor_committed';
+        return attempt;
+      } catch (error) {
+        if (attempts.get(attempt.attemptKey) === attempt) {
+          attempts.delete(attempt.attemptKey);
+        }
+        throw error;
+      }
     }
 
     async function runOpeningQuietAttempt(envelope, deps) {
@@ -1512,21 +1555,27 @@
       if (useVisualHideFloors) adjustMessageVisibility();
     }
 
-    function stampTransactionalExtra(messageId, role, requestId) {
+    function stampTransactionalExtra(messageId, role, requestId, attempt) {
       const context = getContext();
       const targetMessage = context?.chat?.[messageId];
       if (targetMessage) {
+        const attemptKey = String(attempt?.attemptKey || '');
+        const saveScope = String(attempt?.saveScope || '');
         targetMessage.extra = {
           ...(targetMessage.extra || {}),
           hatsuRequestId: String(requestId || ''),
           hatsuTxnRole: role,
-          hatsuTxnAt: targetMessage?.extra?.hatsuTxnAt || Date.now()
+          hatsuTxnAt: targetMessage?.extra?.hatsuTxnAt || Date.now(),
+          ...(attemptKey ? { hatsuAttemptKey: attemptKey } : {}),
+          ...(saveScope ? { hatsuSaveScope: saveScope } : {}),
+          ...(attemptKey ? { _acu_true_same_layer: true } : {})
         };
+        if (attemptKey && role === 'user') targetMessage.is_hidden = true;
       }
       context && context.chatMetadata && (context.chatMetadata.tainted = true);
     }
 
-    async function createSilentChatMessage(role, text, requestId) {
+    async function createSilentChatMessage(role, text, requestId, attempt) {
       const context = getContext();
       if (!context || !Array.isArray(context.chat)) throw new Error('chat context unavailable');
       const reqId = String(requestId || '');
@@ -1547,7 +1596,7 @@
             { refresh: 'none' }
           );
           const messageId = context.chat.length - 1;
-          stampTransactionalExtra(messageId, role, reqId);
+          stampTransactionalExtra(messageId, role, reqId, attempt);
           return messageId;
         } catch (error) {
           console.warn('[st.html] TavernHelper.createChatMessages 失败，回退原生:', error);
@@ -1567,7 +1616,7 @@
         context.chat.push(message);
         messageId = context.chat.length - 1;
       }
-      stampTransactionalExtra(messageId, role, reqId);
+      stampTransactionalExtra(messageId, role, reqId, attempt);
       renderSilentFloor(messageId);
       return messageId;
     }

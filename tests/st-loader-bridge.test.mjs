@@ -286,3 +286,11 @@ test("transactional helper keeps waiting for the scoped end event after an empty
   assert.match(lateWait, /Promise\.race\(\[\s*endedPromise,\s*timeoutPromise\s*\]\)/);
   assert.doesNotMatch(lateWait, /1500/);
 });
+
+test("silent chat creation forwards optional attempt metadata to exact floor stamping", () => {
+  const createSource = readFunction("createSilentChatMessage");
+  const stampMatches = createSource.match(/stampTransactionalExtra\(messageId, role, reqId, attempt\)/g) || [];
+  assert.match(createSource, /function createSilentChatMessage\(role, text, requestId, attempt\)/);
+  assert.ok(stampMatches.length >= 2);
+  assert.match(readFunction("stampTransactionalExtra"), /hatsuAttemptKey/);
+});
