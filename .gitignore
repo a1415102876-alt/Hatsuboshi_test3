@@ -8,3 +8,6 @@ assets/videosss/*
 # 音乐播放器歌曲与封面：版权 + 体积原因不入库，使用者自行放入并运行 generate-playlist.cjs。
 assets/PlayList/*
 !assets/PlayList/.gitkeep
+
+# Isolated feature worktrees.
+.worktrees/
