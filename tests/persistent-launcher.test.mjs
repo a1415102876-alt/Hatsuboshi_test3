@@ -187,6 +187,46 @@ test("repeated launchers reuse the same host overlay and iframe", () => {
   );
 });
 
+test("a v2 launcher replaces a stale v1 controller and rebinds the existing exit button", () => {
+  const hostDocument = new FakeDocument();
+  const shell = hostDocument.createElement("section");
+  shell.id = "hatsu-persistent-game-shell";
+  shell.hidden = false;
+  const frame = hostDocument.createElement("iframe");
+  frame.id = "hatsu-persistent-game-frame";
+  const exitButton = hostDocument.createElement("button");
+  exitButton.id = "hatsu-persistent-game-exit";
+  shell.appendChild(frame);
+  shell.appendChild(exitButton);
+  hostDocument.body.appendChild(shell);
+
+  let staleOpenCalls = 0;
+  const hostWindow = {
+    document: hostDocument,
+    __hatsuPersistentLauncherV1: {
+      open() {
+        staleOpenCalls += 1;
+      },
+      hide() {},
+      getStatus() {
+        return "visible";
+      },
+      subscribe(listener) {
+        listener("visible");
+        return () => {};
+      }
+    }
+  };
+
+  const env = runLauncherInHost({ hostWindow });
+  env.startButton.click();
+  exitButton.click();
+
+  assert.equal(staleOpenCalls, 0);
+  assert.ok(hostWindow.__hatsuPersistentLauncherV2);
+  assert.equal(shell.hidden, true);
+});
+
 test("exit updates a live launcher card to the background state", () => {
   const env = runLauncherInHost();
   env.startButton.click();
@@ -255,6 +295,10 @@ test("launcher page is a compact entry and loads the message controller", () => 
   assert.match(
     launcherHtml,
     /http:\/\/127\.0\.0\.1:8000\/hatsu-produce-local\/dist\/hatsu-launcher\/message-entry\.js/
+  );
+  assert.match(
+    launcherHtml,
+    /message-entry\.js\?v=2/
   );
   assert.doesNotMatch(launcherHtml, /<iframe/i);
   assert.doesNotMatch(launcherHtml, /position:\s*fixed[\s\S]*inset:\s*0/i);

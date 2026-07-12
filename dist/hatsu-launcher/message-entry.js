@@ -1,7 +1,7 @@
 (function mountHatsuMessageLauncher() {
   "use strict";
 
-  const CONTROLLER_KEY = "__hatsuPersistentLauncherV1";
+  const CONTROLLER_KEY = "__hatsuPersistentLauncherV2";
   const SHELL_ID = "hatsu-persistent-game-shell";
   const FRAME_ID = "hatsu-persistent-game-frame";
   const EXIT_ID = "hatsu-persistent-game-exit";
@@ -36,6 +36,12 @@
     const hostDocument = hostWindow.document;
     let shell = null;
     let frame = null;
+    function bindExitButton(exitButton) {
+      if (!exitButton || exitButton.__hatsuPersistentLauncherV2Bound) return;
+      exitButton.__hatsuPersistentLauncherV2Bound = true;
+      exitButton.addEventListener("click", () => controller.hide());
+    }
+
     const statusListeners = new Set();
 
     function ensureShell() {
@@ -50,7 +56,10 @@
 
       shell = hostDocument.getElementById(SHELL_ID);
       frame = hostDocument.getElementById(FRAME_ID);
-      if (shell && frame) return { shell, frame };
+      if (shell && frame) {
+        bindExitButton(hostDocument.getElementById(EXIT_ID));
+        return { shell, frame };
+      }
 
       shell = hostDocument.createElement("section");
       shell.id = SHELL_ID;
@@ -98,7 +107,7 @@
         background: "#101016"
       });
 
-      exitButton.addEventListener("click", () => controller.hide());
+      bindExitButton(exitButton);
       shell.appendChild(frame);
       shell.appendChild(exitButton);
       hostDocument.body.appendChild(shell);
