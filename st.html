@@ -626,6 +626,14 @@
         if (data.type === 'getCharacter') {
           postCharacterToFrame();
         }
+        if (data.type === 'portraitFileOperation') {
+          const request = normalizePortraitFileOperation(data);
+          const result = request.ok
+            ? await executePortraitFileOperation(request)
+            : { ok: false, error: request.error };
+          postPortraitFileOperationResult(request, result);
+          return;
+        }
         if (data.type === 'sendPrompt') {
           const envelope = normalizeHostGenerationEnvelope(data);
           if (!envelope.ok) {
@@ -1305,6 +1313,108 @@
       } catch (error) {
         // 忽略跨域 frame 投递失败。
       }
+    }
+
+    function normalizePortraitFileOperation(data) {
+      data = data && typeof data === 'object' ? data : {};
+      const operationId = String(data.operationId || '');
+      const saveScope = String(data.saveScope || '');
+      const action = String(data.action || '');
+      const payload = data.payload && typeof data.payload === 'object' && !Array.isArray(data.payload) ? data.payload : {};
+      const base = { operationId, saveScope, action, payload };
+      if (data.source !== 'hatsuboshi-produce' || data.type !== 'portraitFileOperation') return { ...base, ok: false, error: 'invalid_message' };
+      if (!/^[a-z0-9-]{3,100}$/.test(operationId)) return { ...base, ok: false, error: 'invalid_operation_id' };
+      if (!saveScope || saveScope.length > 300) return { ...base, ok: false, error: 'invalid_save_scope' };
+      if (!['upload', 'verify', 'readLibrary', 'writeLibrary'].includes(action)) return { ...base, ok: false, error: 'invalid_action' };
+      return { ...base, ok: true };
+    }
+
+    function encodePortraitUtf8Base64(value) {
+      const bytes = new TextEncoder().encode(String(value || ''));
+      let binary = '';
+      for (let index = 0; index < bytes.length; index += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+      }
+      return btoa(binary);
+    }
+
+    function getHostRequestHeaders() {
+      const contextHeaders = getContext()?.getRequestHeaders;
+      if (typeof contextHeaders === 'function') return contextHeaders();
+      const globalHeaders = getSillyTavernGlobal()?.getRequestHeaders;
+      if (typeof globalHeaders === 'function') return globalHeaders();
+      return { 'Content-Type': 'application/json' };
+    }
+
+    async function executePortraitFileOperation(data, deps = {}) {
+      const request = normalizePortraitFileOperation(data);
+      if (!request.ok) return { ok: false, error: request.error };
+      const readScope = deps.getCurrentScope || (() => getCurrentContextInfo().saveScope);
+      const requestHeaders = deps.requestHeaders || getHostRequestHeaders;
+      const runFetch = deps.fetch || fetch;
+      const now = deps.now || Date.now;
+      const normalizeLibrary = deps.normalizeLibrary || globalThis.HatsuPortraits?.normalizeLibrary || ((value) => value || { schemaVersion: 1, libraryRevision: 0, updatedAt: 0, assets: {} });
+      const currentScopeMatches = () => String(readScope() || '') === request.saveScope;
+      if (!currentScopeMatches()) return { ok: false, error: 'save_scope_changed' };
+
+      try {
+        let response;
+        let result;
+        if (request.action === 'upload') {
+          const name = String(request.payload.name || '');
+          const encodedData = String(request.payload.data || '');
+          if (!/^hatsu-portrait-[a-z0-9-]+\.(?:png|webp|jpg)$/.test(name) || !encodedData) return { ok: false, error: 'invalid_payload' };
+          response = await runFetch('/api/files/upload', {
+            method: 'POST', headers: requestHeaders(), body: JSON.stringify({ name, data: encodedData })
+          });
+          if (!response.ok) return { ok: false, error: `http_${response.status || 500}` };
+          const body = await response.json();
+          result = { ok: true, url: String(body?.path || '') };
+          if (!/^\/user\/files\/[^?#]+$/.test(result.url)) return { ok: false, error: 'invalid_upload_path' };
+        } else if (request.action === 'verify') {
+          const url = String(request.payload.url || '');
+          if (!/^\/user\/files\/[^?#]+$/.test(url)) return { ok: false, error: 'invalid_payload' };
+          response = await runFetch('/api/files/verify', {
+            method: 'POST', headers: requestHeaders(), body: JSON.stringify({ urls: [url] })
+          });
+          if (!response.ok) return { ok: false, error: `http_${response.status || 500}` };
+          const body = await response.json();
+          result = { ok: true, exists: body?.[url] === true };
+        } else if (request.action === 'readLibrary') {
+          response = await runFetch(`/user/files/hatsu-produce-portrait-library.json?t=${now()}`, { cache: 'no-store' });
+          if (response.status === 404) result = { ok: true, library: normalizeLibrary(null) };
+          else {
+            if (!response.ok) return { ok: false, error: `http_${response.status || 500}` };
+            result = { ok: true, library: normalizeLibrary(await response.json()) };
+          }
+        } else {
+          const library = normalizeLibrary(request.payload.library);
+          response = await runFetch('/api/files/upload', {
+            method: 'POST',
+            headers: requestHeaders(),
+            body: JSON.stringify({ name: 'hatsu-produce-portrait-library.json', data: encodePortraitUtf8Base64(JSON.stringify(library)) })
+          });
+          if (!response.ok) return { ok: false, error: `http_${response.status || 500}` };
+          const body = await response.json();
+          if (String(body?.path || '') !== '/user/files/hatsu-produce-portrait-library.json') return { ok: false, error: 'invalid_library_path' };
+          result = { ok: true, libraryRevision: Number(library.libraryRevision || 0) };
+        }
+        if (!currentScopeMatches()) return { ok: false, error: 'save_scope_changed' };
+        return result;
+      } catch (error) {
+        return { ok: false, error: String(error?.message || error || 'portrait_file_operation_failed') };
+      }
+    }
+
+    function postPortraitFileOperationResult(request, result, post = postToFrame) {
+      post({
+        source: 'hatsuboshi-produce-host',
+        type: 'portraitFileOperationResult',
+        operationId: String(request?.operationId || ''),
+        saveScope: String(request?.saveScope || ''),
+        action: String(request?.action || ''),
+        ...result
+      });
     }
 
     function resolveChronicleWorldbookName(context) {
