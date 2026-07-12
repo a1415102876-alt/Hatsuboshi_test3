@@ -207,6 +207,20 @@ function runLauncherWithoutHost() {
   return { entryWindow, entryDocument, status, startButton };
 }
 
+function dispatchPointer(element, type, overrides = {}) {
+  element.dispatchEvent({
+    type,
+    pointerId: 1,
+    pointerType: "mouse",
+    button: 0,
+    clientX: 0,
+    clientY: 0,
+    detail: 1,
+    preventDefault() {},
+    ...overrides
+  });
+}
+
 test("start mounts one persistent game iframe under the host body", () => {
   const env = runLauncherInHost();
   env.startButton.click();
@@ -252,6 +266,65 @@ test("floating toggle hides and restores the same iframe without changing src", 
   assert.equal(shell.hidden, false);
   assert.equal(env.hostDocument.getElementById("hatsu-persistent-game-frame"), frame);
   assert.equal(frame.src, src);
+});
+
+test("dragging the floating toggle moves it without hiding the game", () => {
+  const env = runLauncherInHost();
+  env.startButton.click();
+
+  const shell = env.hostDocument.getElementById("hatsu-persistent-game-shell");
+  const toggle = env.hostDocument.getElementById("hatsu-persistent-game-toggle");
+
+  dispatchPointer(toggle, "pointerdown", { clientX: 900, clientY: 300 });
+  dispatchPointer(toggle, "pointermove", { clientX: 700, clientY: 500 });
+  dispatchPointer(toggle, "pointerup", { clientX: 700, clientY: 500 });
+
+  assert.equal(shell.hidden, false);
+  assert.equal(toggle.style.left, "678px");
+  assert.equal(toggle.style.top, "478px");
+});
+
+test("drag position is clamped again after viewport resize", () => {
+  const env = runLauncherInHost();
+  env.startButton.click();
+
+  const toggle = env.hostDocument.getElementById("hatsu-persistent-game-toggle");
+
+  dispatchPointer(toggle, "pointerdown", { clientX: 900, clientY: 300 });
+  dispatchPointer(toggle, "pointermove", { clientX: 1000, clientY: 700 });
+  dispatchPointer(toggle, "pointerup", { clientX: 1000, clientY: 700 });
+
+  assert.equal(toggle.style.left, "972px");
+  assert.equal(toggle.style.top, "678px");
+
+  env.hostWindow.innerWidth = 320;
+  env.hostWindow.innerHeight = 240;
+  env.hostWindow.dispatchEvent({ type: "resize" });
+
+  assert.equal(toggle.style.left, "268px");
+  assert.equal(toggle.style.top, "188px");
+});
+
+test("a touch tap toggles once and ignores the synthesized pointer click", () => {
+  const env = runLauncherInHost();
+  env.startButton.click();
+
+  const shell = env.hostDocument.getElementById("hatsu-persistent-game-shell");
+  const toggle = env.hostDocument.getElementById("hatsu-persistent-game-toggle");
+
+  dispatchPointer(toggle, "pointerdown", {
+    pointerType: "touch",
+    clientX: 900,
+    clientY: 300
+  });
+  dispatchPointer(toggle, "pointerup", {
+    pointerType: "touch",
+    clientX: 900,
+    clientY: 300
+  });
+  toggle.dispatchEvent({ type: "click", detail: 1 });
+
+  assert.equal(shell.hidden, true);
 });
 
 test("repeated launchers reuse the same host overlay and iframe", () => {

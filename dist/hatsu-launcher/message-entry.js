@@ -9,6 +9,9 @@
   const TOGGLE_ID = "hatsu-persistent-game-toggle";
   const LEGACY_FRAME_ID = "hatsu-produce-persistent-frame";
   const DEFAULT_FRONTEND_URL = "http://127.0.0.1:8000/hatsu-produce-local/st.html";
+  const DRAG_THRESHOLD_PX = 6;
+  const VIEWPORT_MARGIN_PX = 8;
+  const TOGGLE_SIZE_PX = 44;
 
   const entryButton = document.getElementById("hatsu-launcher-start-btn");
   const entryStatus = document.getElementById("hatsu-launcher-status");
@@ -39,6 +42,14 @@
     let shell = null;
     let frame = null;
     let toggleButton = null;
+    let ignoreNextPointerClick = false;
+    const dragState = {
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      moved: false
+    };
+
 
     function bindExitButton(exitButton) {
       if (!exitButton) return;
@@ -61,6 +72,86 @@
       toggleButton.setAttribute("aria-label", label);
     }
 
+    function clamp(value, minimum, maximum) {
+      return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
+    }
+
+    function setTogglePosition(left, top) {
+      if (!toggleButton) return;
+      const maxLeft = Number(hostWindow.innerWidth || 0) - TOGGLE_SIZE_PX - VIEWPORT_MARGIN_PX;
+      const maxTop = Number(hostWindow.innerHeight || 0) - TOGGLE_SIZE_PX - VIEWPORT_MARGIN_PX;
+      toggleButton.style.right = "auto";
+      toggleButton.style.transform = "none";
+      toggleButton.style.left = `${clamp(left, VIEWPORT_MARGIN_PX, maxLeft)}px`;
+      toggleButton.style.top = `${clamp(top, VIEWPORT_MARGIN_PX, maxTop)}px`;
+    }
+
+    function clampToggleToViewport() {
+      if (!toggleButton) return;
+      const bounds = toggleButton.getBoundingClientRect();
+      setTogglePosition(bounds.left, bounds.top);
+    }
+
+    function resetDragState() {
+      dragState.pointerId = null;
+      dragState.moved = false;
+    }
+
+    function bindToggleGestures(button) {
+      if (button.__hatsuPersistentLauncherV3GesturesBound) return;
+      button.__hatsuPersistentLauncherV3GesturesBound = true;
+
+      button.addEventListener("pointerdown", (event) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        ignoreNextPointerClick = false;
+        dragState.pointerId = event.pointerId;
+        dragState.startX = event.clientX;
+        dragState.startY = event.clientY;
+        dragState.moved = false;
+        button.setPointerCapture?.(event.pointerId);
+        event.preventDefault?.();
+      });
+
+      button.addEventListener("pointermove", (event) => {
+        if (dragState.pointerId !== event.pointerId) return;
+        const deltaX = event.clientX - dragState.startX;
+        const deltaY = event.clientY - dragState.startY;
+        if (!dragState.moved && Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD_PX) return;
+        dragState.moved = true;
+        setTogglePosition(
+          event.clientX - TOGGLE_SIZE_PX / 2,
+          event.clientY - TOGGLE_SIZE_PX / 2
+        );
+        event.preventDefault?.();
+      });
+
+      button.addEventListener("pointerup", (event) => {
+        if (dragState.pointerId !== event.pointerId) return;
+        const shouldToggle = !dragState.moved;
+        button.releasePointerCapture?.(event.pointerId);
+        ignoreNextPointerClick = true;
+        resetDragState();
+        if (shouldToggle) controller.toggle();
+        event.preventDefault?.();
+      });
+
+      button.addEventListener("pointercancel", (event) => {
+        if (dragState.pointerId !== event.pointerId) return;
+        button.releasePointerCapture?.(event.pointerId);
+        resetDragState();
+      });
+
+      button.addEventListener("click", (event) => {
+        if (event.detail > 0 && ignoreNextPointerClick) {
+          ignoreNextPointerClick = false;
+          return;
+        }
+        controller.toggle();
+      });
+
+      hostWindow.addEventListener?.("resize", clampToggleToViewport);
+    }
+
     function ensureToggle() {
       toggleButton = hostDocument.getElementById(TOGGLE_ID);
       if (!toggleButton) {
@@ -70,10 +161,8 @@
         toggleButton.hidden = true;
         setStyles(toggleButton, {
           position: "fixed",
-          right: "12px",
-          top: "50%",
-          width: "44px",
-          height: "44px",
+          width: `${TOGGLE_SIZE_PX}px`,
+          height: `${TOGGLE_SIZE_PX}px`,
           padding: "0",
           border: "1px solid rgba(255, 255, 255, 0.38)",
           borderRadius: "50%",
@@ -86,10 +175,14 @@
           touchAction: "none"
         });
         hostDocument.body.appendChild(toggleButton);
+        setTogglePosition(
+          Number(hostWindow.innerWidth || 0) - TOGGLE_SIZE_PX - 12,
+          (Number(hostWindow.innerHeight || 0) - TOGGLE_SIZE_PX) / 2
+        );
       }
       if (!toggleButton.__hatsuPersistentLauncherV3Bound) {
         toggleButton.__hatsuPersistentLauncherV3Bound = true;
-        toggleButton.addEventListener("click", () => controller.toggle());
+        bindToggleGestures(toggleButton);
       }
       syncToggleState();
       return toggleButton;
