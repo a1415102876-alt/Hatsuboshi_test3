@@ -1,10 +1,12 @@
 (function mountHatsuMessageLauncher() {
   "use strict";
 
-  const CONTROLLER_KEY = "__hatsuPersistentLauncherV2";
+  const CONTROLLER_KEY = "__hatsuPersistentLauncherV3";
+  const PREVIOUS_CONTROLLER_KEYS = ["__hatsuPersistentLauncherV2", "__hatsuPersistentLauncherV1"];
   const SHELL_ID = "hatsu-persistent-game-shell";
   const FRAME_ID = "hatsu-persistent-game-frame";
   const EXIT_ID = "hatsu-persistent-game-exit";
+  const TOGGLE_ID = "hatsu-persistent-game-toggle";
   const LEGACY_FRAME_ID = "hatsu-produce-persistent-frame";
   const DEFAULT_FRONTEND_URL = "http://127.0.0.1:8000/hatsu-produce-local/st.html";
 
@@ -36,13 +38,62 @@
     const hostDocument = hostWindow.document;
     let shell = null;
     let frame = null;
+    let toggleButton = null;
+
     function bindExitButton(exitButton) {
-      if (!exitButton || exitButton.__hatsuPersistentLauncherV2Bound) return;
-      exitButton.__hatsuPersistentLauncherV2Bound = true;
+      if (!exitButton) return;
+      exitButton.hidden = true;
+      exitButton.style.display = "none";
+      exitButton.setAttribute("aria-hidden", "true");
+      if (exitButton.__hatsuPersistentLauncherV3Bound) return;
+      exitButton.__hatsuPersistentLauncherV3Bound = true;
       exitButton.addEventListener("click", () => controller.hide());
     }
 
     const statusListeners = new Set();
+
+    function syncToggleState() {
+      if (!toggleButton) return;
+      const isVisible = controller.getStatus() === "visible";
+      const label = isVisible ? "\u6536\u8d77\u6e38\u620f" : "\u5c55\u5f00\u6e38\u620f";
+      toggleButton.textContent = isVisible ? "\u2212" : "+";
+      toggleButton.title = label;
+      toggleButton.setAttribute("aria-label", label);
+    }
+
+    function ensureToggle() {
+      toggleButton = hostDocument.getElementById(TOGGLE_ID);
+      if (!toggleButton) {
+        toggleButton = hostDocument.createElement("button");
+        toggleButton.id = TOGGLE_ID;
+        toggleButton.type = "button";
+        toggleButton.hidden = true;
+        setStyles(toggleButton, {
+          position: "fixed",
+          right: "12px",
+          top: "50%",
+          width: "44px",
+          height: "44px",
+          padding: "0",
+          border: "1px solid rgba(255, 255, 255, 0.38)",
+          borderRadius: "50%",
+          background: "#f7c948",
+          color: "#20262d",
+          font: "700 24px/1 system-ui, sans-serif",
+          cursor: "pointer",
+          boxShadow: "0 5px 18px rgba(0, 0, 0, 0.42)",
+          zIndex: "1000001",
+          touchAction: "none"
+        });
+        hostDocument.body.appendChild(toggleButton);
+      }
+      if (!toggleButton.__hatsuPersistentLauncherV3Bound) {
+        toggleButton.__hatsuPersistentLauncherV3Bound = true;
+        toggleButton.addEventListener("click", () => controller.toggle());
+      }
+      syncToggleState();
+      return toggleButton;
+    }
 
     function ensureShell() {
       const legacyFrame = hostDocument.getElementById(LEGACY_FRAME_ID);
@@ -52,12 +103,16 @@
         legacyFrame.setAttribute("aria-hidden", "true");
       }
 
-      if (shell && frame) return { shell, frame };
+      if (shell && frame) {
+        ensureToggle();
+        return { shell, frame };
+      }
 
       shell = hostDocument.getElementById(SHELL_ID);
       frame = hostDocument.getElementById(FRAME_ID);
       if (shell && frame) {
         bindExitButton(hostDocument.getElementById(EXIT_ID));
+        ensureToggle();
         return { shell, frame };
       }
 
@@ -111,6 +166,7 @@
       shell.appendChild(frame);
       shell.appendChild(exitButton);
       hostDocument.body.appendChild(shell);
+      ensureToggle();
       return { shell, frame };
     }
 
@@ -129,6 +185,8 @@
       open() {
         const mounted = ensureShell();
         mounted.shell.hidden = false;
+        ensureToggle().hidden = false;
+        syncToggleState();
         notifyStatus();
         return mounted.frame;
       },
@@ -136,8 +194,16 @@
         const currentShell = shell || hostDocument.getElementById(SHELL_ID);
         if (currentShell) {
           currentShell.hidden = true;
+          ensureToggle().hidden = false;
+          syncToggleState();
           notifyStatus();
         }
+      },
+      toggle() {
+        const currentShell = shell || hostDocument.getElementById(SHELL_ID);
+        if (!currentShell || currentShell.hidden) return controller.open();
+        controller.hide();
+        return frame;
       },
       getStatus() {
         const currentShell = shell || hostDocument.getElementById(SHELL_ID);

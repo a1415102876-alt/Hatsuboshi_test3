@@ -56,10 +56,45 @@ class FakeElement {
     this.listeners.set(type, listeners);
   }
 
-  click() {
-    for (const listener of this.listeners.get("click") || []) {
-      listener({ currentTarget: this, target: this });
+  removeEventListener(type, listener) {
+    const listeners = this.listeners.get(type) || [];
+    this.listeners.set(
+      type,
+      listeners.filter((candidate) => candidate !== listener)
+    );
+  }
+
+  dispatchEvent(event) {
+    const payload = {
+      currentTarget: this,
+      target: this,
+      preventDefault() {},
+      ...event
+    };
+    for (const listener of this.listeners.get(payload.type) || []) {
+      listener(payload);
     }
+    return true;
+  }
+
+  setPointerCapture(pointerId) {
+    this.capturedPointerId = pointerId;
+  }
+
+  releasePointerCapture(pointerId) {
+    if (this.capturedPointerId === pointerId) this.capturedPointerId = null;
+  }
+
+  getBoundingClientRect() {
+    const left = Number.parseFloat(this.style.left) || 0;
+    const top = Number.parseFloat(this.style.top) || 0;
+    const width = Number.parseFloat(this.style.width) || 44;
+    const height = Number.parseFloat(this.style.height) || 44;
+    return { left, top, width, height, right: left + width, bottom: top + height };
+  }
+
+  click() {
+    this.dispatchEvent({ type: "click" });
   }
 }
 
@@ -103,6 +138,22 @@ function createEntryDocument() {
 function runLauncherInHost(options = {}) {
   const hostDocument = options.hostWindow?.document || new FakeDocument();
   const hostWindow = options.hostWindow || { document: hostDocument };
+  const hostListeners = hostWindow.__testListeners || new Map();
+  hostWindow.__testListeners = hostListeners;
+  hostWindow.innerWidth ||= 1024;
+  hostWindow.innerHeight ||= 768;
+  hostWindow.addEventListener ||= (type, listener) => {
+    const listeners = hostListeners.get(type) || [];
+    listeners.push(listener);
+    hostListeners.set(type, listeners);
+  };
+  hostWindow.removeEventListener ||= (type, listener) => {
+    const listeners = hostListeners.get(type) || [];
+    hostListeners.set(type, listeners.filter((candidate) => candidate !== listener));
+  };
+  hostWindow.dispatchEvent ||= (event) => {
+    for (const listener of hostListeners.get(event.type) || []) listener(event);
+  };
   hostWindow.window = hostWindow;
   hostWindow.parent = hostWindow;
   hostWindow.top = hostWindow;
@@ -170,6 +221,39 @@ test("start mounts one persistent game iframe under the host body", () => {
   );
 });
 
+test("start mounts a host-body floating toggle above the shell", () => {
+  const env = runLauncherInHost();
+  env.startButton.click();
+
+  const shell = env.hostDocument.getElementById("hatsu-persistent-game-shell");
+  const toggle = env.hostDocument.getElementById("hatsu-persistent-game-toggle");
+
+  assert.ok(toggle);
+  assert.equal(toggle.parentNode, env.hostDocument.body);
+  assert.notEqual(toggle.parentNode, shell);
+  assert.ok(Number(toggle.style.zIndex) > Number(shell.style.zIndex));
+  assert.equal(toggle.hidden, false);
+});
+
+test("floating toggle hides and restores the same iframe without changing src", () => {
+  const env = runLauncherInHost();
+  env.startButton.click();
+
+  const shell = env.hostDocument.getElementById("hatsu-persistent-game-shell");
+  const frame = env.hostDocument.getElementById("hatsu-persistent-game-frame");
+  const toggle = env.hostDocument.getElementById("hatsu-persistent-game-toggle");
+  const src = frame.src;
+
+  toggle.click();
+  assert.equal(shell.hidden, true);
+  assert.equal(toggle.hidden, false);
+
+  toggle.click();
+  assert.equal(shell.hidden, false);
+  assert.equal(env.hostDocument.getElementById("hatsu-persistent-game-frame"), frame);
+  assert.equal(frame.src, src);
+});
+
 test("repeated launchers reuse the same host overlay and iframe", () => {
   const first = runLauncherInHost();
   first.startButton.click();
@@ -187,7 +271,7 @@ test("repeated launchers reuse the same host overlay and iframe", () => {
   );
 });
 
-test("a v2 launcher replaces a stale v1 controller and rebinds the existing exit button", () => {
+test("a v3 launcher replaces a stale v1 controller and rebinds the existing exit button", () => {
   const hostDocument = new FakeDocument();
   const shell = hostDocument.createElement("section");
   shell.id = "hatsu-persistent-game-shell";
@@ -223,7 +307,7 @@ test("a v2 launcher replaces a stale v1 controller and rebinds the existing exit
   exitButton.click();
 
   assert.equal(staleOpenCalls, 0);
-  assert.ok(hostWindow.__hatsuPersistentLauncherV2);
+  assert.ok(hostWindow.__hatsuPersistentLauncherV3);
   assert.equal(shell.hidden, true);
 });
 
