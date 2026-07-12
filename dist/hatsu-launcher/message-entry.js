@@ -311,6 +311,26 @@
       }
     };
 
+    for (const previousKey of PREVIOUS_CONTROLLER_KEYS) {
+      const previousController = hostWindow[previousKey];
+      if (previousController && previousController !== controller) {
+        try {
+          previousController.open = (...args) => controller.open(...args);
+          previousController.hide = (...args) => controller.hide(...args);
+          previousController.toggle = (...args) => controller.toggle(...args);
+          previousController.getStatus = (...args) => controller.getStatus(...args);
+          previousController.subscribe = (...args) => controller.subscribe(...args);
+        } catch (error) {
+          // The host key below still redirects future launcher instances.
+        }
+      }
+      try {
+        hostWindow[previousKey] = controller;
+      } catch (error) {
+        // A non-writable legacy key does not prevent V3 from becoming active.
+      }
+    }
+
     hostWindow[CONTROLLER_KEY] = controller;
     return controller;
   }

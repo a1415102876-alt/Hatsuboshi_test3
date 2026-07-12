@@ -342,9 +342,15 @@ test("repeated launchers reuse the same host overlay and iframe", () => {
     ).length,
     1
   );
+  assert.equal(
+    first.hostDocument.body.children.filter(
+      (node) => node.id === "hatsu-persistent-game-toggle"
+    ).length,
+    1
+  );
 });
 
-test("a v3 launcher replaces a stale v1 controller and rebinds the existing exit button", () => {
+test("a v3 launcher redirects a stale v2 controller and preserves its iframe", () => {
   const hostDocument = new FakeDocument();
   const shell = hostDocument.createElement("section");
   shell.id = "hatsu-persistent-game-shell";
@@ -358,30 +364,36 @@ test("a v3 launcher replaces a stale v1 controller and rebinds the existing exit
   hostDocument.body.appendChild(shell);
 
   let staleOpenCalls = 0;
+  const staleController = {
+    open() {
+      staleOpenCalls += 1;
+    },
+    hide() {},
+    getStatus() {
+      return "visible";
+    },
+    subscribe(listener) {
+      listener("visible");
+      return () => {};
+    }
+  };
   const hostWindow = {
     document: hostDocument,
-    __hatsuPersistentLauncherV1: {
-      open() {
-        staleOpenCalls += 1;
-      },
-      hide() {},
-      getStatus() {
-        return "visible";
-      },
-      subscribe(listener) {
-        listener("visible");
-        return () => {};
-      }
-    }
+    __hatsuPersistentLauncherV2: staleController
   };
 
   const env = runLauncherInHost({ hostWindow });
   env.startButton.click();
-  exitButton.click();
+  shell.hidden = true;
+  staleController.open();
 
   assert.equal(staleOpenCalls, 0);
   assert.ok(hostWindow.__hatsuPersistentLauncherV3);
-  assert.equal(shell.hidden, true);
+  assert.equal(env.hostDocument.getElementById("hatsu-persistent-game-frame"), frame);
+  assert.equal(shell.hidden, false);
+  assert.equal(exitButton.hidden, true);
+  assert.equal(exitButton.style.display, "none");
+  assert.equal(exitButton.attributes["aria-hidden"], "true");
 });
 
 test("exit updates a live launcher card to the background state", () => {
@@ -435,6 +447,7 @@ test("removing a message floor does not remove the host game shell", () => {
   env.entryFrame.remove();
 
   assert.ok(env.hostDocument.getElementById("hatsu-persistent-game-shell"));
+  assert.ok(env.hostDocument.getElementById("hatsu-persistent-game-toggle"));
 });
 
 test("direct launcher use shows a host warning and creates no local game owner", () => {
@@ -443,7 +456,9 @@ test("direct launcher use shows a host warning and creates no local game owner",
   assert.match(env.status.textContent, /SillyTavern/);
   env.startButton.click();
   assert.equal(env.entryWindow.__hatsuPersistentLauncherV1, undefined);
+  assert.equal(env.entryWindow.__hatsuPersistentLauncherV3, undefined);
   assert.equal(env.entryDocument.getElementById("hatsu-persistent-game-shell"), null);
+  assert.equal(env.entryDocument.getElementById("hatsu-persistent-game-toggle"), null);
 });
 
 test("launcher page is a compact entry and loads the message controller", () => {
@@ -455,7 +470,7 @@ test("launcher page is a compact entry and loads the message controller", () => 
   );
   assert.match(
     launcherHtml,
-    /message-entry\.js\?v=2/
+    /message-entry\.js\?v=3/
   );
   assert.doesNotMatch(launcherHtml, /<iframe/i);
   assert.doesNotMatch(launcherHtml, /position:\s*fixed[\s\S]*inset:\s*0/i);
@@ -468,12 +483,14 @@ test("launcher page configures the canonical st bridge URL", () => {
   );
 });
 
-test("README documents the regex launcher and hide-only exit behavior", () => {
+test("README documents the draggable host toggle and hide-only behavior", () => {
   assert.match(
     readmeSource,
     /\$\('body'\)\.load\('http:\/\/127\.0\.0\.1:8000\/hatsu-produce-local\/launcher\.html'\)/
   );
-  assert.match(readmeSource, /Exit behavior: hide-only/i);
+  assert.match(readmeSource, /draggable.*floating toggle/i);
+  assert.match(readmeSource, /host-level.*toggle/i);
+  assert.doesNotMatch(readmeSource, /Exit behavior:/i);
   assert.match(readmeSource, /does not cancel[^\n]*generation/i);
   assert.match(readmeSource, /shujuku[^\n]*floor refresh/i);
   assert.match(readmeSource, /SillyTavern[^\n]*full refresh[^\n]*Harness Recovery/i);
