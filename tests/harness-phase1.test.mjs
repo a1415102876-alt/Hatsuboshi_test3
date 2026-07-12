@@ -165,6 +165,49 @@ test("host save sequence advances only for an eligible host mirror", () => {
   assert.match(hostSaveSource, /hostSaveSequence/);
   assert.match(hostSaveSource, /type:\s*"saveState"[\s\S]*hostSaveSequence/);
 });
+test("director digest candidates obey stale partial retry and accepted-final ACK gates", () => {
+  const shouldPrepare = vm.runInNewContext(`(${readFunction(appSource, "shouldPrepareDirectorDigestCandidate")})`);
+  const decideAck = vm.runInNewContext(`(${readFunction(appSource, "decideDirectorDigestAck")})`);
+  assert.equal(shouldPrepare(false), false);
+  assert.equal(shouldPrepare(true), true);
+  assert.equal(decideAck(true, false, false), "retain");
+  assert.equal(decideAck(false, true, true), "discard");
+  assert.equal(decideAck(false, false, true), "discard");
+  assert.equal(decideAck(true, false, true), "commit");
+});
+
+test("accepted-final director digest commits at most once without starting secondary generation", () => {
+  const candidates = new Map([["request-1", { id: "digest-1" }]]);
+  const committed = [];
+  const sandbox = {
+    pendingDirectorDigestCandidates: candidates,
+    decideDirectorDigestAck: vm.runInNewContext(`(${readFunction(appSource, "decideDirectorDigestAck")})`),
+    commitPendingDirectorDigestCandidate(requestId) {
+      const candidate = candidates.get(requestId);
+      if (!candidate) return false;
+      candidates.delete(requestId);
+      committed.push(candidate);
+      return true;
+    },
+    discardPendingDirectorDigestCandidate(requestId) {
+      return candidates.delete(requestId);
+    }
+  };
+  const settle = vm.runInNewContext(`(${readFunction(appSource, "settlePendingDirectorDigestCandidate")})`, sandbox);
+  assert.equal(settle("request-1", true, false, false), false);
+  assert.equal(candidates.has("request-1"), true);
+  assert.equal(settle("request-1", true, false, true), true);
+  assert.equal(settle("request-1", true, false, true), false);
+  assert.equal(committed.length, 1);
+  assert.doesNotMatch(readFunction(appSource, "settlePendingDirectorDigestCandidate"), /sendSecondaryPrompt|requestHostSecondary/);
+});
+
+test("director digest candidate is prepared only after the current reply gate", () => {
+  const applySource = readSection("function applyAiReply(", "function sendAiReplyAck(");
+  const staleReturn = applySource.indexOf("if (!acceptedRequest)");
+  const prepare = applySource.indexOf("preparePendingDirectorDigestCandidate(");
+  assert.ok(staleReturn >= 0 && prepare > staleReturn);
+});
 test("phase zero observations log metadata without persisting routine events", () => {
   const hostSaveSource = readFunction(appSource, "requestHostStateSave");
   const promptSendSource = readSection("function requestHostPromptSend(", "function applyHostCharacter(");

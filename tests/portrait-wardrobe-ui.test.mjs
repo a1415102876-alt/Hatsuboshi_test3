@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
@@ -36,12 +36,32 @@ test("apartment wardrobe exposes every required control id", () => {
     "portraitWardrobeAssets", "portraitWardrobeFileInput", "portraitWardrobeNameInput",
     "portraitWardrobeScale", "portraitWardrobeOffsetX", "portraitWardrobeOffsetY",
     "portraitWardrobeResetBtn", "portraitWardrobeRestoreBtn", "portraitWardrobeArchiveBtn",
-    "portraitWardrobeApplyBtn", "portraitWardrobeStatus"
+    "portraitWardrobeApplyBtn", "portraitWardrobeStatus", "portraitWardrobeAliasEditor",
+    "portraitWardrobeAliasTags", "portraitWardrobeAliasInput", "portraitWardrobeAliasAddBtn", "portraitWardrobeAliasSaveBtn"
   ];
   ids.forEach((id) => assert.match(html, new RegExp(`id=["']${id}["']`), `${id} must exist`));
 });
 
+test("wardrobe user-facing labels are localized to Chinese", () => {
+  [
+    "立绘衣柜", "立绘 / 换装", "试衣预览", "立绘库", "重置位置",
+    "选择 PNG / WebP / JPEG", "立绘名称", "触发名称", "保存名称",
+    "输入正文中的发言者名称", "添加", "缩放", "水平位置", "垂直位置",
+    "恢复默认", "归档"
+  ].forEach((label) => assert.match(html, new RegExp(label), `${label} must exist`));
+  assert.doesNotMatch(html, /LOOK ROOM|LOOK LIBRARY|SPEAKER NAMES|APPLY LOOK/);
+});
+
+test("alias add button and Enter use one submit function", () => {
+  readFunction("submitProducerPortraitAliasInput");
+  assert.match(appSource, /portraitWardrobeAliasAddBtn/);
+  const eventStart = appSource.indexOf('document.getElementById("portraitWardrobeAliasInput")');
+  const eventEnd = appSource.indexOf('document.getElementById("portraitWardrobeScale")', eventStart);
+  const calls = appSource.slice(eventStart, eventEnd).match(/submitProducerPortraitAliasInput\(\)/g) || [];
+  assert.equal(calls.length, 2);
+});
 test("wardrobe uses the approved responsive fitting-room background", () => {
+  assert.equal(existsSync(new URL("../assets/scenes/Wardrobe_Fitting_Room.png", import.meta.url)), true);
   assert.match(css, /Wardrobe_Fitting_Room\.png/);
   assert.match(css, /background-position:\s*center 48%/);
   assert.match(css, /@media\s*\(max-width:\s*700px\)[\s\S]*background-position:\s*49% center/);
@@ -75,4 +95,48 @@ test("wardrobe has explicit open restore archive and latest-index archive flow",
 
 test("portrait data module loads before the app", () => {
   assert.ok(html.indexOf("appearance/portrait-wardrobe.js") < html.indexOf("./app.js"));
+});
+
+function loadAliasController() {
+  const sandbox = {
+    globalThis: null,
+    state: {
+      producer: { name: "Profile Name" },
+      appearance: { schemaVersion: 2, equipped: {}, bindings: { producer: { aliases: ["Coach"] } } }
+    },
+    idols: { "idol-a": {} },
+    canonicalIdolName: (name) => name,
+    portraitWardrobeState: { selectedCharacterKey: "producer", draftProducerAliases: ["Coach"] },
+    saveReasons: [],
+    saveState: (reason) => sandbox.saveReasons.push(reason),
+    renderPortraitWardrobe() {}
+  };
+  sandbox.globalThis = sandbox;
+  vm.runInNewContext(readFileSync(new URL("../appearance/portrait-wardrobe.js", import.meta.url), "utf8"), sandbox);
+  vm.runInNewContext([
+    readFunction("getDefaultProducerPortraitAliases"),
+    readFunction("addProducerPortraitAlias"),
+    readFunction("removeProducerPortraitAlias"),
+    readFunction("saveProducerPortraitAliases"),
+    "this.aliases = { getDefaultProducerPortraitAliases, addProducerPortraitAlias, removeProducerPortraitAlias, saveProducerPortraitAliases };"
+  ].join("\n"), sandbox);
+  return sandbox;
+}
+
+test("producer alias editor validates conflicts and saves independently", () => {
+  const sandbox = loadAliasController();
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.aliases.getDefaultProducerPortraitAliases())), ["\u5236\u4f5c\u4eba", "P", "producer", "producer-san", "Profile Name"]);
+  assert.equal(sandbox.aliases.addProducerPortraitAlias("idol-a").error, "idol_conflict");
+  assert.deepEqual(sandbox.portraitWardrobeState.draftProducerAliases, ["Coach"]);
+  assert.equal(sandbox.aliases.addProducerPortraitAlias("Director").ok, true);
+  assert.equal(sandbox.aliases.removeProducerPortraitAlias("Coach"), true);
+  assert.equal(sandbox.aliases.saveProducerPortraitAliases(), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(sandbox.state.appearance.bindings.producer.aliases)), ["Director"]);
+  assert.deepEqual(sandbox.saveReasons, ["portrait.aliases"]);
+});
+
+test("producer alias editor is hidden for idol wardrobe tabs", () => {
+  const render = readFunction("renderPortraitWardrobe");
+  assert.match(render, /portraitWardrobeAliasEditor/);
+  assert.match(render, /characterKey\s*===\s*["']producer["']/);
 });

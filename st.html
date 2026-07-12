@@ -557,6 +557,10 @@
       "world/injection.js",
       "world/daily-tick.js",
       "world/world-gen-api.js",
+      "world/director-state.js",
+      "world/director-api.js",
+      "world/director-injection.js",
+      "world/secondary-channel-owner.js",
       "broadcast/prompts.js",
       "tasks/side-pool.js",
       "tasks/side-quest-api.js",
@@ -627,11 +631,22 @@
           postCharacterToFrame();
         }
         if (data.type === 'portraitFileOperation') {
-          const request = normalizePortraitFileOperation(data);
-          const result = request.ok
-            ? await executePortraitFileOperation(request)
-            : { ok: false, error: request.error };
-          postPortraitFileOperationResult(request, result);
+          const result = await executePortraitFileOperation(data);
+          postPortraitFileOperationResult(data, result);
+          return;
+        }
+        if (data.type === 'cancelPrimaryAttempt') {
+          const requestId = String(data.requestId || '');
+          const channelLeaseId = String(data.channelLeaseId || '');
+          if (requestId === pendingRequestId && channelLeaseId === pendingChannelLeaseId) {
+            clearPendingReplyRequest();
+            const stopGeneration = getContext()?.stopGeneration;
+            if (typeof stopGeneration === 'function') {
+              try { stopGeneration(); } catch (error) {
+                console.warn('[st.html] stop cancelled primary attempt failed:', error);
+              }
+            }
+          }
           return;
         }
         if (data.type === 'sendPrompt') {
@@ -649,8 +664,9 @@
           });
         }
         if (data.type === 'sendSecondaryPrompt') {
-          const reqId = String(data.requestId || '');
-          queuePromptTask(() => runSecondaryApiPrompt(data.prompt, reqId, data.apiConfig || {}));
+          const normalized = normalizeSecondaryEnvelope(data, getCurrentContextInfo().saveScope);
+          if (!normalized.ok) return;
+          queuePromptTask(() => runSecondaryApiPrompt(normalized.envelope));
         }
         if (data.type === 'regenerate') {
           const reqId = String(data.requestId || '');
@@ -821,6 +837,7 @@
     let pendingReplyRetryTimer = 0;
     let pendingStreamFinalizeTimer = 0;
     let pendingStreamMessageId = -1;
+    let pendingEmptyFinalRetryCount = 0;
     let hiddenFloorRange = null;
     let chatDomObserver = null;
     let chatDomUpdateTimer = 0;
@@ -837,6 +854,7 @@
     const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer']);
     const SHUJUKU_PLANNING_TIMEOUT_MS = 120000;
     const SHUJUKU_ASSISTANT_TIMEOUT_MS = 120000;
+    const HOST_EMPTY_FINAL_MAX_RETRIES = 2;
 
     function createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope) {
       return [requestId, channelLeaseId, saveScope].map((value) => String(value || '')).join('::');
@@ -2098,66 +2116,76 @@
         error: String(error?.message || error || 'primary_generation_failed')
       }, '*');
     }
-    function postSecondaryReply(requestId, text, options = {}) {
-      const payload = {
+    function normalizeSecondaryEnvelope(data, currentScope) {
+      const jobId = String(data?.jobId || '').trim();
+      const requestId = String(data?.requestId || '').trim();
+      const saveScope = String(data?.saveScope || '').trim();
+      const kind = String(data?.kind || '').trim();
+      const prompt = String(data?.prompt || '').trim();
+      const apiConfig = data?.apiConfig && typeof data.apiConfig === 'object' ? { ...data.apiConfig } : {};
+      if (!jobId || !requestId || !saveScope || !kind || !prompt) {
+        return { ok: false, reason: 'invalid_secondary_envelope' };
+      }
+      if (saveScope !== String(currentScope || '')) {
+        return { ok: false, reason: 'secondary_scope_mismatch' };
+      }
+      return { ok: true, envelope: { jobId, requestId, saveScope, kind, prompt, apiConfig } };
+    }
+
+    function createSecondaryReplyPayload(envelope, text, options) {
+      options = options && typeof options === 'object' ? options : {};
+      return {
         source: 'hatsuboshi-produce-host',
         type: 'secondaryAiReply',
-        requestId: String(requestId || ''),
+        jobId: String(envelope?.jobId || ''),
+        requestId: String(envelope?.requestId || ''),
+        saveScope: String(envelope?.saveScope || ''),
+        kind: String(envelope?.kind || ''),
         text: String(text || ''),
         ok: options.ok !== false,
         error: String(options.error || ''),
         isFinal: true
       };
-      window.postMessage(payload, '*');
     }
 
-    async function runSecondaryApiPrompt(promptText, requestId, apiConfig = {}) {
-      const prompt = String(promptText || '').trim();
-      const reqId = String(requestId || '');
+    function postSecondaryReply(envelope, text, options = {}) {
+      window.postMessage(createSecondaryReplyPayload(envelope, text, options), '*');
+    }
+
+    async function runSecondaryApiPrompt(envelope) {
+      if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
+      const prompt = String(envelope.prompt || '').trim();
+      const apiConfig = envelope.apiConfig || {};
       const baseUrl = String(apiConfig.baseUrl || '').trim().replace(/\/$/, '');
       const apiKey = String(apiConfig.apiKey || '').trim();
       const model = String(apiConfig.model || '').trim();
       const temperature = Number.isFinite(Number(apiConfig.temperature)) ? Number(apiConfig.temperature) : 0.7;
       const maxTokens = Number.isFinite(Number(apiConfig.maxTokens)) ? Number(apiConfig.maxTokens) : 1200;
-      if (!prompt || !reqId) {
-        postSecondaryReply(reqId, '', { ok: false, error: 'empty_prompt' });
-        return;
-      }
       if (!baseUrl || !model) {
-        postSecondaryReply(reqId, '', { ok: false, error: 'missing_config' });
+        postSecondaryReply(envelope, '', { ok: false, error: 'missing_config' });
         return;
       }
       const url = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
       try {
         const res = await fetch(url, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model,
-            messages: [{ role: 'user', content: prompt }],
-            temperature,
-            max_tokens: maxTokens
-          })
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature, max_tokens: maxTokens })
         });
+        if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
         if (!res.ok) {
-          postSecondaryReply(reqId, '', { ok: false, error: `http_${res.status}` });
+          postSecondaryReply(envelope, '', { ok: false, error: `http_${res.status}` });
           return;
         }
         const json = await res.json();
+        if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
         const text = String(json?.choices?.[0]?.message?.content || '').trim();
-        if (!text) {
-          postSecondaryReply(reqId, '', { ok: false, error: 'empty_response' });
-          return;
-        }
-        postSecondaryReply(reqId, text, { ok: true });
+        postSecondaryReply(envelope, text, { ok: Boolean(text), error: text ? '' : 'empty_response' });
       } catch (error) {
-        postSecondaryReply(reqId, '', { ok: false, error: String(error?.message || error) });
+        if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
+        postSecondaryReply(envelope, '', { ok: false, error: String(error?.message || error) });
       }
     }
-
     async function runTransactionalViaTavernHelper(tavernHelper, promptText, reqId) {
       // 先静默写入当前 user 楼层，确保预设里的 {{lastUserMessage}} 与 user_input
       // 指向同一轮输入。生成失败时按 requestId 回滚，不留下孤儿楼层。
@@ -2169,13 +2197,15 @@
       const GEN_ENDED = 'js_generation_ended';
       let endedResolve = null;
       const endedPromise = new Promise((resolve) => { endedResolve = resolve; });
+      let endedWithoutText = false;
       const endedHandler = (finalText, generationId) => {
         try {
           const eventPayload = { text: finalText, generation_id: generationId };
           if (!isGenerationEndedPayloadForRequest(eventPayload, reqId)) return;
           const normalizedText = normalizeGenerationEndedText(eventPayload, reqId);
           if (normalizedText === null) return;
-          if (!isGeneratedTextCompatibleWithPrompt(promptText, normalizedText)) return;
+          if (normalizedText && !isGeneratedTextCompatibleWithPrompt(promptText, normalizedText)) return;
+          endedWithoutText = !normalizedText;
           endedResolve(normalizedText);
         } catch (e) {}
       };
@@ -2217,14 +2247,14 @@
         const raced = await Promise.race([endedPromise, generatePromise, timeoutPromise]);
         generatedText = extractReplyTextFromGenerated(raced);
         if (generatedText && !isGeneratedTextCompatibleWithPrompt(promptText, generatedText)) generatedText = '';
-        if (!generatedText) {
+        if (!generatedText && !endedWithoutText) {
           // race 先返回的是空：再等 generate 自身的返回值兜底。
           try {
             generatedText = extractReplyTextFromGenerated(await generatePromise);
             if (generatedText && !isGeneratedTextCompatibleWithPrompt(promptText, generatedText)) generatedText = '';
           } catch (e) {}
         }
-        if (!generatedText && listening) {
+        if (!generatedText && listening && !endedWithoutText) {
           // generate 可能先返回空值，但真正正文稍后才通过 scoped end event 到达。
           const lateText = await Promise.race([
             endedPromise,
@@ -2357,33 +2387,47 @@
         const eventSource = context.eventSource;
         const eventTypes = context.eventTypes;
         if (!eventSource || !eventTypes) return;
-        
+
+        const recordLifecycle = (status) => {
+          if (!pendingRequestId) return;
+          const current = hostGenerationAttemptDebug.current;
+          if (current && String(current.requestId || '') === pendingRequestId) {
+            current.status = status;
+            postHostGenerationAttemptDebug();
+          }
+        };
+        const handleGenerationEnd = (emptyReason, status) => {
+          if (!pendingRequestId) return;
+          recordLifecycle(status);
+          const latestMessageId = getContext()?.chat?.length - 1;
+          sendLatestAiReplyToFrame(latestMessageId, true, emptyReason);
+        };
+
         eventSource.on(eventTypes.CHARACTER_MESSAGE_RENDERED, (messageId) => {
           sendLatestAiReplyToFrame(messageId, false);
         });
-
-        const handleGenerationEnd = () => {
-          const latestMessageId = getContext()?.chat?.length - 1;
-          if (latestMessageId >= 0) {
-            sendLatestAiReplyToFrame(latestMessageId, true);
-          }
-        };
-
         if (eventTypes.GENERATION_STARTED) {
           eventSource.on(eventTypes.GENERATION_STARTED, () => {
+            if (!pendingRequestId) return;
             clearReplyCandidateState();
+            recordLifecycle('generating');
           });
         }
         if (eventTypes.STREAM_TOKEN_RECEIVED) {
           eventSource.on(eventTypes.STREAM_TOKEN_RECEIVED, () => {
+            if (!pendingRequestId) return;
+            recordLifecycle('streaming');
             const latestMessageId = getContext()?.chat?.length - 1;
             if (latestMessageId >= 0) {
               sendLatestAiReplyToFrame(latestMessageId, false);
             }
           });
         }
+        if (eventTypes.GENERATION_ENDED) {
+          eventSource.on(eventTypes.GENERATION_ENDED, () => handleGenerationEnd('host_ended_empty', 'ended'));
+        }
         if (eventTypes.GENERATION_STOPPED) {
-          eventSource.on(eventTypes.GENERATION_STOPPED, handleGenerationEnd);
+          eventSource.on(eventTypes.GENERATION_STOPPED, () => handleGenerationEnd('host_stopped_empty', 'stopped'));
         }
         if (eventTypes.MESSAGE_RECEIVED) {
           eventSource.on(eventTypes.MESSAGE_RECEIVED, (messageId) => {
@@ -2399,10 +2443,9 @@
         console.warn('[初星直接桥接] 无法绑定角色回复监听。', error);
       }
     }
-
-    function sendLatestAiReplyToFrame(messageId, isFinal = true) {
+    function sendLatestAiReplyToFrame(messageId, isFinal = true, emptyReason = '') {
       if (!pendingRequestId) return;
-      collectAndSendAiReply(messageId, isFinal);
+      collectAndSendAiReply(messageId, isFinal, { emptyReason });
     }
 
     function dispatchCommittedReplyEvent(payload) {
@@ -2442,20 +2485,20 @@
       return preferredIndex;
     }
 
-    function collectAndSendAiReply(messageId, isFinal = true) {
-      if (Number(messageId) === 0) return;
+    function collectAndSendAiReply(messageId, isFinal = true, options) {
+      options = options && typeof options === 'object' ? options : {};
+      if (Number(messageId) === 0 && !options.emptyReason) return;
       if (isFinal && pendingCandidateInFlight) return;
       
       const context = getContext();
       const replyMessageId = findLatestUsableAiReplyId(messageId);
       const message = context?.chat?.[replyMessageId];
       if (!message || message.is_user) {
-        // generation stopped 可能早于 assistant 消息真正落到 chat，给一次短延迟重试兜底
+        // generation end 可能早于 assistant 消息真正落到 chat，做有限次数的短延迟重试。
         if (isFinal) {
           const latestId = Array.isArray(context?.chat) ? context.chat.length - 1 : Number(messageId);
-          if (Number.isInteger(latestId) && latestId >= 0) {
-            scheduleReplyRetry(latestId, 350);
-          }
+          if (options.emptyReason) handleEmptyFinalReply(latestId, options.emptyReason);
+          else if (Number.isInteger(latestId) && latestId >= 0) scheduleReplyRetry(latestId, 350);
         }
         return;
       }
@@ -2467,9 +2510,11 @@
 
       if (!text.trim()) {
         // SillyTavern may render an empty assistant placeholder before generation produces text.
-        if (isFinal) scheduleReplyRetry(replyMessageId, 350);
+        if (isFinal && options.emptyReason) handleEmptyFinalReply(replyMessageId, options.emptyReason);
+        else if (isFinal) scheduleReplyRetry(replyMessageId, 350);
         return;
       }
+      pendingEmptyFinalRetryCount = 0;
 
       if (!isFinal) {
         // 部分宿主环境偶发不触发 GENERATION_STOPPED/MESSAGE_RECEIVED，防止前端永远停留在“生成中”
@@ -2502,6 +2547,29 @@
       }
     }
 
+    function handleEmptyFinalReply(messageId, reason = 'host_ended_empty', deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      if (!pendingRequestId) return 'ignored';
+      const scheduleRetry = deps.scheduleReplyRetry || scheduleReplyRetry;
+      const postError = deps.postPrimaryAiError || postPrimaryAiError;
+      const clearPending = deps.clearPendingReplyRequest || clearPendingReplyRequest;
+      const requestId = pendingRequestId;
+      const channelLeaseId = pendingChannelLeaseId;
+      const retryMessageId = Number(messageId);
+      if (!Number.isInteger(retryMessageId) || retryMessageId < 0) {
+        postError(requestId, channelLeaseId, new Error(reason));
+        clearPending();
+        return 'failed';
+      }
+      if (pendingEmptyFinalRetryCount < HOST_EMPTY_FINAL_MAX_RETRIES) {
+        pendingEmptyFinalRetryCount += 1;
+        scheduleRetry(retryMessageId, 350, reason);
+        return 'retry';
+      }
+      postError(requestId, channelLeaseId, new Error(reason));
+      clearPending();
+      return 'failed';
+    }
     function scheduleStreamFinalize(messageId, delay = 1200) {
       if (!pendingRequestId) return;
       if (!Number.isInteger(Number(messageId)) || Number(messageId) < 0) return;
@@ -2512,7 +2580,7 @@
         const fallbackMessageId = pendingStreamMessageId;
         pendingStreamMessageId = -1;
         if (!pendingRequestId) return;
-        collectAndSendAiReply(fallbackMessageId, true);
+        collectAndSendAiReply(fallbackMessageId, true, { emptyReason: 'host_stream_idle_empty' });
       }, delay);
     }
 
@@ -2589,14 +2657,14 @@
       scheduleReplyRetry(pendingCandidateMessageId);
     }
 
-    function scheduleReplyRetry(messageId, delay = 600) {
+    function scheduleReplyRetry(messageId, delay = 600, emptyReason = '') {
       if (!pendingRequestId) return;
       if (!Number.isInteger(Number(messageId)) || Number(messageId) < 0) return;
       if (pendingReplyRetryTimer) window.clearTimeout(pendingReplyRetryTimer);
       pendingReplyRetryTimer = window.setTimeout(() => {
         pendingReplyRetryTimer = 0;
         pendingCandidateInFlight = false;
-        collectAndSendAiReply(Number(messageId), true);
+        collectAndSendAiReply(Number(messageId), true, { emptyReason });
       }, delay);
     }
 
@@ -2606,6 +2674,7 @@
       clearStreamFinalizeTimer();
       pendingCandidateInFlight = false;
       pendingCandidateMessageId = -1;
+      pendingEmptyFinalRetryCount = 0;
     }
 
     function clearPendingReplyRequest() {

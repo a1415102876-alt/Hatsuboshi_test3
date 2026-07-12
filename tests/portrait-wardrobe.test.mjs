@@ -37,11 +37,31 @@ test("appearance normalization preserves valid equipped refs and drops invalid k
     }
   });
 
-  assert.equal(result.schemaVersion, 1);
+  assert.equal(result.schemaVersion, 2);
+  assert.deepEqual(clone(result.bindings), { producer: { aliases: [] } });
   assert.equal(result.equipped.producer.transform.scale, 2);
   assert.equal(result.equipped.producer.transform.offsetX, -100);
   assert.equal(result.equipped.producer.transform.offsetY, 25);
   assert.equal(result.equipped.bad, undefined);
+});
+
+test("producer aliases migrate normalize deduplicate and enforce limits", () => {
+  const api = loadPortraitApi();
+  const result = api.normalizeAppearanceState({
+    schemaVersion: 1,
+    equipped: {},
+    bindings: {
+      producer: {
+        aliases: ["  Coach  ", "coach", "A".repeat(41), ...Array.from({ length: 15 }, (_, index) => `alias-${index}`)]
+      }
+    }
+  });
+
+  assert.equal(result.schemaVersion, 2);
+  assert.equal(result.bindings.producer.aliases[0], "Coach");
+  assert.equal(result.bindings.producer.aliases.includes("coach"), false);
+  assert.equal(result.bindings.producer.aliases.includes("A".repeat(41)), false);
+  assert.equal(result.bindings.producer.aliases.length, 12);
 });
 
 test("portrait resolution uses chat equipment then builtin fallback", () => {
@@ -76,9 +96,11 @@ test("character keys distinguish producer aliases from canonical idols", () => {
   assert.equal(api.characterKeyForSpeaker("制作人", "小林", canonicalize, hasIdol), "producer");
   assert.equal(api.characterKeyForSpeaker("小林", "小林", canonicalize, hasIdol), "producer");
   assert.equal(api.characterKeyForSpeaker("琴音", "小林", canonicalize, hasIdol), "idol:藤田琴音");
-  assert.equal(api.characterKeyForSpeaker("路人", "小林", canonicalize, hasIdol), "");
+  assert.equal(api.characterKeyForSpeaker("路人", "小林", canonicalize, hasIdol), "" );
+  assert.equal(api.characterKeyForSpeaker("Custom Coach", "producer-name", canonicalize, hasIdol, ["custom coach"]), "producer" );
+  const fullCustomList = Array.from({ length: 12 }, (_, index) => "alias-" + index);
+  assert.equal(api.characterKeyForSpeaker("alias-11", "producer-name", canonicalize, hasIdol, fullCustomList), "producer");
 });
-
 test("decoded image validation enforces format byte pixel and edge limits", () => {
   const api = loadPortraitApi();
 

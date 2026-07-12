@@ -275,15 +275,16 @@ test("st bridge does not publish an empty assistant placeholder as a final reply
   assert.deepEqual(retries, [{ messageId: 1, delay: 350 }]);
 });
 
-test("transactional helper keeps waiting for the scoped end event after an empty generate return", () => {
+test("transactional helper waits after an empty return but exits on an exact empty end event", () => {
   const fnSource = readFunction("runTransactionalViaTavernHelper");
-  const lateWaitStart = fnSource.indexOf("if (!generatedText && listening)");
+  const lateWaitStart = fnSource.indexOf("if (!generatedText && listening && !endedWithoutText)");
   const lateWaitEnd = fnSource.indexOf("generatedText = extractReplyTextFromGenerated(lateText)", lateWaitStart);
   const lateWait = fnSource.slice(lateWaitStart, lateWaitEnd);
 
   assert.notEqual(lateWaitStart, -1);
   assert.notEqual(lateWaitEnd, -1);
   assert.match(lateWait, /Promise\.race\(\[\s*endedPromise,\s*timeoutPromise\s*\]\)/);
+  assert.match(fnSource, /endedWithoutText = !normalizedText/);
   assert.doesNotMatch(lateWait, /1500/);
 });
 

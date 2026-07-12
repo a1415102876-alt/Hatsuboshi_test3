@@ -33,7 +33,10 @@ function loadIntegration() {
     globalThis: null,
     state: {
       producer: { name: "producer-name" },
-      appearance: { equipped: { producer: { assetId: "asset-1", characterKey: "producer", url: "/user/files/custom.png", source: "user", transform: { scale: 1.2, offsetX: 4, offsetY: -3 } } } }
+      appearance: {
+        equipped: { producer: { assetId: "asset-1", characterKey: "producer", url: "/user/files/custom.png", source: "user", transform: { scale: 1.2, offsetX: 4, offsetY: -3 } } },
+        bindings: { producer: { aliases: ["custom-coach"] } }
+      }
     },
     idols: { "idol-a": { background: "./assets/idol-a.png" } },
     vnStandees: { "idol-a": "./assets/novel-standees/idol-a.png" },
@@ -69,6 +72,7 @@ test("speaker resolver maps producer aliases and canonical idol names", () => {
   const sandbox = loadIntegration();
   assert.equal(sandbox.api.resolvePortraitForSpeaker("P").url, "/user/files/custom.png");
   assert.equal(sandbox.api.resolvePortraitForSpeaker("producer-name").url, "/user/files/custom.png");
+  assert.equal(sandbox.api.resolvePortraitForSpeaker("CUSTOM-COACH").url, "/user/files/custom.png");
   assert.equal(sandbox.api.resolvePortraitForSpeaker("alias-a").url, "./assets/novel-standees/idol-a.png");
   assert.equal(sandbox.api.resolvePortraitForSpeaker("unknown").url, "");
 });

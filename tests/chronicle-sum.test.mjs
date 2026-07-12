@@ -37,6 +37,29 @@ test("extractSumText rejects summaries over one hundred characters", () => {
   assert.equal(api.extractSumText(`<sum>${longSummary}</sum>`), "");
 });
 
+test("extractDirectorEvent accepts bounded structured scene evidence", () => {
+  const api = loadChronicle();
+  const parsed = JSON.parse(JSON.stringify(api.extractDirectorEvent(`<director_event>{"facts":["明确约定"],"playerChoices":["接受邀请"],"observations":[],"hooksCreated":[],"hooksResolved":[]}</director_event>`)));
+  assert.equal(parsed.evidenceQuality, "structured");
+  assert.deepEqual(parsed.signals.facts, ["明确约定"]);
+  assert.deepEqual(parsed.signals.playerChoices, ["接受邀请"]);
+});
+
+test("extractDirectorEvent degrades malformed or unbounded evidence to summary only", () => {
+  const api = loadChronicle();
+  const emptySignals = { facts: [], playerChoices: [], observations: [], hooksCreated: [], hooksResolved: [] };
+  const samples = [
+    `<director_event>{broken}</director_event>`,
+    `<director_event>{"facts":["a"],"unknown":["b"]}</director_event>`,
+    `<director_event>{"facts":["a","b","c","d"],"playerChoices":[],"observations":[],"hooksCreated":[],"hooksResolved":[]}</director_event>`,
+    `<director_event>{"facts":["${"过长".repeat(90)}"],"playerChoices":[],"observations":[],"hooksCreated":[],"hooksResolved":[]}</director_event>`
+  ];
+  for (const sample of samples) {
+    const parsed = JSON.parse(JSON.stringify(api.extractDirectorEvent(sample)));
+    assert.equal(parsed.evidenceQuality, "summary_only");
+    assert.deepEqual(parsed.signals, emptySignals);
+  }
+});
 test("chronicle upsert refuses overlong summaries", () => {
   const api = loadChronicle();
   const longSummary = "污染".repeat(51);

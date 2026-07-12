@@ -522,8 +522,40 @@ test("retryable recovery validation exhaustion returns to recovery_required inst
     Date: { now: () => 1000 },
     recordHarnessTrace: () => {}
   });
-  assert.equal(normal("request-normal", "invalid_reply"), false);
-  assert.equal(normalState.harness.activeTurn.status, "generating");
+  assert.equal(normal("request-normal", "invalid_reply"), true);
+  assert.equal(normalState.harness.activeTurn.status, "recovery_required");
+  assert.equal(normalState.harness.activeTurn.requestId, "");
+});
+
+test("an interrupted first ordinary narrative attempt becomes retryable recovery", () => {
+  const state = { harness: { activeTurn: ordinaryTurn({
+    status: "generating",
+    sessionEpoch: "session-new",
+    requestId: "request-normal",
+    recoveryAttemptCount: 0,
+    generationPrompt: "frozen prompt",
+    generationPromptLength: 13,
+    generationPromptStatus: "captured"
+  }) } };
+  const traces = [];
+  const sandbox = {
+    state,
+    runtimeSessionEpoch: "session-new",
+    Date: { now: () => 1200 },
+    recordHarnessTrace: (type, detail) => traces.push({ type, detail })
+  };
+  const returnToRecovery = vm.runInNewContext(
+    `(${readFunction(appSource, "returnHarnessRecoveryAttemptToPending")})`,
+    sandbox
+  );
+
+  assert.equal(returnToRecovery("request-normal", "host_ended_empty"), true);
+  assert.equal(state.harness.activeTurn.turnId, "turn-1");
+  assert.equal(state.harness.activeTurn.status, "recovery_required");
+  assert.equal(state.harness.activeTurn.requestId, "");
+  assert.equal(state.harness.activeTurn.generationPrompt, "frozen prompt");
+  assert.equal(state.harness.activeTurn.recoveryFailureReason, "host_ended_empty");
+  assert.equal(traces.at(-1)?.type, "turn.recovery_required");
 });
 
 test("recovery controls are enabled and wired without changing ordinary close behavior", () => {
@@ -727,4 +759,13 @@ test("recovery guard remains scoped to ordinary action entry only", () => {
   for (const sideEntry of ["submitPhoneChatMessage", "requestBroadcastFullScript", "confirmMapLocationEntry", "openSideQuestFromTaskPanel"]) {
     assert.doesNotMatch(readFunction(appSource, sideEntry), /beginHarnessProduceAction|turn\.rejected_recovery_pending/);
   }
+});
+
+test("invalid ordinary final reply enters recovery before legacy reply retry", () => {
+  const apply = readSection("function applyAiReply(", "function sendAiReplyAck(");
+  const invalidStart = apply.indexOf('if (!reply || reply.replace');
+  const retryStart = apply.indexOf('if (aiReplyRetryCount < 2)', invalidStart);
+  const recoveryStart = apply.indexOf('returnHarnessRecoveryAttemptToPending(requestId, "invalid_reply")', invalidStart);
+  assert.ok(invalidStart >= 0);
+  assert.ok(recoveryStart > invalidStart && recoveryStart < retryStart);
 });

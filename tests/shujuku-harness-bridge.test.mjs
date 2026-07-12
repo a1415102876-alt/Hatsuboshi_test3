@@ -50,6 +50,50 @@ function loadEnvelopeHelpers() {
   return context;
 }
 
+test("secondary envelope v2 requires exact job request scope and kind", () => {
+  const normalizeEnvelope = vm.runInNewContext(`(${readFunction(bridgeSource, "normalizeSecondaryEnvelope")})`);
+  const input = {
+    jobId: "world:day-2",
+    requestId: "req-1",
+    saveScope: "scope-a",
+    kind: "world",
+    prompt: "private prompt",
+    apiConfig: { baseUrl: "https://example.test", model: "m", apiKey: "secret" }
+  };
+  const result = clone(normalizeEnvelope(input, "scope-a"));
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.envelope, input);
+  assert.deepEqual(clone(normalizeEnvelope({ ...input, jobId: "" }, "scope-a")), { ok: false, reason: "invalid_secondary_envelope" });
+  assert.deepEqual(clone(normalizeEnvelope(input, "scope-b")), { ok: false, reason: "secondary_scope_mismatch" });
+});
+
+test("secondary reply echoes identity without prompt or API configuration", () => {
+  const createPayload = vm.runInNewContext(`(${readFunction(bridgeSource, "createSecondaryReplyPayload")})`);
+  const payload = clone(createPayload({ jobId: "job-1", requestId: "req-1", saveScope: "scope-a", kind: "world" }, "reply", { ok: true }));
+  assert.deepEqual(payload, {
+    source: "hatsuboshi-produce-host",
+    type: "secondaryAiReply",
+    jobId: "job-1",
+    requestId: "req-1",
+    saveScope: "scope-a",
+    kind: "world",
+    text: "reply",
+    ok: true,
+    error: "",
+    isFinal: true
+  });
+  assert.equal("prompt" in payload, false);
+  assert.equal("apiConfig" in payload, false);
+});
+
+test("host checks secondary scope before starting fetch and before posting result", () => {
+  const source = readFunction(bridgeSource, "runSecondaryApiPrompt");
+  const firstScopeCheck = source.indexOf("getCurrentContextInfo().saveScope");
+  const fetchIndex = source.indexOf("fetch(");
+  const secondScopeCheck = source.lastIndexOf("getCurrentContextInfo().saveScope");
+  assert.ok(firstScopeCheck >= 0 && firstScopeCheck < fetchIndex);
+  assert.ok(secondScopeCheck > fetchIndex);
+});
 test("host generation envelope requires request lease scope and explicit mode", () => {
   const { normalizeEnvelope } = loadEnvelopeHelpers();
   const normalized = normalizeEnvelope({
@@ -856,4 +900,60 @@ test("a successful host attempt retains the last failure and compensation reason
   assert.equal(snapshot.status, "completed");
   assert.equal(snapshot.lastFailureReason, "assistant_timeout");
   assert.equal(snapshot.lastCompensationReason, "assistant_timeout");
+});
+
+test("native SillyTavern generation end is observed for the active frontend request", () => {
+  const bind = readFunction(bridgeSource, "bindSillyTavernReplyBridge");
+  assert.match(bind, /eventTypes\.GENERATION_ENDED/);
+  assert.match(bind, /host_ended_empty/);
+  assert.match(bind, /eventTypes\.GENERATION_STOPPED[\s\S]*host_stopped_empty/);
+});
+
+test("empty final polling is bounded and fails the exact host request", () => {
+  const scheduled = [];
+  const errors = [];
+  let clears = 0;
+  const context = {
+    HOST_EMPTY_FINAL_MAX_RETRIES: 2,
+    pendingRequestId: "req-1",
+    pendingChannelLeaseId: "lease-1",
+    pendingEmptyFinalRetryCount: 0,
+    scheduleReplyRetry: (...args) => scheduled.push(args),
+    postPrimaryAiError: (requestId, channelLeaseId, error) => errors.push({ requestId, channelLeaseId, error: error.message }),
+    clearPendingReplyRequest: () => { clears += 1; }
+  };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "handleEmptyFinalReply"),
+    "this.handleEmpty = handleEmptyFinalReply;"
+  ].join("\n"), context);
+
+  assert.equal(context.handleEmpty(8, "host_ended_empty"), "retry");
+  assert.equal(context.handleEmpty(8, "host_ended_empty"), "retry");
+  assert.equal(context.handleEmpty(8, "host_ended_empty"), "failed");
+  assert.equal(scheduled.length, 2);
+  assert.deepEqual(scheduled.map((entry) => Array.from(entry)), [
+    [8, 350, "host_ended_empty"],
+    [8, 350, "host_ended_empty"]
+  ]);
+  assert.deepEqual(errors, [{ requestId: "req-1", channelLeaseId: "lease-1", error: "host_ended_empty" }]);
+  assert.equal(clears, 1);
+
+  context.pendingRequestId = "req-2";
+  context.pendingChannelLeaseId = "lease-2";
+  context.pendingEmptyFinalRetryCount = 0;
+  assert.equal(context.handleEmpty(-1, "host_ended_empty"), "failed");
+  assert.deepEqual(errors.at(-1), { requestId: "req-2", channelLeaseId: "lease-2", error: "host_ended_empty" });
+  assert.equal(clears, 2);
+});
+
+test("explicit frontend cancellation clears only the matching host attempt", () => {
+  const handlerStart = bridgeSource.indexOf("if (data.type === 'cancelPrimaryAttempt')");
+  const handlerEnd = bridgeSource.indexOf("if (data.type === 'sendPrompt')", handlerStart);
+  assert.notEqual(handlerStart, -1);
+  assert.notEqual(handlerEnd, -1);
+  const handler = bridgeSource.slice(handlerStart, handlerEnd);
+  assert.match(handler, /data\.requestId[\s\S]*pendingRequestId/);
+  assert.match(handler, /data\.channelLeaseId[\s\S]*pendingChannelLeaseId/);
+  assert.match(handler, /clearPendingReplyRequest\(\)/);
+  assert.match(handler, /stopGeneration/);
 });

@@ -9650,6 +9650,17 @@ body.is-free-mode-active {
   font: inherit;
 }
 
+.portrait-wardrobe-alias-editor { margin-top: 14px; padding-top: 13px; border-top: 1px solid rgba(55, 52, 62, 0.14); }
+.portrait-wardrobe-alias-tags { display: flex; flex-wrap: wrap; gap: 6px; min-height: 28px; margin-top: 8px; }
+.portrait-wardrobe-alias-tag { display: inline-flex; align-items: center; gap: 4px; min-width: 0; padding: 5px 8px; border: 1px solid rgba(224, 79, 120, 0.3); border-radius: 4px; background: rgba(255, 255, 255, 0.74); color: #3d3a43; font-size: 11px; font-weight: 750; }
+.portrait-wardrobe-alias-tag.is-default { border-color: rgba(73, 68, 84, 0.16); color: #77727e; }
+.portrait-wardrobe-alias-tag button { display: grid; width: 16px; height: 16px; padding: 0; border: 0; background: transparent; color: #a83c5a; cursor: pointer; }
+.portrait-wardrobe-alias-tag button svg { width: 16px; height: 16px; }
+.portrait-wardrobe-alias-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; margin-top: 8px; padding: 0 6px 0 10px; border: 1px solid rgba(55, 52, 62, 0.18); border-radius: 4px; background: rgba(255, 255, 255, 0.86); }
+.portrait-wardrobe-alias-entry input { min-width: 0; height: 36px; border: 0; outline: 0; background: transparent; color: #28272c; font: inherit; }
+.portrait-wardrobe-alias-entry button { min-width: 54px; height: 30px; padding: 0 12px; border: 0; border-radius: 4px; background: #e04f78; color: #fff; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.portrait-wardrobe-alias-entry button:hover, .portrait-wardrobe-alias-entry button:focus-visible { background: #c93f66; }
+
 .portrait-wardrobe-sliders { display: grid; gap: 5px; margin-top: 14px; }
 .portrait-wardrobe-sliders label { color: #57555d; font-size: 12px; font-weight: 800; }
 .portrait-wardrobe-sliders output { color: #28272c; font-variant-numeric: tabular-nums; }
@@ -9672,7 +9683,11 @@ body.is-free-mode-active {
 .portrait-wardrobe-action:disabled,
 .portrait-wardrobe-upload.is-disabled { opacity: 0.48; cursor: not-allowed; }
 
-#apartmentWardrobeBtn { border-color: rgba(65, 167, 133, 0.56); }
+#apartmentWardrobeBtn {
+  right: 4%;
+  bottom: calc(10% + env(safe-area-inset-bottom));
+  border-color: rgba(65, 167, 133, 0.56);
+}
 
 @media (max-width: 700px) {
   .portrait-wardrobe-overlay { padding: 0; place-items: stretch; }

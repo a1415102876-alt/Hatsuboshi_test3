@@ -9,7 +9,7 @@
 将当前“玩家发起行动、主模型回应”的沙盒循环扩展为一个持续演进的群像叙事系统。首版只建立以下闭环：
 
 1. 已接受的场景回复形成有界的结构化编年史索引。
-2. 次 API 根据编年史和当前世界状态生成 `DailyDirection` 与 `DramaPressure`。
+2. 次 API 只在日切或 DEBUG 手工触发时，根据累计编年史和当前世界状态生成 `DailyDirection` 与 `DramaPressure`。
 3. 本地代码校验并以受限 patch 提交结果。
 4. 主模型只接收当前场景相关的导演方向和压力。
 
@@ -40,7 +40,7 @@ flowchart LR
     Ack -- 否 --> Drop["丢弃候选"]
     Ack -- 是 --> Digest["提交 ChronicleDigest"]
     Digest --> Dirty["Director dirty"]
-    Dirty --> Job["EvolutionJob"]
+    Dirty --> Job["日切 / 手工 EvolutionJob"]
     Job --> Secondary["次 API"]
     Secondary --> Validate["schema / scope / revision 校验"]
     Validate --> Patch["受限 DirectorPatch"]
@@ -83,6 +83,14 @@ flowchart LR
 新增 `state.freeMode.world.director.chronicleDigests`，最多保存最近 32 条精简索引。它是 Director 输入缓存，不是新的正文存档，也不取代世界书。
 
 ```ts
+interface SceneDigestSignals {
+  facts: string[];
+  playerChoices: string[];
+  observations: string[];
+  hooksCreated: string[];
+  hooksResolved: string[];
+}
+
 interface ChronicleDigest {
   id: string;
   dayKey: string;
@@ -90,6 +98,8 @@ interface ChronicleDigest {
   participants: string[];
   summary: string;
   actionType: string;
+  evidenceQuality: "structured" | "summary_only";
+  signals: SceneDigestSignals;
   sourceTurnId: string;
   sourceRequestId: string;
   sourceMessageId: number | null;
@@ -100,28 +110,32 @@ interface ChronicleDigest {
 约束：
 
 - 不保存 Prompt 或正文。
-- `summary` 复用已验证的 `<sum>`，设置明确长度上限。
+- `summary` 复用已验证的 `<sum>`，保持现有世界书 100 字上限。
+- 可选 `<director_event>` 提供 facts、playerChoices、observations 和 hooks；每组最多 3 条并限制单条长度。
 - `participants`、`actionType`、day/time 从当前确定性上下文读取，不由模型猜测。
+- 存在合法 `<director_event>` 时标记 `structured`；只有 `<sum>` 时标记 `summary_only`。
 - 优先以 `sourceTurnId + sourceMessageId` 去重；缺失时回退 `sourceRequestId`。
-- 每次真正新增 digest 时，`chronicleRevision` 递增一次并设置 `dirty = true`。
+- 每次真正新增 digest 时，`chronicleRevision` 递增一次并设置 `dirty = true`，但不立即调用次 API。
 
 ### 4.3 候选暂存与提交
 
 当前 `requestChronicleUpdate()` 在 `applyAiReply()` 的 requestId 门禁后、路由解析前调用。Director digest 使用更严格的语义：
 
 1. `applyAiReply()` 通过 current request/lease 门禁。
-2. 从 reply candidates 提取合法 `<sum>`，形成内存 `ChronicleDigestCandidate`。
-3. 现有正文、选项、任务、手机或广播路由继续执行。
-4. 只有 `sendAiReplyAck(accepted=true, retry=false, isFinal=true)` 才提交候选。
-5. stale、partial、retry、解析失败或 rejected final 丢弃候选。
+2. 从 reply candidates 提取合法 `<sum>` 和可选 `<director_event>`，形成内存 `ChronicleDigestCandidate`。
+3. 本地确定性上下文覆盖 day、time、participants 和 actionType；模型字段不能覆盖这些值。
+4. 现有正文、选项、任务、手机或广播路由继续执行。
+5. 只有 `sendAiReplyAck(accepted=true, retry=false, isFinal=true)` 才提交候选。
+6. stale、partial、retry、解析失败或 rejected final 丢弃候选。
 
-提交成功后先释放 primary owner，再在安全检查点尝试启动 Director job。Director 失败不得改变现有正文提交结果。
+提交成功后释放 primary owner并保留 `dirty = true`。正常场景提交不启动 Director job；只有日切或 DEBUG 手工操作会消费累计 digests。Director 失败不得改变现有正文提交结果。
 
 ## 5. Director 状态
 
 ```ts
 interface WorldDirectorState {
   schemaVersion: 1;
+  enabled: boolean;
   directorRevision: number;
   chronicleRevision: number;
   chronicleDigests: ChronicleDigest[];
@@ -174,11 +188,26 @@ type PressureStatus =
   | "transformed"
   | "dissipated";
 
+type PressureTheme =
+  | "neglect"
+  | "trust"
+  | "competition"
+  | "overwork"
+  | "identity"
+  | "public_rumor"
+  | "schedule_conflict"
+  | "unresolved_promise"
+  | "goal_block"
+  | "other";
+
 interface DramaPressure {
   id: string;
   signature: string;
   type: "relationship" | "goal" | "identity" | "social" | "schedule";
-  subjects: string[];
+  theme: PressureTheme;
+  actorId: string;
+  targetIds: string[];
+  scopeKey: string;
   sourceRefs: string[];
   sourceSummary: string;
   stage: PressureStage;
@@ -194,7 +223,13 @@ interface DramaPressure {
 }
 ```
 
-Pressure ID 由本地根据标准化后的 `type + subjects + source signature` 派生。模型可提供匹配提示，但不能直接决定最终 ID。相同 signature 必须合并，不能重复创建。
+Pressure identity 由本地标准化并生成：
+
+```text
+v1|type|theme|actorId|sorted(targetIds)|scopeKey
+```
+
+`theme` 只能取受控枚举；`actorId/targetIds` 必须是已知角色；`scopeKey` 只能使用本地已知 threadId，缺失时为 `global`。模型明确引用有效现存 `pressureId` 时优先更新；否则只匹配 active/suspended 的相同 signature。合并后的 sourceRefs 做去重并集，且一次更新必须至少带来一个新 digest。单次 intensity 变化限制为 `±20`，阶段通常只允许前进或后退一级。resolved/dissipated 不参与普通合并；新证据需要创建同 signature 的新 episode。
 
 ### 5.3 Receipt
 
@@ -235,7 +270,7 @@ interface EvolutionJob {
   jobId: string;
   requestId: string;
   saveScope: string;
-  trigger: "scene_commit" | "day_change" | "manual";
+  trigger: "day_change" | "manual";
   dayKey: string;
   baseDirectorRevision: number;
   baseChronicleRevision: number;
@@ -259,7 +294,7 @@ Job 不持久化完整 Prompt。刷新时，`generating/validating` 统一归一
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> Prepared: accepted scene / day change / manual
+    Idle --> Prepared: day change / manual
     Prepared --> Generating: secondary acquire success
     Prepared --> Prepared: secondary busy
     Generating --> Validating: exact reply
@@ -281,7 +316,7 @@ Director job 失败时保留上一版 Direction/Pressure，不回退现有公开
 - schemaVersion、saveScope、jobId；
 - baseDirectorRevision、baseChronicleRevision；
 - dayKey、时间阶段和当前地点；
-- 最近 12 条 digests；
+- 最近 12 条 digests，包含 evidenceQuality 和有界 signals；
 - active pressures，设置数量上限；
 - 当前 DailyDirection；
 - 已知角色的最小关系/阶段快照；
@@ -329,7 +364,7 @@ interface DirectorOutput {
 7. 合法阶段转换和 locked 保护。
 8. 本地 signature 去重。
 
-任何一步失败都不得部分写入。
+任何一步失败都不得部分写入。额外证据门禁：单条 `summary_only` digest 不得独立创建新 Pressure；新建操作必须引用至少一条 `structured` digest，或至少两条不同的 `summary_only` digests。`summary_only` 单条证据可以更新已经存在的同 signature Pressure。
 
 ### 7.4 提交
 
@@ -375,6 +410,24 @@ function composeDirectorNarrativeBlock(
 - 场景不合适时允许轻微表现、延期或保持潜伏。
 - 不得据此修改确定性数值或替玩家作出选择。
 
+### 8.3 场景证据输出契约
+
+现有 `<sum>` 保持世界书兼容格式，不扩大 100 字上限。首版目标 Prompt builder 在正文结束后额外请求一个可选结构化块：
+
+```xml
+<director_event>
+{
+  "facts": ["可直接观察或明确说出的事实"],
+  "playerChoices": ["玩家明确选择"],
+  "observations": ["不确定的表层观察"],
+  "hooksCreated": ["新伏笔"],
+  "hooksResolved": ["已回收伏笔"]
+}
+</director_event>
+```
+
+该块不进入 story 或世界书正文。事实与解释必须分离；角色未明确表达的内心只能进入 observations。结构缺失或非法时仍可提交 `summary_only` digest，不能影响正常正文接受。
+
 首版只接入：
 
 - 普通 `lesson/training/rest` 的 `buildPrompt()`；
@@ -385,13 +438,14 @@ function composeDirectorNarrativeBlock(
 
 ## 9. 调度时机
 
-安全检查点：
+正常场景只提交 digest 和设置 dirty，不自动调用 Director。首版只有两个启动点：
 
-1. accepted final scene digest 提交且 primary lease 已释放；
-2. `advanceFreeModeToNextDay()` 完成确定性日切后；
-3. DEBUG 中用户手工请求重算。
+1. `advanceFreeModeToNextDay()` 完成确定性日切后；
+2. DEBUG 中用户手工请求重算。
 
-Director 不自动在 primary 生成期间启动。secondary 忙时不建立复杂队列，只保留 dirty；下一个安全检查点再尝试。
+`DailyDirection` 在正常游戏中严格日级：一旦为当前 dayKey 成功提交，日内不自动替换。注入时必须满足 `dailyDirection.dayKey === currentDayKey`；日切失败时，旧方向仅保留审计，不注入新一天。DEBUG 的“重算今日”是显式人工覆盖，必须写 receipt。
+
+日切继续优先执行现有公开世界生成。其 secondary owner 成功或失败释放后，再检查 Director dirty 并尝试启动 Director job。该后继检查不是通用队列。Director 不在 primary 生成期间启动；secondary 忙时只保留 dirty，等待日切链路释放或手工重算。
 
 ## 10. 文件边界
 
@@ -438,7 +492,7 @@ Director 不自动在 primary 生成期间启动。secondary 忙时不建立复�
 ### Stage 1：Director 状态与 Digest
 
 - 实现 Director state schema 与迁移。
-- 实现候选暂存和 accepted final ACK 提交。
+- 实现 `<sum>` + 可选 `<director_event>` 候选暂存、evidenceQuality 和 accepted final ACK 提交。
 - 实现有界 digests、revision 和 receipts。
 - 不调用次 API，不注入 Prompt。
 
@@ -452,7 +506,7 @@ Director 不自动在 primary 生成期间启动。secondary 忙时不建立复�
 ### Stage 3：DailyDirection + DramaPressure
 
 - 实现 input builder、Director Prompt、parser、validator 和 patch apply。
-- 场景结束、日切和手工按钮可启动非阻塞 job。
+- 只允许日切和 DEBUG 手工按钮启动非阻塞 job；场景结束只积累 digest。
 - 非法或 stale 结果不写状态。
 
 ### Stage 4：私有叙事注入
@@ -482,7 +536,7 @@ Director 不自动在 primary 生成期间启动。secondary 忙时不建立复�
 
 - shape 迁移与旧存档兼容；
 - digest 去重、裁剪和 revision；
-- pressure signature 和阶段转换；
+- pressure theme identity、signature、episode 合并、强度步长和阶段转换；
 - input snapshot 不泄漏完整 state/Prompt/API key；
 - output schema、枚举、sourceRef 和长度限制；
 - patch 全有或全无；
@@ -490,14 +544,14 @@ Director 不自动在 primary 生成期间启动。secondary 忙时不建立复�
 
 ### 12.2 执行级集成测试
 
-- stale/partial/retry 回复不提交 digest；
+- stale/partial/retry 回复不提交 digest，非法 director_event 降级为 summary_only；
 - accepted final ACK 只提交一次；
 - secondary busy 在任何 loading/save/UI 写入前拒绝；
 - 旧 job 无法释放或提交新 owner；
 - 切 `saveScope` 后旧结果拒绝；
 - job 期间 chronicleRevision 变化导致整体拒绝；
 - refresh 后不恢复旧网络请求，只保留 dirty；
-- Director 失败不阻止普通行动。
+- Director 失败不阻止普通行动，场景提交不自动发起次 API。
 
 ### 12.3 回归测试
 
@@ -517,7 +571,7 @@ Director 不自动在 primary 生成期间启动。secondary 忙时不建立复�
 
 至少验证：
 
-1. 普通场景 accepted final 后出现一个 digest。
+1. 普通场景 accepted final 后出现一个 digest，但日内不会自动发起 Director 请求。
 2. 重 roll/旧回复不重复写 digest。
 3. Director job 不阻塞下一次普通行动。
 4. secondary world/daily/tier 与 Director 互相抢占时无前置副作用。
@@ -536,15 +590,15 @@ Director 不自动在 primary 生成期间启动。secondary 忙时不建立复�
 - 不把完整正文、Prompt、API key 或完整 state 写入 Director state/receipt。
 - 不让 AI 决定权威数值、时间、随机、reply 接受性或任意 state path。
 - 不在首版实现 CharacterIntent、Initiative、主动 SNS、私信或来访。
-- 不一次性迁移所有 Prompt builder。
+- 不一次性迁移所有 Prompt builder，也不按场景自动调用 Director API。
 
 ## 14. 首版完成标准
 
 首版完成必须同时满足：
 
 1. Digest 只在 accepted final ACK 后写入且可去重。
-2. `DailyDirection + DramaPressure` 可从当前编年史生成、校验、提交和保存。
-3. 相同压力不会重复创建。
+2. 日切或手工触发可从累计编年史生成、校验、提交和保存严格日级的 `DailyDirection + DramaPressure`。
+3. 相同 signature 的 active/suspended pressure 不会重复创建；resolved/dissipated 后的新证据创建新 episode。
 4. 旧 scope、旧 job、旧 request 和旧 revision 结果均无法覆盖新状态。
 5. 次 API 非法角色、非法阶段和未知 sourceRef 被拒绝。
 6. 主模型只收到当前参与者相关的私有 Director block。

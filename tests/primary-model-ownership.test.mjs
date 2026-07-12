@@ -215,3 +215,43 @@ test("frontend rejects an old lease before applying a reply with the reused requ
   const applyIndex = route.indexOf("applyAiReply(");
   assert.ok(gateIndex >= 0 && gateIndex < applyIndex);
 });
+
+test("debug skip cancels the host attempt and releases the exact lease", () => {
+  const owner = {
+    requestId: "req-1",
+    channelLeaseId: "lease-1",
+    ownerKind: "ordinary_action",
+    turnId: "turn-1"
+  };
+  const posted = [];
+  const released = [];
+  const marked = [];
+  const context = {
+    state: { harness: { activeTurn: { turnId: "turn-1", requestId: "req-1", status: "generating" } } },
+    isSillyTavernHost: () => true,
+    markHarnessProduceTurn: (...args) => marked.push(args),
+    releasePrimaryModelChannel: (...args) => { released.push(args); return true; },
+    window: { parent: { postMessage: (payload) => posted.push(payload) } }
+  };
+  vm.runInNewContext([
+    readFunction(appSource, "finishDebugSkippedPrimaryAttempt"),
+    "this.finishSkip = finishDebugSkippedPrimaryAttempt;"
+  ].join("\n"), context);
+
+  assert.equal(context.finishSkip(owner), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(marked)), [["completed_without_narrative", { completionReason: "debug_skip" }, "req-1"]]);
+  assert.deepEqual(released.map((entry) => Array.from(entry)), [["req-1", "lease-1", "debug_skip"]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(posted)), [{
+    source: "hatsuboshi-produce",
+    type: "cancelPrimaryAttempt",
+    requestId: "req-1",
+    channelLeaseId: "lease-1",
+    reason: "debug_skip"
+  }]);
+
+  const recoveryOwner = { ...owner, requestId: "req-2", channelLeaseId: "lease-2", ownerKind: "ordinary_recovery" };
+  context.state.harness.activeTurn = { turnId: "turn-1", requestId: "req-2", status: "generating" };
+  assert.equal(context.finishSkip(recoveryOwner), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(marked.at(-1))), ["completed_without_narrative", { completionReason: "debug_skip" }, "req-2"]);
+  assert.deepEqual(Array.from(released.at(-1)), ["req-2", "lease-2", "debug_skip"]);
+});

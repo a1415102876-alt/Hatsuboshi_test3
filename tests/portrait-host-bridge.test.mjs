@@ -193,3 +193,11 @@ test("portrait file messages bypass the primary prompt queue", () => {
   assert.match(prefix, /data\.type === 'portraitFileOperation'/);
   assert.doesNotMatch(prefix, /queuePromptTask/);
 });
+
+test("portrait file messages are normalized exactly once by the executor", () => {
+  const start = bridgeSource.indexOf("if (data.type === 'portraitFileOperation')");
+  const end = bridgeSource.indexOf("if (data.type === 'sendPrompt')", start);
+  const route = bridgeSource.slice(start, end);
+  assert.match(route, /executePortraitFileOperation\(data\)/);
+  assert.doesNotMatch(route, /executePortraitFileOperation\(request\)/);
+});

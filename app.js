@@ -8,6 +8,7 @@
   const lessonEventChance = 45;
   const trainingEventChance = 55;
   const PRIMARY_MODEL_CHANNEL_TIMEOUT_MS = 5 * 60 * 1000;
+  const SECONDARY_MODEL_CHANNEL_TIMEOUT_MS = 5 * 60 * 1000;
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -2347,10 +2348,11 @@
         kotone_seina_proxy: "pending",
         school_events: [],
         broadcast: { today: null, history: [], pendingRequestId: "", autoFullScript: false },
-        buzz: { items: [], buzzDayKey: "", hotTopic: "" }
+        buzz: { items: [], buzzDayKey: "", hotTopic: "" },
+        director: globalThis.HatsuWorld?.directorState?.defaultDirectorState?.() || null
       }
     },
-    appearance: { schemaVersion: 1, equipped: {} },
+    appearance: { schemaVersion: 2, equipped: {}, bindings: { producer: { aliases: [] } } },
     activeStoryNode: null,
     log: [],
     boundCharacter: null,
@@ -2719,8 +2721,10 @@
     lastRejectAt: 0
   };
   let activeInboundPrimaryChannelLeaseId = "";
-  let pendingSecondaryRequestId = "";
-  let pendingSecondaryMeta = null;
+  const pendingDirectorDigestCandidates = new Map();
+  let secondaryChannelOwner = null;
+  let secondaryChannelMeta = null;
+  let secondaryChannelTimeoutId = 0;
   let aiReplyRetryCount = 0;
   let phoneChatTypingVisible = false;
   let phoneChatDeliveryTimer = null;
@@ -2787,6 +2791,7 @@
     selectedFile: null,
     selectedMeta: null,
     draftName: "",
+    draftProducerAliases: [],
     draftTransform: { ...globalThis.HatsuPortraits.DEFAULT_TRANSFORM },
     timeoutId: 0
   };
@@ -3141,7 +3146,7 @@
 
   let state = loadState();
 
-  ensureStateShape();
+  ensureStateShape({ recoverDirectorAttempt: true });
   if (state.uiVersion !== UI_VERSION || (state.idol && !idols[state.idol])) {
     state = clone(baseState);
     ensureStateShape();
@@ -3220,6 +3225,67 @@
     return "";
   }
 
+  function getDefaultProducerPortraitAliases() {
+    return globalThis.HatsuPortraits.normalizeProducerAliases([
+      "制作人", "P", "producer", "producer-san", state.producer?.name
+    ]);
+  }
+
+  function addProducerPortraitAlias(value) {
+    if (portraitWardrobeState.selectedCharacterKey !== "producer") return { ok: false, error: "producer_only" };
+    const alias = String(value || "").trim();
+    if (!alias) return { ok: false, error: "alias_required" };
+    if (alias.length > globalThis.HatsuPortraits.MAX_PRODUCER_ALIAS_LENGTH) return { ok: false, error: "alias_too_long" };
+    const key = alias.toLowerCase();
+    if (getDefaultProducerPortraitAliases().some((item) => item.toLowerCase() === key)) return { ok: false, error: "default_alias" };
+    const canonical = canonicalIdolName(alias);
+    if (idols[canonical]) return { ok: false, error: "idol_conflict" };
+    const current = globalThis.HatsuPortraits.normalizeProducerAliases(portraitWardrobeState.draftProducerAliases);
+    if (current.some((item) => item.toLowerCase() === key)) return { ok: false, error: "duplicate_alias" };
+    if (current.length >= globalThis.HatsuPortraits.MAX_PRODUCER_ALIASES) return { ok: false, error: "alias_limit" };
+    portraitWardrobeState.draftProducerAliases = [...current, alias];
+    renderPortraitWardrobe();
+    return { ok: true, alias };
+  }
+
+  function removeProducerPortraitAlias(value) {
+    const key = String(value || "").trim().toLowerCase();
+    const current = globalThis.HatsuPortraits.normalizeProducerAliases(portraitWardrobeState.draftProducerAliases);
+    const next = current.filter((alias) => alias.toLowerCase() !== key);
+    if (!key || next.length === current.length) return false;
+    portraitWardrobeState.draftProducerAliases = next;
+    renderPortraitWardrobe();
+    return true;
+  }
+
+  function saveProducerPortraitAliases() {
+    if (portraitWardrobeState.selectedCharacterKey !== "producer") return false;
+    const appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
+    appearance.bindings.producer.aliases = globalThis.HatsuPortraits.normalizeProducerAliases(portraitWardrobeState.draftProducerAliases);
+    state.appearance = appearance;
+    saveState("portrait.aliases");
+    renderPortraitWardrobe();
+    return true;
+  }
+  function submitProducerPortraitAliasInput() {
+    const input = document.getElementById("portraitWardrobeAliasInput");
+    if (!input) return { ok: false, error: "input_missing" };
+    const result = addProducerPortraitAlias(input.value);
+    if (result.ok) {
+      input.value = "";
+      return result;
+    }
+    const messages = {
+      alias_required: "请输入名称。",
+      alias_too_long: "名称不能超过 40 个字符。",
+      default_alias: "该名称已经是默认触发名称。",
+      idol_conflict: "该名称与已知偶像重名。",
+      duplicate_alias: "该名称已经添加。",
+      alias_limit: "最多添加 12 个自定义名称。"
+    };
+    showToast("名称未添加", messages[result.error] || "请检查名称。", "warn");
+    return result;
+  }
   function requestPortraitLibraryRefresh(deps = {}) {
     if (portraitWardrobeState.pendingOperation) return false;
     const isHost = deps.isHost || isSillyTavernHost;
@@ -3248,7 +3314,9 @@
     if (!options.some((item) => item.characterKey === portraitWardrobeState.selectedCharacterKey)) {
       portraitWardrobeState.selectedCharacterKey = "producer";
     }
-    const equipped = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance).equipped[portraitWardrobeState.selectedCharacterKey];
+    const appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
+    const equipped = appearance.equipped[portraitWardrobeState.selectedCharacterKey];
+    portraitWardrobeState.draftProducerAliases = [...appearance.bindings.producer.aliases];
     portraitWardrobeState.selectedAssetId = equipped?.assetId || "";
     portraitWardrobeState.draftName = equipped?.name || "";
     portraitWardrobeState.draftTransform = globalThis.HatsuPortraits.normalizeTransform(equipped?.transform);
@@ -3273,7 +3341,9 @@
     portraitWardrobeState.selectedFile = null;
     portraitWardrobeState.selectedMeta = null;
     portraitWardrobeState.selectedCharacterKey = characterKey;
-    const equipped = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance).equipped[characterKey];
+    const appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
+    const equipped = appearance.equipped[characterKey];
+    portraitWardrobeState.draftProducerAliases = [...appearance.bindings.producer.aliases];
     portraitWardrobeState.selectedAssetId = equipped?.assetId || "";
     portraitWardrobeState.draftName = equipped?.name || "";
     portraitWardrobeState.draftTransform = globalThis.HatsuPortraits.normalizeTransform(equipped?.transform);
@@ -3387,7 +3457,7 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = `portrait-wardrobe-asset${asset.assetId === portraitWardrobeState.selectedAssetId ? " is-active" : ""}`;
-        button.title = asset.name || "Custom portrait";
+        button.title = asset.name || "自定义立绘";
         const image = document.createElement("img");
         image.src = asset.url;
         image.alt = "";
@@ -3412,9 +3482,35 @@
     const nameEl = document.getElementById("portraitWardrobeCharacterName");
     const lookEl = document.getElementById("portraitWardrobeLookName");
     if (nameEl) nameEl.textContent = option?.label || characterKey;
-    if (lookEl) lookEl.textContent = portraitWardrobeState.draftName || selected?.name || equipped?.name || "Builtin";
+    if (lookEl) lookEl.textContent = portraitWardrobeState.draftName || selected?.name || equipped?.name || "默认立绘";
     const nameInput = document.getElementById("portraitWardrobeNameInput");
     if (nameInput && nameInput.value !== portraitWardrobeState.draftName) nameInput.value = portraitWardrobeState.draftName;
+    const aliasEditor = document.getElementById("portraitWardrobeAliasEditor");
+    const isProducer = characterKey === "producer";
+    if (aliasEditor) aliasEditor.hidden = !isProducer;
+    const aliasTags = document.getElementById("portraitWardrobeAliasTags");
+    if (aliasTags && isProducer) {
+      aliasTags.textContent = "";
+      getDefaultProducerPortraitAliases().forEach((alias) => {
+        const tag = document.createElement("span");
+        tag.className = "portrait-wardrobe-alias-tag is-default";
+        tag.textContent = alias;
+        aliasTags.appendChild(tag);
+      });
+      globalThis.HatsuPortraits.normalizeProducerAliases(portraitWardrobeState.draftProducerAliases).forEach((alias) => {
+        const tag = document.createElement("span");
+        tag.className = "portrait-wardrobe-alias-tag";
+        tag.append(document.createTextNode(alias));
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.title = `删除 ${alias}`;
+        remove.setAttribute("aria-label", `删除 ${alias}`);
+        remove.innerHTML = '<svg aria-hidden="true"><use href="#icon-close"></use></svg>';
+        remove.addEventListener("click", () => removeProducerPortraitAlias(alias));
+        tag.appendChild(remove);
+        aliasTags.appendChild(tag);
+      });
+    }
     const values = [["portraitWardrobeScale", Math.round(transform.scale * 100)], ["portraitWardrobeOffsetX", transform.offsetX], ["portraitWardrobeOffsetY", transform.offsetY]];
     values.forEach(([id, value]) => { const input = document.getElementById(id); if (input) input.value = String(value); });
     const scaleOutput = document.getElementById("portraitWardrobeScaleValue");
@@ -3463,7 +3559,7 @@
       const saved = localStorage.getItem(backupStorageKeyForScope());
       if (!saved) return false;
       state = { ...clone(baseState), ...JSON.parse(saved) };
-      ensureStateShape();
+      ensureStateShape({ recoverDirectorAttempt: true });
       state.launchMenuPaused = false;
       pendingAiRequestId = "";
       state.pendingAiRequestId = "";
@@ -3480,7 +3576,7 @@
     if (nextKey === activeStorageKey) return false;
     activeStorageKey = nextKey;
     state = loadState();
-    ensureStateShape();
+    ensureStateShape({ recoverDirectorAttempt: true });
     return true;
   }
 
@@ -3488,7 +3584,7 @@
     return idolAliases[name] || name;
   }
 
-  function ensureStateShape() {
+  function ensureStateShape(options = {}) {
     state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
     state.appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
     state.gameMode = state.gameMode === "hybrid" ? "hybrid" : "classic";
@@ -3591,6 +3687,10 @@
         ...(state.freeMode.world?.broadcast || {})
       }
     };
+    state.freeMode.world.director = globalThis.HatsuWorld?.directorState?.ensureDirectorShape?.(
+      state.freeMode.world.director,
+      { recoverInterrupted: Boolean(options.recoverDirectorAttempt) }
+    ) || null;
     if (state.freeMode.world.broadcast.autoFullScript === undefined) {
       state.freeMode.world.broadcast.autoFullScript = false;
     }
@@ -3840,6 +3940,312 @@
     }
   }
 
+  function getSecondaryChannelSaveScope() {
+    return String(activeHostSaveScope || activeStorageKey || "local");
+  }
+
+  function getSecondaryModelChannelOwner() {
+    return secondaryChannelOwner ? { ...secondaryChannelOwner } : null;
+  }
+
+  function createSecondaryJobId(kind, requestId, meta = {}) {
+    const discriminator = meta.dayKey ?? meta.slotIndex ?? "manual";
+    return `secondary:${kind}:${String(discriminator)}:${requestId}`;
+  }
+
+  function rejectSecondaryModelDispatch(owner, intent) {
+    pushSecondaryDebug({ phase: "reject", kind: intent?.kind || "?", requestId: intent?.requestId || "", error: owner ? `secondary_busy:${owner.kind}` : "invalid_secondary_intent" });
+    showToast("次模型通道占用中", owner ? `当前正在处理 ${owner.kind} 请求，请稍后再试。` : "本次请求标识无效。", "warn");
+    return { ok: false, reason: owner ? "secondary_busy" : "invalid_secondary_intent", blockingOwner: owner || null };
+  }
+
+  function scheduleSecondaryModelChannelTimeout(owner) {
+    if (secondaryChannelTimeoutId) clearTimeout(secondaryChannelTimeoutId);
+    secondaryChannelTimeoutId = window.setTimeout(() => {
+      handleSecondaryAiReply({ ...owner, text: "", ok: false, error: "timeout" });
+    }, SECONDARY_MODEL_CHANNEL_TIMEOUT_MS);
+  }
+
+  function acquireSecondaryModelChannel(intent, meta = {}) {
+    const api = globalThis.HatsuWorld?.secondaryChannelOwner;
+    if (!api) return rejectSecondaryModelDispatch(null, intent);
+    const result = api.acquireSecondaryOwner(secondaryChannelOwner, intent);
+    if (!result.acquired) return rejectSecondaryModelDispatch(result.owner, intent);
+    secondaryChannelOwner = result.owner;
+    secondaryChannelMeta = { ...(meta || {}) };
+    scheduleSecondaryModelChannelTimeout(result.owner);
+    pushSecondaryDebug({ phase: "acquire", kind: result.owner.kind, requestId: result.owner.requestId });
+    return { ok: true, owner: { ...result.owner } };
+  }
+
+  function acquireSecondaryEntryDispatch(kind, requestId, meta = {}) {
+    return acquireSecondaryModelChannel({
+      jobId: String(meta.jobId || createSecondaryJobId(kind, requestId, meta)),
+      requestId: String(requestId || ""),
+      kind: String(kind || ""),
+      saveScope: getSecondaryChannelSaveScope(),
+      acquiredAt: Date.now()
+    }, meta);
+  }
+
+  function releaseSecondaryModelChannel(jobId, requestId, saveScope, reason = "completed") {
+    const api = globalThis.HatsuWorld?.secondaryChannelOwner;
+    if (!api) return false;
+    const result = api.releaseSecondaryOwner(secondaryChannelOwner, { jobId, requestId, saveScope });
+    if (!result.released) return false;
+    if (secondaryChannelTimeoutId) clearTimeout(secondaryChannelTimeoutId);
+    secondaryChannelTimeoutId = 0;
+    secondaryChannelOwner = null;
+    secondaryChannelMeta = null;
+    pushSecondaryDebug({ phase: "release", kind: "secondary", requestId, error: String(reason || "completed") });
+    return true;
+  }
+
+  function isCurrentSecondaryReply(payload) {
+    const api = globalThis.HatsuWorld?.secondaryChannelOwner;
+    if (!api || !secondaryChannelOwner) return false;
+    const expectedScope = isSillyTavernHost() ? String(activeHostSaveScope || "") : getSecondaryChannelSaveScope();
+    return Boolean(expectedScope && String(payload?.saveScope || "") === expectedScope && api.isSecondaryOwnerMatch(secondaryChannelOwner, payload));
+  }
+  function getWorldDirectorState() {
+    const api = globalThis.HatsuWorld?.directorState;
+    if (!api || !state.freeMode?.world) return null;
+    if (!state.freeMode.world.director || typeof state.freeMode.world.director !== "object") {
+      state.freeMode.world.director = api.defaultDirectorState();
+    }
+    return state.freeMode.world.director;
+  }
+
+  function getWorldDirectorHelpers() {
+    const idolNames = Object.keys(idols);
+    const knownCharacters = idolNames.map((name) => ({
+      id: "idol:" + name,
+      name,
+      relationshipStage: String(getAffinityStageThreshold(
+        state.freeMode?.relationships?.[name] ?? (name === state.idol ? state.trust : 0)
+      ))
+    }));
+    const locationId = String(state.freeMode?.activeLocationId || "");
+    const scope = getSecondaryChannelSaveScope();
+    return {
+      knownActorIds: ["producer", ...knownCharacters.map((item) => item.id)],
+      knownScopeKeys: ["global", scope, ...(locationId ? ["location:" + locationId] : [])],
+      getKnownCharacters: () => knownCharacters,
+      composePublicWorldSummary: () => composeWorldSummaryBlock("director", locationId),
+      getRecentSceneStats: () => {
+        const stats = {};
+        const digests = getWorldDirectorState()?.chronicleDigests || [];
+        digests.slice(-12).forEach((digest) => {
+          const key = String(digest.actionType || "narrative");
+          stats[key] = (stats[key] || 0) + 1;
+        });
+        return stats;
+      },
+      getTimePhase: () => isFreeModeActive() ? formatFreeModeClock() : getPhase() + " / " + roundLabel(),
+      getLocationId: () => locationId
+    };
+  }
+
+  function createWorldDirectorJobId(trigger, dayKey) {
+    return "director:" + trigger + ":" + dayKey + ":" + Date.now().toString(36) + "-" + Math.random().toString(16).slice(2, 8);
+  }
+
+  function prepareWorldDirectorJob(trigger, options = {}) {
+    if (!["day_change", "manual"].includes(trigger)) return null;
+    const director = getWorldDirectorState();
+    if (!director?.enabled) return null;
+    const dayKey = String(options.dayKey || getWorldFeedDayKey());
+    const saveScope = getSecondaryChannelSaveScope();
+    if (!dayKey || !saveScope) return null;
+    if (trigger === "day_change" && director.dailyDirection?.dayKey === dayKey) return null;
+    const active = director.activeJob;
+    if (
+      trigger === "day_change"
+      && active?.trigger === "day_change"
+      && active.dayKey === dayKey
+      && active.saveScope === saveScope
+      && active.baseDirectorRevision === director.directorRevision
+      && active.baseChronicleRevision === director.chronicleRevision
+      && ["prepared", "retryable_failed", "generating", "validating"].includes(active.status)
+    ) return { ...active };
+    const job = {
+      jobId: createWorldDirectorJobId(trigger, dayKey),
+      requestId: "",
+      saveScope,
+      trigger,
+      dayKey,
+      baseDirectorRevision: director.directorRevision,
+      baseChronicleRevision: director.chronicleRevision,
+      status: "prepared",
+      reason: "",
+      attempts: 0,
+      preparedAt: Date.now(),
+      startedAt: 0
+    };
+    director.activeJob = job;
+    director.dirty = true;
+    if (options.persist !== false) saveState("director.job_prepared");
+    return { ...job };
+  }
+
+  function maybeRequestWorldDirector(options = {}) {
+    const director = getWorldDirectorState();
+    let job = director?.activeJob;
+    if (
+      !director?.enabled
+      || !director.dirty
+      || !job
+      || !["prepared", "retryable_failed"].includes(job.status)
+      || job.saveScope !== getSecondaryChannelSaveScope()
+      || getPrimaryModelChannelOwner()
+      || getSecondaryModelChannelOwner()
+      || !isSecondaryApiConfigured()
+    ) return false;
+    if (
+      job.baseDirectorRevision !== director.directorRevision
+      || job.baseChronicleRevision !== director.chronicleRevision
+    ) {
+      const refreshed = prepareWorldDirectorJob(job.trigger, { dayKey: job.dayKey, persist: false });
+      if (!refreshed) return false;
+      job = director.activeJob;
+      saveState("director.job_rebased");
+    }
+    const requestId = createSecondaryRequestId("director");
+    const dispatch = acquireSecondaryEntryDispatch("director", requestId, {
+      jobId: job.jobId,
+      trigger: job.trigger,
+      dayKey: job.dayKey,
+      baseDirectorRevision: job.baseDirectorRevision,
+      baseChronicleRevision: job.baseChronicleRevision
+    });
+    if (!dispatch.ok) return false;
+    director.activeJob = {
+      ...job,
+      requestId,
+      status: "generating",
+      reason: "",
+      attempts: Number(job.attempts || 0) + 1,
+      startedAt: Date.now()
+    };
+    saveState("director.generating");
+    const api = globalThis.HatsuWorld?.directorApi;
+    let prompt = "";
+    try {
+      const input = api?.buildDirectorInput?.(state, director.activeJob, getWorldDirectorHelpers());
+      prompt = input && api?.buildDirectorPrompt?.(input);
+    } catch (error) {
+      finishWorldDirectorAttempt(dispatch.owner, { ok: false, reason: "prompt_build_failed" });
+      return false;
+    }
+    if (!prompt) {
+      finishWorldDirectorAttempt(dispatch.owner, { ok: false, reason: "prompt_build_failed" });
+      return false;
+    }
+    try {
+      if (requestHostSecondaryPromptSend(prompt, dispatch.owner)) return true;
+    } catch (error) {
+      // The exact owner is released below through the common retryable failure path.
+    }
+    finishWorldDirectorAttempt(dispatch.owner, { ok: false, reason: "send_failed" });
+    return false;
+  }
+
+  function finishWorldDirectorAttempt(owner, result = {}) {
+    const director = getWorldDirectorState();
+    const job = director?.activeJob;
+    if (
+      !job
+      || !owner
+      || job.jobId !== owner.jobId
+      || job.requestId !== owner.requestId
+      || job.saveScope !== owner.saveScope
+    ) return false;
+    if (!releaseSecondaryModelChannel(owner.jobId, owner.requestId, owner.saveScope, result.reason || "failed")) return false;
+    if (result.ok) return true;
+    director.activeJob = {
+      ...job,
+      requestId: "",
+      status: "retryable_failed",
+      reason: String(result.reason || "generation_failed").slice(0, 120),
+      startedAt: 0
+    };
+    director.dirty = true;
+    saveState("director.retryable_failed");
+    renderSecondaryApiDebug();
+    return false;
+  }
+
+  function resumeWorldDirectorAfterRelease(reason = "") {
+    if (typeof shouldUseSecondaryWorldGen === "function" && shouldUseSecondaryWorldGen()) {
+      maybeRequestDailyWorldGeneration();
+      if (getSecondaryModelChannelOwner()) return true;
+    }
+    return maybeRequestWorldDirector({ reason: reason || "director_owner_released" });
+  }
+  function handleWorldDirectorReply(payload, owner) {
+    const director = getWorldDirectorState();
+    const job = director?.activeJob;
+    if (
+      !owner
+      || owner.kind !== "director"
+      || payload?.jobId !== owner.jobId
+      || payload?.requestId !== owner.requestId
+      || payload?.saveScope !== owner.saveScope
+      || owner.saveScope !== getSecondaryChannelSaveScope()
+    ) return false;
+    if (
+      !job
+      || job.jobId !== owner.jobId
+      || job.requestId !== owner.requestId
+      || job.saveScope !== owner.saveScope
+    ) {
+      releaseSecondaryModelChannel(owner.jobId, owner.requestId, owner.saveScope, "director_job_mismatch");
+      renderSecondaryApiDebug();
+      resumeWorldDirectorAfterRelease("director_job_mismatch");
+      return false;
+    }
+    if (!director.enabled) return finishWorldDirectorAttempt(owner, { ok: false, reason: "feature_disabled" });
+    if (
+      job.baseDirectorRevision !== director.directorRevision
+      || job.baseChronicleRevision !== director.chronicleRevision
+    ) return finishWorldDirectorAttempt(owner, { ok: false, reason: "stale_revision" });
+    const text = String(payload?.text || "");
+    if (!payload?.ok || !text.trim()) {
+      return finishWorldDirectorAttempt(owner, { ok: false, reason: String(payload?.error || "empty_response") });
+    }
+    director.activeJob = { ...job, status: "validating", reason: "" };
+    saveState("director.validating");
+    const api = globalThis.HatsuWorld?.directorApi;
+    const output = api?.parseDirectorResponse?.(text);
+    if (!output) return finishWorldDirectorAttempt(owner, { ok: false, reason: "parse_failed" });
+    const prepared = api?.prepareDirectorPatch?.(output, state, director.activeJob, getWorldDirectorHelpers());
+    if (!prepared?.ok) return finishWorldDirectorAttempt(owner, { ok: false, reason: prepared?.reason || "validation_failed" });
+    const applied = globalThis.HatsuWorld?.directorState?.applyDirectorPatch?.(state, prepared.patch);
+    if (!applied?.applied) return finishWorldDirectorAttempt(owner, { ok: false, reason: applied?.reason || "commit_failed" });
+    releaseSecondaryModelChannel(owner.jobId, owner.requestId, owner.saveScope, "completed");
+    saveState("director.committed");
+    renderSecondaryApiDebug();
+    return true;
+  }
+
+  function requestManualWorldDirectorRecalculation() {
+    const director = getWorldDirectorState();
+    if (!director?.enabled) {
+      showToast("世界导演未启用", "当前存档未启用世界导演。", "warn");
+      return false;
+    }
+    if (getPrimaryModelChannelOwner() || getSecondaryModelChannelOwner()) {
+      showToast("模型通道占用中", "请等待当前模型请求结束后再手工重算。", "warn");
+      return false;
+    }
+    if (!isSecondaryApiConfigured()) {
+      showToast("次 API 未配置", "请先配置可用的次 API。", "warn");
+      return false;
+    }
+    if (!window.confirm("重新计算今天的叙事方向？这不会重算数值、时间或随机结果。")) return false;
+    if (!prepareWorldDirectorJob("manual")) return false;
+    return maybeRequestWorldDirector({ reason: "manual" });
+  }
   function maybeRequestDailyWorldGeneration() {
     if (!shouldUseSecondaryWorldGen()) return;
     const worldGen = globalThis.HatsuWorld?.worldGen;
@@ -3848,29 +4254,24 @@
     const dayKey = getWorldFeedDayKey();
     if (gen.dayKey !== dayKey) return;
     if (gen.status !== "pending" && gen.status !== "failed") return;
-    if (pendingSecondaryRequestId && pendingSecondaryMeta?.kind === "world") return;
-
     const helpers = getWorldFeedHelpers();
     const includeSideQuests = worldGen.shouldIncludeSideQuests(state);
-    const prompt = worldGen.buildDailyWorldPrompt(state, {
-      dayKey,
-      dayLabel: formatWorldFeedDayLabel(),
-      includeSideQuests
-    }, helpers);
+    const prompt = worldGen.buildDailyWorldPrompt(state, { dayKey, dayLabel: formatWorldFeedDayLabel(), includeSideQuests }, helpers);
     if (!prompt) return;
-
     const requestId = createSecondaryRequestId("world");
+    const dispatch = acquireSecondaryEntryDispatch("world", requestId, { dayKey, includeSideQuests });
+    if (!dispatch.ok) return;
     worldGen.markDailyWorldGenLoading(state, requestId, dayKey);
     saveState();
     renderSnsApp();
     renderBroadcastApp();
     renderSideQuestOverlay();
-
-    if (!requestHostSecondaryPromptSend(prompt, requestId, { kind: "world", dayKey, includeSideQuests })) {
+    if (!requestHostSecondaryPromptSend(prompt, dispatch.owner)) {
+      releaseSecondaryModelChannel(dispatch.owner.jobId, dispatch.owner.requestId, dispatch.owner.saveScope, "send_failed");
       fallbackDailyWorldToStatic("次 API 未配置完整，已回退静态池。");
+      maybeRequestWorldDirector({ reason: "public_world_send_failed" });
     }
   }
-
   function syncDailyWorldGeneration() {
     if (!shouldUseSecondaryWorldGen()) return false;
     const worldGen = globalThis.HatsuWorld?.worldGen;
@@ -3941,97 +4342,55 @@
     }
   }
 
-  async function runLocalSecondaryApiPrompt(prompt, requestId, apiConfig) {
+  async function runLocalSecondaryApiPrompt(prompt, owner, apiConfig) {
     const baseUrl = String(apiConfig.baseUrl || "").trim().replace(/\/$/, "");
     const url = baseUrl.endsWith("/chat/completions") ? baseUrl : `${baseUrl}/chat/completions`;
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiConfig.apiKey || ""}`
-        },
-        body: JSON.stringify({
-          model: apiConfig.model,
-          messages: [{ role: "user", content: prompt }],
-          temperature: apiConfig.temperature,
-          max_tokens: apiConfig.maxTokens
-        })
-      });
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiConfig.apiKey || ""}` }, body: JSON.stringify({ model: apiConfig.model, messages: [{ role: "user", content: prompt }], temperature: apiConfig.temperature, max_tokens: apiConfig.maxTokens }) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       const text = String(json?.choices?.[0]?.message?.content || "").trim();
-      handleSecondaryAiReply({
-        requestId,
-        text,
-        ok: Boolean(text),
-        error: text ? "" : "empty_response"
-      });
+      handleSecondaryAiReply({ ...owner, text, ok: Boolean(text), error: text ? "" : "empty_response" });
     } catch (error) {
-      handleSecondaryAiReply({
-        requestId,
-        text: "",
-        ok: false,
-        error: String(error?.message || error)
-      });
+      handleSecondaryAiReply({ ...owner, text: "", ok: false, error: String(error?.message || error) });
     }
   }
-
-  function requestHostSecondaryPromptSend(prompt, requestId, meta = {}, options = {}) {
+  function requestHostSecondaryPromptSend(prompt, owner, options = {}) {
     const apiConfig = getSecondaryApiConfig();
-    if (meta.kind === "world") {
-      apiConfig.maxTokens = Math.max(apiConfig.maxTokens, 2200);
-    }
+    if (owner?.kind === "world") apiConfig.maxTokens = Math.max(apiConfig.maxTokens, 2200);
     const allowDisabled = Boolean(options.allowDisabled);
     if ((!apiConfig.enabled && !allowDisabled) || !apiConfig.baseUrl || !apiConfig.model) return false;
     const promptText = String(prompt || "").trim();
-    if (!promptText) return false;
-    pendingSecondaryRequestId = String(requestId || createSecondaryRequestId(meta.kind || "misc"));
-    pendingSecondaryMeta = { ...(meta || {}) };
+    if (!promptText || !isCurrentSecondaryReply(owner)) return false;
     const transport = isSillyTavernHost() ? "host(ST)" : "local fetch";
-    pushSecondaryDebug({
-      phase: "send",
-      kind: meta.kind || "misc",
-      requestId: pendingSecondaryRequestId,
-      transport,
-      promptLength: promptText.length
-    });
+    pushSecondaryDebug({ phase: "send", kind: owner.kind, requestId: owner.requestId, transport, promptLength: promptText.length });
     if (isSillyTavernHost()) {
-      window.parent.postMessage({
-        source: "hatsuboshi-produce",
-        type: "sendSecondaryPrompt",
-        requestId: pendingSecondaryRequestId,
-        prompt: promptText,
-        apiConfig
-      }, "*");
+      window.parent.postMessage({ source: "hatsuboshi-produce", type: "sendSecondaryPrompt", jobId: owner.jobId, requestId: owner.requestId, saveScope: owner.saveScope, kind: owner.kind, prompt: promptText, apiConfig }, "*");
       return true;
     }
-    runLocalSecondaryApiPrompt(promptText, pendingSecondaryRequestId, apiConfig);
+    runLocalSecondaryApiPrompt(promptText, owner, apiConfig);
     return true;
   }
-
   function maybeRequestSideQuestGeneration() {
-    if (shouldUseSecondaryWorldGen()) {
-      maybeRequestDailyWorldGeneration();
-      return;
-    }
+    if (shouldUseSecondaryWorldGen()) { maybeRequestDailyWorldGeneration(); return; }
     if (!globalThis.HatsuTasks?.isSandboxTasksActive(state)) return;
     if (!globalThis.HatsuTasks.shouldUseSecondarySideGen(state)) return;
     const status = globalThis.HatsuTasks.getSideQuestGenStatus(state);
     if (status !== "pending" && status !== "failed") return;
-    if (pendingSecondaryRequestId && pendingSecondaryMeta?.kind === "daily") return;
     const dayKey = globalThis.HatsuTasks.getCampusDayKey(state);
     const prompt = globalThis.HatsuSideQuestApi?.buildSideQuestDailyPrompt(state, dayKey);
     if (!prompt) return;
     const requestId = createSecondaryRequestId("daily");
+    const dispatch = acquireSecondaryEntryDispatch("daily", requestId, { dayKey });
+    if (!dispatch.ok) return;
     globalThis.HatsuTasks.markSideQuestGenPending(state, requestId);
     saveState();
     renderSideQuestOverlay();
-    if (!requestHostSecondaryPromptSend(prompt, requestId, { kind: "daily", dayKey })) {
+    if (!requestHostSecondaryPromptSend(prompt, dispatch.owner)) {
+      releaseSecondaryModelChannel(dispatch.owner.jobId, dispatch.owner.requestId, dispatch.owner.saveScope, "send_failed");
       fallbackSideQuestToStatic("次 API 未配置完整，已回退静态池。");
     }
   }
-
   function requestSideQuestTierGeneration(slotIndex) {
     if (!globalThis.HatsuTasks?.shouldUseSecondarySideGen(state)) return;
     const slot = state.tasks?.side?.slots?.[slotIndex];
@@ -4040,35 +4399,29 @@
     const prompt = globalThis.HatsuSideQuestApi?.buildSideQuestTierPrompt(state, slot);
     if (!prompt) return;
     const requestId = createSecondaryRequestId(`tier-${slotIndex}`);
+    const dispatch = acquireSecondaryEntryDispatch("tier", requestId, { slotIndex });
+    if (!dispatch.ok) return;
     globalThis.HatsuTasks.markSideQuestTierGenPending(state, slotIndex, requestId);
     saveState();
     openSideQuestTierPanel(slotIndex, { keepOpen: true });
-    if (!requestHostSecondaryPromptSend(prompt, requestId, { kind: "tier", slotIndex })) {
+    if (!requestHostSecondaryPromptSend(prompt, dispatch.owner)) {
+      releaseSecondaryModelChannel(dispatch.owner.jobId, dispatch.owner.requestId, dispatch.owner.saveScope, "send_failed");
       slot.tierGenStatus = "idle";
       saveState();
     }
   }
-
   function handleSecondaryAiReply(payload) {
-    const requestId = String(payload?.requestId || "");
-    if (!requestId || requestId !== pendingSecondaryRequestId) return;
+    if (!isCurrentSecondaryReply(payload)) return;
+    const owner = { ...secondaryChannelOwner };
+    const meta = { kind: owner.kind, ...(secondaryChannelMeta || {}) };
     const text = String(payload?.text || "");
     const ok = Boolean(payload?.ok) && Boolean(text);
-    const meta = pendingSecondaryMeta || {};
-    pendingSecondaryRequestId = "";
-    pendingSecondaryMeta = null;
-
-    const debugEvent = pushSecondaryDebug({
-      phase: "reply",
-      kind: meta.kind || "?",
-      requestId,
-      ok,
-      error: ok ? "" : String(payload?.error || "empty_response"),
-      textLength: text.length,
-      preview: text.slice(0, 600),
-      parseOk: null
-    });
-
+    if (meta.kind === "director") {
+      handleWorldDirectorReply(payload, owner);
+      return;
+    }
+    releaseSecondaryModelChannel(owner.jobId, owner.requestId, owner.saveScope, ok ? "completed" : String(payload?.error || "failed"));
+    const debugEvent = pushSecondaryDebug({ phase: "reply", kind: meta.kind || "?", requestId: owner.requestId, ok, error: ok ? "" : String(payload?.error || "empty_response"), textLength: text.length, preview: text.slice(0, 600), parseOk: null });
     if (meta.kind === "test") {
       if (debugEvent) debugEvent.parseOk = ok;
       secondaryApiDebug.lastMessage = ok
@@ -4083,6 +4436,7 @@
       if (debugEvent) debugEvent.parseOk = false;
       if (meta.kind === "world") {
         fallbackDailyWorldToStatic(payload?.error ? `次 API 失败：${payload.error}` : "次 API 无有效回复");
+        maybeRequestWorldDirector({ reason: "public_world_failed" });
       } else if (meta.kind === "daily") {
         fallbackSideQuestToStatic(payload?.error ? `次 API 失败：${payload.error}` : "次 API 无有效回复");
       } else if (meta.kind === "tier" && Number.isFinite(Number(meta.slotIndex))) {
@@ -4108,6 +4462,7 @@
       if (!parsed || !worldGen?.applyDailyWorldGeneration(state, parsed, helpers, dayKey)) {
         if (debugEvent) debugEvent.parseOk = false;
         fallbackDailyWorldToStatic("次 API 返回格式无效，已回退静态池。");
+        maybeRequestWorldDirector({ reason: "public_world_parse_failed" });
         return;
       }
       if (debugEvent) debugEvent.parseOk = true;
@@ -4128,6 +4483,7 @@
       const parts = ["广播主题", "初星圈"];
       if (meta.includeSideQuests && !sideQuestFellBack) parts.push("委托系统");
       showToast("每日世界层已生成", `次 API 已生成${parts.join("、")}${sideQuestFellBack ? "；委托回退静态池" : ""}。`, "info");
+      maybeRequestWorldDirector({ reason: "public_world_completed" });
       return;
     }
 
@@ -4204,8 +4560,8 @@
     const summaryEl = document.getElementById("sideQuestApiDebugSummary");
     const logEl = document.getElementById("sideQuestApiDebugLog");
     if (summaryEl) {
-      const pending = pendingSecondaryRequestId
-        ? `（在途：${pendingSecondaryMeta?.kind || "?"}）`
+      const pending = secondaryChannelOwner
+        ? `（在途：${secondaryChannelOwner?.kind || "?"}）`
         : "（无在途请求）";
       summaryEl.textContent = `${secondaryApiDebug.lastMessage} ${pending}`;
     }
@@ -4237,7 +4593,7 @@
       showToast("仅沙盒可用", "委托生成仅在沙盒模式开放。", "warn");
       return;
     }
-    if (pendingSecondaryRequestId) {
+    if (secondaryChannelOwner) {
       showToast("请求进行中", "已有次 API 请求在途，请稍候。", "warn");
       return;
     }
@@ -4259,26 +4615,21 @@
 
   function runSecondaryApiTest() {
     const cfg = getSecondaryApiConfig();
-    if (!cfg.baseUrl || !cfg.model) {
-      showToast("无法测试", "请先填写接口地址与模型后再测试。", "warn");
-      return;
-    }
-    if (pendingSecondaryRequestId) {
-      showToast("请求进行中", "已有次 API 请求在途，请稍候再测试。", "warn");
-      return;
-    }
+    if (!cfg.baseUrl || !cfg.model) { showToast("无法测试", "请先填写接口地址与模型后再测试。", "warn"); return; }
     const prompt = "这是一次连接测试。请只回复一行中文：初星次API连接正常。";
     const requestId = createSecondaryRequestId("test");
+    const dispatch = acquireSecondaryEntryDispatch("test", requestId);
+    if (!dispatch.ok) return;
     secondaryApiDebug.lastMessage = "测试请求发送中…";
     renderSecondaryApiDebug();
-    const sent = requestHostSecondaryPromptSend(prompt, requestId, { kind: "test" }, { allowDisabled: true });
+    const sent = requestHostSecondaryPromptSend(prompt, dispatch.owner, { allowDisabled: true });
     if (!sent) {
+      releaseSecondaryModelChannel(dispatch.owner.jobId, dispatch.owner.requestId, dispatch.owner.saveScope, "send_failed");
       secondaryApiDebug.lastMessage = "测试未发出：接口地址或模型缺失。";
       renderSecondaryApiDebug();
       showToast("测试未发出", "接口地址或模型缺失，请检查配置。", "warn");
     }
   }
-
   function saveSideQuestApiPanel() {
     saveSecondaryApiSettings({
       enabled: document.getElementById("sideQuestApiEnabled")?.checked,
@@ -5456,6 +5807,29 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     return block ? `\n${block}\n` : "";
   }
 
+  function composeWorldDirectorPromptAddendum(options = {}) {
+    const api = globalThis.HatsuWorld?.directorInjection;
+    const director = getWorldDirectorState();
+    if (!api || !director) return "";
+    const participantIds = new Set(["producer", "idol:" + canonicalIdolName(state.idol)]);
+    (options.participants || []).forEach((name) => {
+      const value = String(name || "").trim();
+      if (!value) return;
+      participantIds.add(value.startsWith("idol:") ? value : "idol:" + canonicalIdolName(value));
+    });
+    const locationId = String(options.locationId || state.freeMode?.activeLocationId || "");
+    const context = {
+      currentDayKey: getWorldFeedDayKey(),
+      participants: [...participantIds].filter((id) => id !== "idol:"),
+      locationId,
+      scopeKey: getSecondaryChannelSaveScope(),
+      maxChars: 1800
+    };
+    const block = api.composeDirectorNarrativeBlock(director, context);
+    if (!block) return "";
+    const contract = api.composeDirectorEvidenceContract();
+    return "\n\n" + block + "\n\n" + contract;
+  }
   function refreshWorldPresenceFromRules(force = false) {
     const slotKey = getFreeModePresenceSlotKey();
     const campusActive = globalThis.HatsuWorld?.campusBehavior?.shouldUseCampusBehavior?.(state, getHatsuWorldHelpers());
@@ -6335,7 +6709,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const channelLeaseId = String(expectedChannelLeaseId || owner?.channelLeaseId || "");
     if (!owner || !isPrimaryModelLeaseCurrent(requestId, channelLeaseId)) return false;
 
-    if (owner.ownerKind === "ordinary_recovery") {
+    if (["ordinary_action", "ordinary_recovery"].includes(owner.ownerKind)) {
       if (returnHarnessRecoveryAttemptToPending(requestId, reason)) {
         pendingAiRequestId = "";
         state.pendingAiRequestId = "";
@@ -6343,13 +6717,6 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
         render();
         openHarnessRecoveryOverlay(state.harness.activeTurn);
       }
-    } else if (owner.ownerKind === "ordinary_action") {
-      if (pendingAiRequestId === requestId) pendingAiRequestId = "";
-      if (state.pendingAiRequestId === requestId) state.pendingAiRequestId = "";
-      markHarnessProduceTurn("failed", { failureReason: String(reason || "generation_failed") }, requestId);
-      state.lastStory = "生成剧情失败，行动结算已保留。可以从 P 手账编辑提示词后重试。";
-      saveState("harness.primary_generation_failed");
-      render();
     } else if (owner.ownerKind === "phone_chat") {
       if (pendingAiRequestId === requestId) pendingAiRequestId = "";
       resetPhoneChatPendingState();
@@ -6663,7 +7030,6 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       || turn.kind !== "produce_action"
       || turn.status !== "generating"
       || turn.sessionEpoch !== runtimeSessionEpoch
-      || Number(turn.recoveryAttemptCount || 0) < 1
       || !requestId
       || turn.requestId !== requestId
     ) {
@@ -6678,7 +7044,8 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       recoveryFailedAt: now,
       updatedAt: now
     };
-    recordHarnessTrace("turn.recovery_send_failed", {
+    const recoveryAttempt = Number(turn.recoveryAttemptCount || 0) > 0;
+    recordHarnessTrace(recoveryAttempt ? "turn.recovery_send_failed" : "turn.recovery_required", {
       turnId: turn.turnId || "",
       requestId,
       action: turn.action || "",
@@ -7145,7 +7512,7 @@ ${composeWorldSummaryBlock("produce")}
 本行动叙事规则：
 ${actionStyle}${destinationPrompt}${eventPrompt}
 
-${outputContract(narrativeLength)}`;
+${outputContract(narrativeLength)}${composeWorldDirectorPromptAddendum({ participants: [state.idol], locationId: actionContext.locationId })}`;
   }
 
   function buildChoicePhase1Prompt(action, attribute, shuffledRewards, actionContext = {}) {
@@ -8165,7 +8532,7 @@ ${buildProducerPromptSection()}
 
 闲聊规则：不消耗行动、不推进日程、不改数值；围绕话题自然回应，不要擅自推进重大矛盾。
 
-${outputContract("请写 800 字以内的完整闲聊场景，自然收束，不要待续。")}`;
+${outputContract("请写 800 字以内的完整闲聊场景，自然收束，不要待续。")}${composeWorldDirectorPromptAddendum({ participants: [state.idol] })}`;
   }
 
   function buildPhoneChatScheduleLine() {
@@ -8320,7 +8687,7 @@ ${buildProducerPromptSection()}
 
 互动规则：不消耗行动、不推进日程、不改数值；${aiDecides ? "从候选库选 1～3 人实际参与" : "指定角色必须全部参与"}；多人同场互动，不要轮流独白。
 
-${outputContract("请写 1200 字以内的完整偶像互动，从建立到收束一次写完，不要待续。")}`;
+${outputContract("请写 1200 字以内的完整偶像互动，从建立到收束一次写完，不要待续。")}${composeWorldDirectorPromptAddendum({ participants: aiDecides ? [state.idol] : [state.idol, ...selectedCharacters] })}`;
   }
 
   function evaluateFirstLive() {
@@ -9449,11 +9816,13 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   }
 
   function resolvePortraitForSpeaker(speaker) {
+    const appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
     const characterKey = globalThis.HatsuPortraits.characterKeyForSpeaker(
       speaker,
       state.producer?.name,
       canonicalIdolName,
-      (name) => Boolean(idols[name])
+      (name) => Boolean(idols[name]),
+      appearance.bindings.producer.aliases
     );
     if (!characterKey) {
       return {
@@ -9468,7 +9837,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     return {
       ...globalThis.HatsuPortraits.resolvePortrait(
         characterKey,
-        state.appearance,
+        appearance,
         getBuiltinPortraitMap(),
         portraitWardrobeState.invalidUrls
       ),
@@ -10465,10 +10834,12 @@ ${buildChoiceHardRules({ phase1: true })}`;
       maybeRequestSideQuestGeneration();
     }
     runFreeModeWorldDailyTick();
+    prepareWorldDirectorJob("day_change", { persist: false });
     closeFreeModeTimeOverlay();
     saveState();
     renderFreeModeStage();
     showToast("新的一天", `${formatFreeModeDayLabel()} ${formatFreeModeClock()} 开始。`, "info");
+    maybeRequestWorldDirector({ reason: "day_change" });
   }
 
   function parseFreeModeManualAdvanceMinutes(raw) {
@@ -12901,6 +13272,94 @@ ${buildChoiceHardRules({ phase1: true })}`;
     return "";
   }
 
+  function shouldPrepareDirectorDigestCandidate(acceptedRequest) {
+    return Boolean(acceptedRequest);
+  }
+
+  function decideDirectorDigestAck(accepted, retry, isFinal) {
+    if (!isFinal) return "retain";
+    if (retry) return "discard";
+    return accepted ? "commit" : "discard";
+  }
+
+  function getDirectorDigestParticipants() {
+    const participants = new Set(["producer"]);
+    const addIdol = (name) => {
+      const normalized = canonicalIdolName(String(name || "").trim());
+      if (normalized) participants.add(`idol:${normalized}`);
+    };
+    addIdol(state.idol);
+    if (state.activeStoryNode?.type === "interaction") {
+      (state.activeStoryNode.selectedCharacters || []).forEach(addIdol);
+    }
+    return [...participants];
+  }
+
+  function extractDirectorEvidenceFromReply(...sources) {
+    const api = getChronicleApi();
+    if (!api?.extractDirectorEvent) {
+      return { evidenceQuality: "summary_only", signals: { facts: [], playerChoices: [], observations: [], hooksCreated: [], hooksResolved: [] } };
+    }
+    let fallback = null;
+    for (const source of sources) {
+      const parsed = api.extractDirectorEvent(source);
+      if (parsed?.evidenceQuality === "structured") return parsed;
+      if (!fallback) fallback = parsed;
+    }
+    return fallback || api.extractDirectorEvent("");
+  }
+
+  function preparePendingDirectorDigestCandidate(acceptedRequest, requestId, rawText, renderedText, text, messageId) {
+    if (!shouldPrepareDirectorDigestCandidate(acceptedRequest) || !requestId) return false;
+    const summary = extractSumFromReplySource(rawText, renderedText, text);
+    if (!summary) return false;
+    const evidence = extractDirectorEvidenceFromReply(rawText, renderedText, text);
+    const messageNumber = Number(messageId);
+    const activeTurn = state.harness?.activeTurn;
+    const candidate = {
+      id: `digest:${requestId}:${Number.isInteger(messageNumber) ? messageNumber : "request"}`,
+      dayKey: getWorldFeedDayKey(),
+      timeKey: isFreeModeActive() ? formatFreeModeClock() : `day-${state.day}-round-${state.round}`,
+      locationId: String(state.pendingActionContext?.actionContext?.locationId || state.freeMode?.activeLocationId || ""),
+      participants: getDirectorDigestParticipants(),
+      summary,
+      actionType: String(state.pendingActionContext?.action || state.activeStoryNode?.type || "narrative"),
+      evidenceQuality: evidence.evidenceQuality,
+      signals: evidence.signals,
+      sourceTurnId: activeTurn?.requestId === requestId ? String(activeTurn.turnId || "") : "",
+      sourceRequestId: String(requestId),
+      sourceMessageId: Number.isInteger(messageNumber) && messageNumber >= 0 ? messageNumber : null,
+      committedAt: Date.now()
+    };
+    pendingDirectorDigestCandidates.set(String(requestId), candidate);
+    return true;
+  }
+
+  function discardPendingDirectorDigestCandidate(requestId) {
+    return pendingDirectorDigestCandidates.delete(String(requestId || ""));
+  }
+
+  function commitPendingDirectorDigestCandidate(requestId) {
+    const key = String(requestId || "");
+    const candidate = pendingDirectorDigestCandidates.get(key);
+    if (!candidate) return false;
+    pendingDirectorDigestCandidates.delete(key);
+    const api = globalThis.HatsuWorld?.directorState;
+    if (!api || !state.freeMode?.world) return false;
+    const director = api.ensureDirectorShape(state.freeMode.world.director, { recoverInterrupted: false });
+    state.freeMode.world.director = director;
+    const result = api.commitChronicleDigest(director, candidate);
+    if (!result.committed) return false;
+    saveState("director.digest_committed");
+    return true;
+  }
+
+  function settlePendingDirectorDigestCandidate(requestId, accepted, retry, isFinal) {
+    const action = decideDirectorDigestAck(accepted, retry, isFinal);
+    if (action === "retain") return false;
+    if (action === "discard") return discardPendingDirectorDigestCandidate(requestId);
+    return commitPendingDirectorDigestCandidate(requestId);
+  }
   function requestChronicleUpdate(rawText, renderedText, text, messageId) {
     if (!isSillyTavernHost()) return;
     const sum = extractSumFromReplySource(rawText, renderedText, text);
@@ -13270,14 +13729,17 @@ ${buildChoiceHardRules({ phase1: true })}`;
       if (pendingAiRequestId === previousOwner.requestId) pendingAiRequestId = "";
       releasePrimaryModelChannel(previousOwner.requestId, previousOwner.channelLeaseId, "save_scope_changed");
     }
-    hostStateReady = false;
+    const previousSecondaryOwner = getSecondaryModelChannelOwner();
+    if (previousSecondaryOwner && previousSecondaryOwner.saveScope !== String(saveScope || "")) {
+      releaseSecondaryModelChannel(previousSecondaryOwner.jobId, previousSecondaryOwner.requestId, previousSecondaryOwner.saveScope, "save_scope_changed");
+    }    hostStateReady = false;
     activeHostSaveScope = "";
     const switched = switchStorageScope(saveScope);
     const localState = state;
     const resolution = resolveHostState(hasSavedState ? savedState : null, localState);
     if (resolution.source === "remote") {
       state = { ...clone(baseState), ...clone(resolution.state) };
-      ensureStateShape();
+      ensureStateShape({ recoverDirectorAttempt: true });
       if (state.uiVersion !== UI_VERSION || (state.idol && !idols[state.idol])) {
         state = clone(baseState);
         ensureStateShape();
@@ -16046,7 +16508,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
       
       // 决定主题色
       let themeColor = "#7e57c2";
-      const isProducer = slide.speaker === "制作人" || slide.speaker === "P" || (state.producer && slide.speaker === state.producer.name);
+      const resolvedPortrait = resolvePortraitForSpeaker(slide.speaker);
+      const isProducer = resolvedPortrait.characterKey === "producer";
       const speakerCanonical = canonicalIdolName(slide.speaker);
       
       if (isProducer) {
@@ -16058,7 +16521,6 @@ ${buildChoiceHardRules({ phase1: true })}`;
       
       // 2. 加载发言者立绘并置于中央
       if (standeeEl) {
-        const resolvedPortrait = resolvePortraitForSpeaker(slide.speaker);
         if (resolvedPortrait.url) {
           applyResolvedPortraitToImage(standeeEl, resolvedPortrait);
           standeeEl.style.display = "block";
@@ -16890,7 +17352,30 @@ ${buildChoiceHardRules({ phase1: true })}`;
     return "event";
   }
 
+  function finishDebugSkippedPrimaryAttempt(owner) {
+    if (!owner?.requestId || !owner?.channelLeaseId) return false;
+    const turn = state.harness?.activeTurn;
+    if (
+      ["ordinary_action", "ordinary_recovery"].includes(owner.ownerKind)
+      && turn?.turnId === owner.turnId
+      && turn?.requestId === owner.requestId
+      && turn?.status === "generating"
+    ) {
+      markHarnessProduceTurn("completed_without_narrative", { completionReason: "debug_skip" }, owner.requestId);
+    }
+    if (isSillyTavernHost()) {
+      window.parent.postMessage({
+        source: "hatsuboshi-produce",
+        type: "cancelPrimaryAttempt",
+        requestId: owner.requestId,
+        channelLeaseId: owner.channelLeaseId,
+        reason: "debug_skip"
+      }, "*");
+    }
+    return releasePrimaryModelChannel(owner.requestId, owner.channelLeaseId, "debug_skip");
+  }
   function forceSkipAiWait() {
+    const primaryOwner = getPrimaryModelChannelOwner();
     const phoneSkipped = forceSkipPhoneChatWait();
     const broadcastSkipped = forceSkipBroadcastWait();
     let eventSkipped = false;
@@ -16907,7 +17392,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
       return;
     }
 
-    saveState();
+    finishDebugSkippedPrimaryAttempt(primaryOwner);
+    saveState("debug.skip_ai_wait");
     render();
     refreshVnDebugView();
 
@@ -18143,6 +18629,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
       sendAiReplyAck(requestId, false, false);
       return;
     }
+    preparePendingDirectorDigestCandidate(acceptedRequest, requestId, rawText, renderedText, text, messageId);
     if (shouldRequestChronicleUpdate(acceptedRequest, isFinal)) {
       requestChronicleUpdate(rawText, renderedText, text, messageId);
     }
@@ -18550,11 +19037,6 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
 
     if (!reply || reply.replace(/\s+/g, "").length < 12 || isJunkReply(reply)) {
-      if (aiReplyRetryCount < 2) {
-        aiReplyRetryCount++;
-        sendAiReplyAck(requestId, false, true);
-        return;
-      }
       if (returnHarnessRecoveryAttemptToPending(requestId, "invalid_reply")) {
         aiReplyRetryCount = 0;
         pendingAiRequestId = "";
@@ -18564,6 +19046,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
         openHarnessRecoveryOverlay(state.harness.activeTurn);
         showToast("叙事生成未完成", "没有收到有效正文，恢复记录已保留，可以再次尝试。", "warn");
         sendAiReplyAck(requestId, false, false);
+        return;
+      }
+      if (aiReplyRetryCount < 2) {
+        aiReplyRetryCount++;
+        sendAiReplyAck(requestId, false, true);
         return;
       }
       aiReplyRetryCount = 0;
@@ -18638,6 +19125,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
   }
 
   function sendAiReplyAck(requestId, accepted, retry, isFinal = true) {
+    settlePendingDirectorDigestCandidate(requestId, accepted, retry, isFinal);
     if (isFinal && !retry) {
       releasePrimaryModelChannel(requestId, activeInboundPrimaryChannelLeaseId, accepted ? "accepted_final" : "rejected_final");
     }
@@ -18990,6 +19478,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
       devPanel.style.gap = "14px";
       devPanel.style.padding = "10px";
       devPanel.style.width = "100%";
+      const directorDebug = getWorldDirectorState();
+      const directorJob = directorDebug?.activeJob;
+      const directorReceipt = directorDebug?.receipts?.at?.(-1) || null;
+      const directorBusy = Boolean(getPrimaryModelChannelOwner() || getSecondaryModelChannelOwner());
       
       devPanel.innerHTML = `
         <style>
@@ -19071,7 +19563,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
           <button type="button" id="devResetLiveStateBtn" class="dev-action-btn secondary">重置 First Live 状态</button>
           <button type="button" id="devInstantLiveBtn" class="dev-action-btn">直接启动最终演出</button>
         </div>
+        <div style="padding: 10px; border: 1px solid rgba(0,0,0,0.12); border-radius: 8px; font-size: 12px; line-height: 1.7;">
+          <strong>世界导演</strong><br>
+          启用：${directorDebug?.enabled ? "是" : "否"} · dirty：${directorDebug?.dirty ? "是" : "否"} · 状态：${directorJob?.status || "idle"}<br>
+          Director revision：${directorDebug?.directorRevision || 0} · Chronicle revision：${directorDebug?.chronicleRevision || 0}<br>
+          Pressure：${directorDebug?.pressures?.length || 0} · 最近结果：${directorReceipt?.reason || directorReceipt?.status || "无"}
+        </div>
         <div class="dev-btn-group" style="margin-top: 0;">
+          <button type="button" id="devWorldDirectorRecalculateBtn" class="dev-action-btn" ${directorBusy ? "disabled" : ""}>手工重算今日叙事方向</button>
           <button type="button" id="devOpenMapLayoutEditorBtn" class="dev-action-btn secondary">打开学园地图布局编辑</button>
         </div>
       `;
@@ -19116,6 +19615,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
         saveState();
         render();
         startFirstLive();
+      });
+
+      document.getElementById("devWorldDirectorRecalculateBtn").addEventListener("click", () => {
+        requestManualWorldDirectorRecalculation();
+        renderModalContent();
       });
 
       document.getElementById("devOpenMapLayoutEditorBtn").addEventListener("click", () => {
@@ -19468,7 +19972,18 @@ ${buildChoiceHardRules({ phase1: true })}`;
   document.getElementById("portraitWardrobeNameInput")?.addEventListener("input", (event) => {
     portraitWardrobeState.draftName = String(event.target.value || "").slice(0, 120);
     const label = document.getElementById("portraitWardrobeLookName");
-    if (label) label.textContent = portraitWardrobeState.draftName || "Custom";
+    if (label) label.textContent = portraitWardrobeState.draftName || "自定义立绘";
+  });
+  document.getElementById("portraitWardrobeAliasInput")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    submitProducerPortraitAliasInput();
+  });
+  document.getElementById("portraitWardrobeAliasAddBtn")?.addEventListener("click", () => {
+    submitProducerPortraitAliasInput();
+  });
+  document.getElementById("portraitWardrobeAliasSaveBtn")?.addEventListener("click", () => {
+    if (saveProducerPortraitAliases()) showToast("名称已保存", "制作人立绘触发名称已更新。", "info");
   });
   document.getElementById("portraitWardrobeScale")?.addEventListener("input", (event) => {
     portraitWardrobeState.draftTransform.scale = Number(event.target.value) / 100;
@@ -19707,7 +20222,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
     if (payload.type === "primaryAiError") {
       const owner = getPrimaryModelChannelOwner();
-      handlePrimaryModelChannelFailure(owner, "host_error", payload.requestId, payload.channelLeaseId);
+      handlePrimaryModelChannelFailure(owner, String(payload.error || "host_error"), payload.requestId, payload.channelLeaseId);
       return;
     }
     if (payload.type === "chronicleBranchFailed") {

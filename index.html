@@ -376,61 +376,72 @@
           <span class="apartment-hotspot-kicker">Phone</span>
           <strong>打开手机</strong>
         </button>
-        <button id="apartmentWardrobeBtn" class="apartment-hotspot is-wardrobe" type="button" title="Portrait wardrobe">
-          <span class="apartment-hotspot-kicker">Wardrobe</span>
-          <strong>WARDROBE</strong>
+        <button id="apartmentWardrobeBtn" class="apartment-hotspot is-wardrobe" type="button" title="管理制作人与担当偶像的立绘。">
+          <span class="apartment-hotspot-kicker">衣柜</span>
+          <strong>立绘衣柜</strong>
         </button>
       </div>
     </section>
   </main>
 
-  <section id="portraitWardrobeOverlay" class="portrait-wardrobe-overlay" hidden aria-label="Portrait wardrobe">
+  <section id="portraitWardrobeOverlay" class="portrait-wardrobe-overlay" hidden aria-label="立绘衣柜">
     <div class="portrait-wardrobe-shell" role="dialog" aria-modal="true" aria-labelledby="portraitWardrobeTitle">
       <header class="portrait-wardrobe-head">
         <div>
-          <p class="ui-kicker">Look / Fitting</p>
-          <h2 id="portraitWardrobeTitle">LOOK ROOM</h2>
+          <p class="ui-kicker">立绘 / 换装</p>
+          <h2 id="portraitWardrobeTitle">立绘衣柜</h2>
         </div>
-        <button id="portraitWardrobeCloseBtn" class="icon-button" type="button" aria-label="Close"><svg><use href="#icon-close"></use></svg></button>
+        <button id="portraitWardrobeCloseBtn" class="icon-button" type="button" aria-label="关闭"><svg><use href="#icon-close"></use></svg></button>
       </header>
       <div class="portrait-wardrobe-workspace">
-        <nav id="portraitWardrobeCharacters" class="portrait-wardrobe-characters" aria-label="Characters"></nav>
-        <section id="portraitWardrobeStage" class="portrait-wardrobe-stage" aria-label="Portrait preview">
-          <span class="portrait-wardrobe-stage-mark">FITTING 01</span>
-          <img id="portraitWardrobePreview" class="portrait-wardrobe-preview" src="" alt="Portrait preview" draggable="false">
+        <nav id="portraitWardrobeCharacters" class="portrait-wardrobe-characters" aria-label="角色"></nav>
+        <section id="portraitWardrobeStage" class="portrait-wardrobe-stage" aria-label="立绘预览">
+          <span class="portrait-wardrobe-stage-mark">试衣预览</span>
+          <img id="portraitWardrobePreview" class="portrait-wardrobe-preview" src="" alt="立绘预览" draggable="false">
           <div class="portrait-wardrobe-stage-caption">
-            <strong id="portraitWardrobeCharacterName">PRODUCER</strong>
-            <span id="portraitWardrobeLookName">BUILTIN LOOK</span>
+            <strong id="portraitWardrobeCharacterName">制作人</strong>
+            <span id="portraitWardrobeLookName">默认立绘</span>
           </div>
         </section>
         <aside class="portrait-wardrobe-controls">
           <div class="portrait-wardrobe-section-head">
-            <span>LOOK LIBRARY</span>
-            <button id="portraitWardrobeResetBtn" class="portrait-wardrobe-text-btn" type="button">RESET</button>
+            <span>立绘库</span>
+            <button id="portraitWardrobeResetBtn" class="portrait-wardrobe-text-btn" type="button">重置位置</button>
           </div>
-          <div id="portraitWardrobeAssets" class="portrait-wardrobe-assets" aria-label="Uploaded portraits"></div>
+          <div id="portraitWardrobeAssets" class="portrait-wardrobe-assets" aria-label="已上传立绘"></div>
           <label class="portrait-wardrobe-upload" for="portraitWardrobeFileInput">
             <svg aria-hidden="true"><use href="#icon-plus"></use></svg>
-            <span>SELECT PNG / WebP / JPEG</span>
+            <span>选择 PNG / WebP / JPEG</span>
           </label>
           <input id="portraitWardrobeFileInput" type="file" accept="image/png,image/webp,image/jpeg" hidden>
           <label class="portrait-wardrobe-field" for="portraitWardrobeNameInput">
-            <span>LOOK NAME</span>
-            <input id="portraitWardrobeNameInput" type="text" maxlength="120" placeholder="Practice look">
+            <span>立绘名称</span>
+            <input id="portraitWardrobeNameInput" type="text" maxlength="120" placeholder="输入立绘名称">
           </label>
+          <section id="portraitWardrobeAliasEditor" class="portrait-wardrobe-alias-editor" hidden aria-label="制作人触发名称">
+            <div class="portrait-wardrobe-section-head">
+              <span>触发名称</span>
+              <button id="portraitWardrobeAliasSaveBtn" class="portrait-wardrobe-text-btn" type="button">保存名称</button>
+            </div>
+            <div id="portraitWardrobeAliasTags" class="portrait-wardrobe-alias-tags"></div>
+            <div class="portrait-wardrobe-alias-entry">
+              <input id="portraitWardrobeAliasInput" type="text" maxlength="40" aria-label="触发名称" placeholder="输入正文中的发言者名称">
+              <button id="portraitWardrobeAliasAddBtn" type="button">添加</button>
+            </div>
+          </section>
           <div class="portrait-wardrobe-sliders">
-            <label for="portraitWardrobeScale"><span>SCALE</span><output id="portraitWardrobeScaleValue">100%</output></label>
+            <label for="portraitWardrobeScale"><span>缩放</span><output id="portraitWardrobeScaleValue">100%</output></label>
             <input id="portraitWardrobeScale" type="range" min="50" max="200" value="100">
-            <label for="portraitWardrobeOffsetX"><span>HORIZONTAL</span><output id="portraitWardrobeOffsetXValue">0</output></label>
+            <label for="portraitWardrobeOffsetX"><span>水平位置</span><output id="portraitWardrobeOffsetXValue">0</output></label>
             <input id="portraitWardrobeOffsetX" type="range" min="-100" max="100" value="0">
-            <label for="portraitWardrobeOffsetY"><span>VERTICAL</span><output id="portraitWardrobeOffsetYValue">0</output></label>
+            <label for="portraitWardrobeOffsetY"><span>垂直位置</span><output id="portraitWardrobeOffsetYValue">0</output></label>
             <input id="portraitWardrobeOffsetY" type="range" min="-100" max="100" value="0">
           </div>
-          <p id="portraitWardrobeStatus" class="portrait-wardrobe-status" aria-live="polite">READING LIBRARY...</p>
+          <p id="portraitWardrobeStatus" class="portrait-wardrobe-status" aria-live="polite">正在读取立绘库...</p>
           <div class="portrait-wardrobe-actions">
-            <button id="portraitWardrobeRestoreBtn" class="portrait-wardrobe-action" type="button">BUILTIN</button>
-            <button id="portraitWardrobeArchiveBtn" class="portrait-wardrobe-action is-danger" type="button">ARCHIVE</button>
-            <button id="portraitWardrobeApplyBtn" class="portrait-wardrobe-action is-primary" type="button">APPLY LOOK</button>
+            <button id="portraitWardrobeRestoreBtn" class="portrait-wardrobe-action" type="button">恢复默认</button>
+            <button id="portraitWardrobeArchiveBtn" class="portrait-wardrobe-action is-danger" type="button">归档</button>
+            <button id="portraitWardrobeApplyBtn" class="portrait-wardrobe-action is-primary" type="button">设为当前</button>
           </div>
         </aside>
       </div>
@@ -1540,6 +1551,10 @@
   <script src="./world/injection.js"></script>
   <script src="./world/daily-tick.js"></script>
   <script src="./world/world-gen-api.js"></script>
+  <script src="./world/director-state.js"></script>
+  <script src="./world/director-api.js"></script>
+  <script src="./world/director-injection.js"></script>
+  <script src="./world/secondary-channel-owner.js"></script>
   <script src="./broadcast/prompts.js"></script>
   <script src="./tasks/side-pool.js"></script>
   <script src="./tasks/side-quest-api.js"></script>

@@ -7,6 +7,8 @@
   const MAX_FILE_BYTES = 20 * 1024 * 1024;
   const MAX_PIXELS = 40_000_000;
   const MAX_EDGE = 8192;
+  const MAX_PRODUCER_ALIASES = 12;
+  const MAX_PRODUCER_ALIAS_LENGTH = 40;
   const ALLOWED_MIME_TYPES = new Set(["image/png", "image/webp", "image/jpeg"]);
   const USER_FILE_URL = /^\/user\/files\/[^?#]+$/;
 
@@ -26,6 +28,22 @@
       offsetX: clamp(finiteNumber(input.offsetX, DEFAULT_TRANSFORM.offsetX), -100, 100),
       offsetY: clamp(finiteNumber(input.offsetY, DEFAULT_TRANSFORM.offsetY), -100, 100)
     };
+  }
+
+  function normalizeProducerAliases(value) {
+    const aliases = [];
+    const seen = new Set();
+    const source = Array.isArray(value) ? value : [];
+    for (const entry of source) {
+      const alias = String(entry || "").trim();
+      if (!alias || alias.length > MAX_PRODUCER_ALIAS_LENGTH) continue;
+      const key = alias.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      aliases.push(alias);
+      if (aliases.length >= MAX_PRODUCER_ALIASES) break;
+    }
+    return aliases;
   }
 
   function isValidCharacterKey(value) {
@@ -61,7 +79,15 @@
       const normalized = normalizeAsset(asset, key);
       if (normalized && normalized.characterKey === key) equipped[key] = normalized;
     });
-    return { schemaVersion: 1, equipped };
+    return {
+      schemaVersion: 2,
+      equipped,
+      bindings: {
+        producer: {
+          aliases: normalizeProducerAliases(value?.bindings?.producer?.aliases)
+        }
+      }
+    };
   }
 
   function normalizeLibrary(value) {
@@ -80,11 +106,15 @@
     };
   }
 
-  function characterKeyForSpeaker(speaker, producerName, canonicalize, hasIdol) {
+  function characterKeyForSpeaker(speaker, producerName, canonicalize, hasIdol, customProducerAliases = []) {
     const raw = String(speaker || "").trim();
     if (!raw) return "";
-    const producerAliases = new Set(["制作人", "producer", "producer-san", "p", String(producerName || "").trim()]);
-    if (producerAliases.has(raw) || producerAliases.has(raw.toLowerCase())) return "producer";
+    const producerAliases = new Set(
+      ["制作人", "producer", "producer-san", "p", producerName, ...normalizeProducerAliases(customProducerAliases)]
+        .map((alias) => String(alias || "").trim().toLowerCase())
+        .filter(Boolean)
+    );
+    if (producerAliases.has(raw.toLowerCase())) return "producer";
     const canonical = typeof canonicalize === "function" ? canonicalize(raw) : raw;
     return typeof hasIdol === "function" && hasIdol(canonical) ? `idol:${canonical}` : "";
   }
@@ -163,7 +193,10 @@
     MAX_FILE_BYTES,
     MAX_PIXELS,
     MAX_EDGE,
+    MAX_PRODUCER_ALIASES,
+    MAX_PRODUCER_ALIAS_LENGTH,
     characterKeyForSpeaker,
+    normalizeProducerAliases,
     normalizeTransform,
     normalizeAppearanceState,
     normalizeLibrary,

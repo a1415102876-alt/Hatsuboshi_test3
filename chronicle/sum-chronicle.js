@@ -19,6 +19,44 @@
   }
 
   // 兼容两种编号：SillyTavern chat index 常是 0-based（2/4/6...），可见楼层说明常是 1-based（3/5/7...）。
+  const DIRECTOR_SIGNAL_KEYS = ["facts", "playerChoices", "observations", "hooksCreated", "hooksResolved"];
+  const MAX_DIRECTOR_SIGNAL_ITEMS = 3;
+  const MAX_DIRECTOR_SIGNAL_LENGTH = 160;
+
+  function emptyDirectorSignals() {
+    return { facts: [], playerChoices: [], observations: [], hooksCreated: [], hooksResolved: [] };
+  }
+
+  function summaryOnlyDirectorEvent() {
+    return { evidenceQuality: "summary_only", signals: emptyDirectorSignals() };
+  }
+
+  function extractDirectorEvent(value) {
+    const raw = String(value || "");
+    const matches = [...raw.matchAll(/<director_event\b[^>]*>([\s\S]*?)<\/director_event>/gi)];
+    if (!matches.length) return summaryOnlyDirectorEvent();
+    let parsed;
+    try {
+      parsed = JSON.parse(matches[matches.length - 1][1]);
+    } catch (error) {
+      return summaryOnlyDirectorEvent();
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return summaryOnlyDirectorEvent();
+    if (Object.keys(parsed).some((key) => !DIRECTOR_SIGNAL_KEYS.includes(key))) return summaryOnlyDirectorEvent();
+
+    const signals = emptyDirectorSignals();
+    for (const key of DIRECTOR_SIGNAL_KEYS) {
+      const items = parsed[key] === undefined ? [] : parsed[key];
+      if (!Array.isArray(items) || items.length > MAX_DIRECTOR_SIGNAL_ITEMS) return summaryOnlyDirectorEvent();
+      for (const item of items) {
+        const text = String(item || "").replace(/\s+/g, " ").trim();
+        if (!text || Array.from(text).length > MAX_DIRECTOR_SIGNAL_LENGTH) return summaryOnlyDirectorEvent();
+        if (!signals[key].includes(text)) signals[key].push(text);
+      }
+    }
+    const hasSignals = DIRECTOR_SIGNAL_KEYS.some((key) => signals[key].length > 0);
+    return hasSignals ? { evidenceQuality: "structured", signals } : summaryOnlyDirectorEvent();
+  }
   function assistantMessageIdToEntryNo(messageId) {
     const id = Number(messageId);
     if (!Number.isInteger(id) || id < 2) return 0;
@@ -166,6 +204,7 @@
   global.HatsuChronicle = {
     CHRONICLE_ENTRY_COMMENT,
     extractSumText,
+    extractDirectorEvent,
     assistantMessageIdToEntryNo,
     parseChronicleContent,
     formatChronicleContent,
