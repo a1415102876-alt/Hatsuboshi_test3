@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>????</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-width: 0;
+      background: transparent;
+    }
+
+    body {
+      padding: 10px;
+      color: #f7f8fb;
+    }
+
+    .hatsu-launcher-card {
+      width: min(100%, 520px);
+      margin: 0 auto;
+      overflow: hidden;
+      border: 1px solid rgba(246, 151, 187, 0.42);
+      border-radius: 8px;
+      background: #171923;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+    }
+
+    .hatsu-launcher-accent {
+      height: 4px;
+      background: #ec78a8;
+    }
+
+    .hatsu-launcher-content {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    .hatsu-launcher-copy {
+      min-width: 0;
+    }
+
+    .hatsu-launcher-eyebrow {
+      margin: 0 0 4px;
+      color: #7ed8e7;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .hatsu-launcher-title {
+      margin: 0;
+      color: #ffffff;
+      font-size: 20px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .hatsu-launcher-status {
+      margin: 6px 0 0;
+      color: rgba(236, 239, 247, 0.68);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .hatsu-launcher-start {
+      min-width: 104px;
+      min-height: 40px;
+      padding: 0 16px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      background: #f07eaa;
+      color: #18131a;
+      font: 700 14px/1 system-ui, sans-serif;
+      letter-spacing: 0;
+      cursor: pointer;
+      transition: background-color 140ms ease, transform 140ms ease;
+    }
+
+    .hatsu-launcher-start:hover {
+      background: #ff9fc2;
+    }
+
+    .hatsu-launcher-start:active {
+      transform: translateY(1px);
+    }
+
+    .hatsu-launcher-start:focus-visible {
+      outline: 2px solid #83ddec;
+      outline-offset: 3px;
+    }
+
+    .hatsu-launcher-start:disabled {
+      border-color: rgba(255, 255, 255, 0.1);
+      background: #454852;
+      color: rgba(255, 255, 255, 0.58);
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    @media (max-width: 460px) {
+      .hatsu-launcher-content {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+      }
+
+      .hatsu-launcher-start {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="hatsu-launcher-card" aria-labelledby="hatsu-launcher-title">
+    <div class="hatsu-launcher-accent" aria-hidden="true"></div>
+    <div class="hatsu-launcher-content">
+      <div class="hatsu-launcher-copy">
+        <p class="hatsu-launcher-eyebrow">Hatsuboshi Gakuen</p>
+        <h1 class="hatsu-launcher-title" id="hatsu-launcher-title">????</h1>
+        <p class="hatsu-launcher-status" id="hatsu-launcher-status" aria-live="polite">????????</p>
+      </div>
+      <button class="hatsu-launcher-start" id="hatsu-launcher-start-btn" type="button">????</button>
+    </div>
+  </main>
+
+  <script>
+    window.HatsuMessageLauncherConfig = {
+      frontendUrl: "http://127.0.0.1:8000/hatsu-produce-local/st.html"
+    };
+  </script>
+  <script src="http://127.0.0.1:8000/hatsu-produce-local/dist/hatsu-launcher/message-entry.js"></script>
+</body>
+</html>

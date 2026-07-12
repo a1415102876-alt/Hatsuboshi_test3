@@ -7,6 +7,12 @@ const launcherSource = readFileSync(
   new URL("../dist/hatsu-launcher/message-entry.js", import.meta.url),
   "utf8"
 );
+let launcherHtml = "";
+try {
+  launcherHtml = readFileSync(new URL("../launcher.html", import.meta.url), "utf8");
+} catch (error) {
+  launcherHtml = "";
+}
 
 const EXPECTED_FRONTEND_URL = "http://127.0.0.1:8000/hatsu-produce-local/st.html";
 
@@ -210,4 +216,22 @@ test("direct launcher use shows a host warning and creates no local game owner",
   env.startButton.click();
   assert.equal(env.entryWindow.__hatsuPersistentLauncherV1, undefined);
   assert.equal(env.entryDocument.getElementById("hatsu-persistent-game-shell"), null);
+});
+
+test("launcher page is a compact entry and loads the message controller", () => {
+  assert.match(launcherHtml, /id="hatsu-launcher-start-btn"/);
+  assert.match(launcherHtml, /id="hatsu-launcher-status"/);
+  assert.match(
+    launcherHtml,
+    /http:\/\/127\.0\.0\.1:8000\/hatsu-produce-local\/dist\/hatsu-launcher\/message-entry\.js/
+  );
+  assert.doesNotMatch(launcherHtml, /<iframe/i);
+  assert.doesNotMatch(launcherHtml, /position:\s*fixed[\s\S]*inset:\s*0/i);
+});
+
+test("launcher page configures the canonical st bridge URL", () => {
+  assert.match(
+    launcherHtml,
+    /http:\/\/127\.0\.0\.1:8000\/hatsu-produce-local\/st\.html/
+  );
 });
