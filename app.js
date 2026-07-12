@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   "use strict";
 
   const STORAGE_KEY = "hatsuProduceLocalState";
@@ -2871,6 +2871,13 @@
         height: decoded.height
       });
       if (!validation.ok) return validation;
+      // A library refresh is background work; a new local preview supersedes it.
+      if (portraitWardrobeState.pendingOperation?.kind === "load_library") {
+        const clearTimer = deps.clearTimer || clearTimeout;
+        if (portraitWardrobeState.timeoutId) clearTimer(portraitWardrobeState.timeoutId);
+        portraitWardrobeState.timeoutId = 0;
+        portraitWardrobeState.pendingOperation = null;
+      }
       if (portraitWardrobeState.previewUrl) revokeObjectURL(portraitWardrobeState.previewUrl);
       portraitWardrobeState.previewUrl = createObjectURL(file);
       portraitWardrobeState.selectedFile = file;
