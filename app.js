@@ -2961,6 +2961,79 @@
       return true;
     }
 
+    if (operation.kind === "load_library") {
+      if (payload.action === "readLibrary" && operation.stage === "load_read") {
+        let library = globalThis.HatsuPortraits.normalizeLibrary(payload.library);
+        const missing = Object.values(globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance).equipped)
+          .filter((asset) => asset?.source === "user" && !library.assets[asset.assetId]);
+        if (missing.length) {
+          missing.forEach((asset) => { library = globalThis.HatsuPortraits.mergeLibraryAsset(library, asset); });
+          operation.repairedAssetIds = missing.map((asset) => asset.assetId);
+          operation.stage = "load_write";
+          requestPortraitHostOperation(operation, "writeLibrary", { library }, deps);
+        } else {
+          portraitWardrobeState.library = library;
+          portraitWardrobeState.pendingOperation = null;
+          portraitWardrobeState.status = "ready";
+          if (typeof renderPortraitWardrobe === "function") renderPortraitWardrobe();
+        }
+        return true;
+      }
+      if (payload.action === "writeLibrary" && operation.stage === "load_write") {
+        operation.stage = "load_read_back";
+        requestPortraitHostOperation(operation, "readLibrary", {}, deps);
+        return true;
+      }
+      if (payload.action === "readLibrary" && operation.stage === "load_read_back") {
+        const library = globalThis.HatsuPortraits.normalizeLibrary(payload.library);
+        const repaired = operation.repairedAssetIds.every((assetId) => Boolean(library.assets[assetId]));
+        if (!repaired) {
+          operation.lastError = "library_repair_readback_missing";
+          portraitWardrobeState.status = "retryable";
+          return true;
+        }
+        portraitWardrobeState.library = library;
+        portraitWardrobeState.pendingOperation = null;
+        portraitWardrobeState.status = "ready";
+        if (typeof renderPortraitWardrobe === "function") renderPortraitWardrobe();
+        return true;
+      }
+    }
+
+    if (operation.kind === "archive") {
+      if (payload.action === "readLibrary" && operation.stage === "archive_read") {
+        const latest = globalThis.HatsuPortraits.normalizeLibrary(payload.library);
+        if (!latest.assets[operation.assetId]) {
+          operation.lastError = "archive_asset_missing";
+          portraitWardrobeState.status = "retryable";
+          return true;
+        }
+        const library = globalThis.HatsuPortraits.archiveLibraryAsset(latest, operation.assetId);
+        operation.stage = "archive_write";
+        requestPortraitHostOperation(operation, "writeLibrary", { library }, deps);
+        return true;
+      }
+      if (payload.action === "writeLibrary" && operation.stage === "archive_write") {
+        operation.stage = "archive_read_back";
+        requestPortraitHostOperation(operation, "readLibrary", {}, deps);
+        return true;
+      }
+      if (payload.action === "readLibrary" && operation.stage === "archive_read_back") {
+        const library = globalThis.HatsuPortraits.normalizeLibrary(payload.library);
+        if (library.assets[operation.assetId]?.archived !== true) {
+          operation.lastError = "archive_readback_missing";
+          portraitWardrobeState.status = "retryable";
+          return true;
+        }
+        portraitWardrobeState.library = library;
+        portraitWardrobeState.selectedAssetId = "";
+        portraitWardrobeState.pendingOperation = null;
+        portraitWardrobeState.status = "ready";
+        if (typeof renderPortraitWardrobe === "function") renderPortraitWardrobe();
+        return true;
+      }
+    }
+
     if (payload.action === "verify") {
       if (payload.exists === true) {
         operation.stage = "merge_library";
@@ -3045,6 +3118,7 @@
 
   function closePortraitWardrobe(deps = {}) {
     if (portraitWardrobeState.pendingOperation && deps.force !== true) return false;
+    if (deps.force === true) portraitWardrobeState.pendingOperation = null;
     const revokeObjectURL = deps.revokeObjectURL || ((url) => URL.revokeObjectURL(url));
     const clearTimer = deps.clearTimer || clearTimeout;
     if (portraitWardrobeState.timeoutId) clearTimer(portraitWardrobeState.timeoutId);
@@ -3118,6 +3192,246 @@
 
   function backupStorageKeyForScope(scope = activeStorageKey) {
     return scope === STORAGE_KEY ? SAVE_BACKUP_STORAGE_KEY : `${scope}:backup`;
+  }
+
+  function getWardrobeCharacterOptions() {
+    const options = [{ characterKey: "producer", label: "\u5236\u4f5c\u4eba", type: "producer" }];
+    const assigned = [state.idol, ...(Array.isArray(state.sandbox?.producedIdols) ? state.sandbox.producedIdols : [])];
+    const seen = new Set();
+    assigned.forEach((name) => {
+      const canonical = canonicalIdolName(String(name || ""));
+      if (!canonical || seen.has(canonical) || !idols[canonical]) return;
+      seen.add(canonical);
+      options.push({ characterKey: `idol:${canonical}`, label: canonical, type: "idol" });
+    });
+    return options;
+  }
+
+  function getWardrobeBuiltinPortraitUrl(characterKey) {
+    if (characterKey === "producer") return "./assets/novel-standees/producer.png";
+    if (characterKey.startsWith("idol:")) return resolveIdolStandeeSrc(characterKey.slice(5));
+    return "";
+  }
+
+  function requestPortraitLibraryRefresh(deps = {}) {
+    if (portraitWardrobeState.pendingOperation) return false;
+    const isHost = deps.isHost || isSillyTavernHost;
+    if (!isHost() || !activeHostSaveScope) {
+      portraitWardrobeState.library = globalThis.HatsuPortraits.normalizeLibrary(null);
+      portraitWardrobeState.status = "host_required";
+      renderPortraitWardrobe();
+      return false;
+    }
+    const operationId = globalThis.HatsuPortraits.createOperationId();
+    const operation = {
+      kind: "load_library",
+      operationId,
+      saveScope: String(activeHostSaveScope),
+      stage: "load_read",
+      awaitingAction: "",
+      repairedAssetIds: [],
+      lastError: ""
+    };
+    portraitWardrobeState.pendingOperation = operation;
+    return requestPortraitHostOperation(operation, "readLibrary", {}, deps);
+  }
+
+  function openPortraitWardrobe() {
+    const options = getWardrobeCharacterOptions();
+    if (!options.some((item) => item.characterKey === portraitWardrobeState.selectedCharacterKey)) {
+      portraitWardrobeState.selectedCharacterKey = "producer";
+    }
+    const equipped = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance).equipped[portraitWardrobeState.selectedCharacterKey];
+    portraitWardrobeState.selectedAssetId = equipped?.assetId || "";
+    portraitWardrobeState.draftName = equipped?.name || "";
+    portraitWardrobeState.draftTransform = globalThis.HatsuPortraits.normalizeTransform(equipped?.transform);
+    portraitWardrobeState.open = true;
+    setElementHidden("portraitWardrobeOverlay", false);
+    renderPortraitWardrobe();
+    requestPortraitLibraryRefresh();
+  }
+
+  function requestClosePortraitWardrobe() {
+    const pending = portraitWardrobeState.pendingOperation;
+    if (pending && !window.confirm("\u6587\u4ef6\u64cd\u4f5c\u4ecd\u5728\u8fdb\u884c\u3002\u5173\u95ed\u540e\u5c06\u5ffd\u7565\u8fd9\u6b21\u64cd\u4f5c\u7684\u540e\u7eed\u56de\u590d\uff0c\u662f\u5426\u7ee7\u7eed\uff1f")) return false;
+    closePortraitWardrobe({ force: Boolean(pending) });
+    setElementHidden("portraitWardrobeOverlay", true);
+    return true;
+  }
+
+  function setPortraitWardrobeCharacter(characterKey) {
+    if (!getWardrobeCharacterOptions().some((item) => item.characterKey === characterKey)) return false;
+    if (portraitWardrobeState.previewUrl) URL.revokeObjectURL(portraitWardrobeState.previewUrl);
+    portraitWardrobeState.previewUrl = "";
+    portraitWardrobeState.selectedFile = null;
+    portraitWardrobeState.selectedMeta = null;
+    portraitWardrobeState.selectedCharacterKey = characterKey;
+    const equipped = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance).equipped[characterKey];
+    portraitWardrobeState.selectedAssetId = equipped?.assetId || "";
+    portraitWardrobeState.draftName = equipped?.name || "";
+    portraitWardrobeState.draftTransform = globalThis.HatsuPortraits.normalizeTransform(equipped?.transform);
+    portraitWardrobeState.status = "ready";
+    renderPortraitWardrobe();
+    return true;
+  }
+
+  function selectPortraitLibraryAsset(assetId) {
+    const asset = portraitWardrobeState.library.assets[assetId];
+    if (!asset || asset.archived || asset.characterKey !== portraitWardrobeState.selectedCharacterKey) return false;
+    if (portraitWardrobeState.previewUrl) URL.revokeObjectURL(portraitWardrobeState.previewUrl);
+    portraitWardrobeState.previewUrl = "";
+    portraitWardrobeState.selectedFile = null;
+    portraitWardrobeState.selectedMeta = null;
+    portraitWardrobeState.selectedAssetId = assetId;
+    portraitWardrobeState.draftName = asset.name || "";
+    portraitWardrobeState.draftTransform = globalThis.HatsuPortraits.normalizeTransform(asset.transform);
+    portraitWardrobeState.status = "ready";
+    renderPortraitWardrobe();
+    return true;
+  }
+
+  function restoreBuiltinPortrait() {
+    if (portraitWardrobeState.pendingOperation) return false;
+    const key = portraitWardrobeState.selectedCharacterKey;
+    const appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
+    if (!appearance.equipped[key]) return false;
+    delete appearance.equipped[key];
+    state.appearance = appearance;
+    portraitWardrobeState.selectedAssetId = "";
+    portraitWardrobeState.draftName = "";
+    portraitWardrobeState.draftTransform = { ...globalThis.HatsuPortraits.DEFAULT_TRANSFORM };
+    portraitWardrobeState.status = "complete";
+    saveState("portrait.restore_builtin");
+    renderPortraitWardrobe();
+    return true;
+  }
+
+  function archiveSelectedPortrait(deps = {}) {
+    const assetId = portraitWardrobeState.selectedAssetId;
+    if (!assetId || portraitWardrobeState.pendingOperation) return false;
+    const asset = portraitWardrobeState.library.assets[assetId];
+    if (!asset || asset.archived || !isSillyTavernHost() || !activeHostSaveScope) return false;
+    const operation = {
+      kind: "archive",
+      operationId: globalThis.HatsuPortraits.createOperationId(),
+      saveScope: String(activeHostSaveScope),
+      assetId,
+      stage: "archive_read",
+      awaitingAction: "",
+      lastError: ""
+    };
+    portraitWardrobeState.pendingOperation = operation;
+    return requestPortraitHostOperation(operation, "readLibrary", {}, deps);
+  }
+
+  function retryPortraitWardrobeOperation() {
+    const operation = portraitWardrobeState.pendingOperation;
+    if (!operation || portraitWardrobeState.status !== "retryable") return false;
+    if (operation.kind === "load_library") {
+      operation.stage = "load_read";
+      return requestPortraitHostOperation(operation, "readLibrary", {});
+    }
+    if (operation.kind === "archive") {
+      operation.stage = "archive_read";
+      return requestPortraitHostOperation(operation, "readLibrary", {});
+    }
+    return retryPortraitCommit();
+  }
+
+  function applyPortraitWardrobeSelection() {
+    if (portraitWardrobeState.status === "retryable") return retryPortraitWardrobeOperation();
+    if (portraitWardrobeState.selectedFile) return beginPortraitCommit();
+    const asset = portraitWardrobeState.library.assets[portraitWardrobeState.selectedAssetId];
+    if (!asset || asset.archived) return false;
+    equipPortraitReference(asset, portraitWardrobeState.draftTransform);
+    portraitWardrobeState.status = "complete";
+    renderPortraitWardrobe();
+    return true;
+  }
+
+  function resetPortraitWardrobeTransform() {
+    portraitWardrobeState.draftTransform = { ...globalThis.HatsuPortraits.DEFAULT_TRANSFORM };
+    renderPortraitWardrobe();
+  }
+
+  function renderPortraitWardrobe() {
+    if (!portraitWardrobeState.open) return;
+    const characterKey = portraitWardrobeState.selectedCharacterKey;
+    const options = getWardrobeCharacterOptions();
+    const characters = document.getElementById("portraitWardrobeCharacters");
+    if (characters) {
+      characters.textContent = "";
+      options.forEach((option) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `portrait-wardrobe-character${option.characterKey === characterKey ? " is-active" : ""}`;
+        button.textContent = option.label;
+        button.addEventListener("click", () => setPortraitWardrobeCharacter(option.characterKey));
+        characters.appendChild(button);
+      });
+    }
+    const assets = Object.values(portraitWardrobeState.library.assets)
+      .filter((asset) => !asset.archived && asset.characterKey === characterKey)
+      .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+    const assetList = document.getElementById("portraitWardrobeAssets");
+    if (assetList) {
+      assetList.textContent = "";
+      assets.forEach((asset) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `portrait-wardrobe-asset${asset.assetId === portraitWardrobeState.selectedAssetId ? " is-active" : ""}`;
+        button.title = asset.name || "Custom portrait";
+        const image = document.createElement("img");
+        image.src = asset.url;
+        image.alt = "";
+        button.appendChild(image);
+        button.addEventListener("click", () => selectPortraitLibraryAsset(asset.assetId));
+        assetList.appendChild(button);
+      });
+    }
+    const equipped = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance).equipped[characterKey];
+    const selected = portraitWardrobeState.library.assets[portraitWardrobeState.selectedAssetId];
+    const portraitUrl = portraitWardrobeState.previewUrl || selected?.url || equipped?.url || getWardrobeBuiltinPortraitUrl(characterKey);
+    const preview = document.getElementById("portraitWardrobePreview");
+    const transform = globalThis.HatsuPortraits.normalizeTransform(portraitWardrobeState.draftTransform);
+    if (preview) preview.src = portraitUrl || "";
+    const stage = document.getElementById("portraitWardrobeStage");
+    if (stage) {
+      stage.style.setProperty("--portrait-scale", String(transform.scale));
+      stage.style.setProperty("--portrait-x", `${transform.offsetX}px`);
+      stage.style.setProperty("--portrait-y", `${transform.offsetY}px`);
+    }
+    const option = options.find((item) => item.characterKey === characterKey);
+    const nameEl = document.getElementById("portraitWardrobeCharacterName");
+    const lookEl = document.getElementById("portraitWardrobeLookName");
+    if (nameEl) nameEl.textContent = option?.label || characterKey;
+    if (lookEl) lookEl.textContent = portraitWardrobeState.draftName || selected?.name || equipped?.name || "Builtin";
+    const nameInput = document.getElementById("portraitWardrobeNameInput");
+    if (nameInput && nameInput.value !== portraitWardrobeState.draftName) nameInput.value = portraitWardrobeState.draftName;
+    const values = [["portraitWardrobeScale", Math.round(transform.scale * 100)], ["portraitWardrobeOffsetX", transform.offsetX], ["portraitWardrobeOffsetY", transform.offsetY]];
+    values.forEach(([id, value]) => { const input = document.getElementById(id); if (input) input.value = String(value); });
+    const scaleOutput = document.getElementById("portraitWardrobeScaleValue");
+    const xOutput = document.getElementById("portraitWardrobeOffsetXValue");
+    const yOutput = document.getElementById("portraitWardrobeOffsetYValue");
+    if (scaleOutput) scaleOutput.textContent = `${Math.round(transform.scale * 100)}%`;
+    if (xOutput) xOutput.textContent = String(transform.offsetX);
+    if (yOutput) yOutput.textContent = String(transform.offsetY);
+    const status = document.getElementById("portraitWardrobeStatus");
+    const messages = { idle: "", preview: "\u5df2\u5728\u672c\u5730\u9884\u89c8\uff0c\u5c1a\u672a\u4e0a\u4f20\u3002", working: "\u6b63\u5728\u540c\u6b65\u8863\u67dc\u2026\u2026", retryable: "\u64cd\u4f5c\u672a\u5b8c\u6210\uff0c\u53ef\u91cd\u8bd5\u3002", complete: "\u5df2\u66f4\u65b0\u5f53\u524d\u7acb\u7ed8\u3002", ready: "\u8863\u67dc\u5df2\u5c31\u7eea\u3002", host_required: "\u672c\u5730\u9884\u89c8\u53ef\u7528\uff0c\u4e0a\u4f20\u9700\u8981 SillyTavern \u5bbf\u4e3b\u3002", invalid: "\u65e0\u6cd5\u8bfb\u53d6\u8be5\u56fe\u7247\u3002" };
+    if (status) status.textContent = messages[portraitWardrobeState.status] || "";
+    const working = Boolean(portraitWardrobeState.pendingOperation && portraitWardrobeState.status !== "retryable");
+    ["portraitWardrobeFileInput", "portraitWardrobeNameInput", "portraitWardrobeScale", "portraitWardrobeOffsetX", "portraitWardrobeOffsetY", "portraitWardrobeResetBtn"].forEach((id) => {
+      const control = document.getElementById(id); if (control) control.disabled = working;
+    });
+    const restoreBtn = document.getElementById("portraitWardrobeRestoreBtn");
+    const archiveBtn = document.getElementById("portraitWardrobeArchiveBtn");
+    const applyBtn = document.getElementById("portraitWardrobeApplyBtn");
+    if (restoreBtn) restoreBtn.disabled = working || !equipped;
+    if (archiveBtn) archiveBtn.disabled = working || !selected || selected.archived;
+    if (applyBtn) {
+      applyBtn.disabled = working || (!portraitWardrobeState.selectedFile && !selected && portraitWardrobeState.status !== "retryable");
+      applyBtn.textContent = portraitWardrobeState.status === "retryable" ? "\u91cd\u8bd5" : "\u8bbe\u4e3a\u5f53\u524d";
+    }
   }
 
   function backupCurrentSave() {
@@ -19073,6 +19387,48 @@ ${buildChoiceHardRules({ phase1: true })}`;
   document.getElementById("apartmentSleepBtn")?.addEventListener("click", sleepFromProducerApartment);
   document.getElementById("producerApartmentCampusBtn")?.addEventListener("click", leaveProducerApartmentForCampus);
   document.getElementById("producerApartmentClock")?.addEventListener("click", openFreeModeTimeOverlay);
+  document.getElementById("apartmentWardrobeBtn")?.addEventListener("click", openPortraitWardrobe);
+  document.getElementById("portraitWardrobeCloseBtn")?.addEventListener("click", requestClosePortraitWardrobe);
+  document.getElementById("portraitWardrobeOverlay")?.addEventListener("click", (event) => {
+    if (event.target.id === "portraitWardrobeOverlay") requestClosePortraitWardrobe();
+  });
+  document.getElementById("portraitWardrobeFileInput")?.addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const result = await selectPortraitPreviewFile(file);
+    if (!result.ok) showToast("\u56fe\u7247\u4e0d\u53ef\u7528", result.error || "\u8bf7\u9009\u62e9\u6709\u6548\u7684 PNG\u3001WebP \u6216 JPEG \u56fe\u7247\u3002", "warn");
+    renderPortraitWardrobe();
+  });
+  document.getElementById("portraitWardrobeNameInput")?.addEventListener("input", (event) => {
+    portraitWardrobeState.draftName = String(event.target.value || "").slice(0, 120);
+    const label = document.getElementById("portraitWardrobeLookName");
+    if (label) label.textContent = portraitWardrobeState.draftName || "Custom";
+  });
+  document.getElementById("portraitWardrobeScale")?.addEventListener("input", (event) => {
+    portraitWardrobeState.draftTransform.scale = Number(event.target.value) / 100;
+    renderPortraitWardrobe();
+  });
+  document.getElementById("portraitWardrobeOffsetX")?.addEventListener("input", (event) => {
+    portraitWardrobeState.draftTransform.offsetX = Number(event.target.value);
+    renderPortraitWardrobe();
+  });
+  document.getElementById("portraitWardrobeOffsetY")?.addEventListener("input", (event) => {
+    portraitWardrobeState.draftTransform.offsetY = Number(event.target.value);
+    renderPortraitWardrobe();
+  });
+  document.getElementById("portraitWardrobeResetBtn")?.addEventListener("click", resetPortraitWardrobeTransform);
+  document.getElementById("portraitWardrobeRestoreBtn")?.addEventListener("click", restoreBuiltinPortrait);
+  document.getElementById("portraitWardrobeArchiveBtn")?.addEventListener("click", () => {
+    if (!portraitWardrobeState.selectedAssetId) return;
+    if (!window.confirm("\u53ea\u4f1a\u5c06\u8be5\u7acb\u7ed8\u4ece\u8863\u67dc\u5217\u8868\u5f52\u6863\uff0c\u4e0d\u4f1a\u5220\u9664\u8fdc\u7a0b\u56fe\u7247\u3002\u7ee7\u7eed\uff1f")) return;
+    archiveSelectedPortrait();
+  });
+  document.getElementById("portraitWardrobeApplyBtn")?.addEventListener("click", () => {
+    const applied = applyPortraitWardrobeSelection();
+    if (!applied && portraitWardrobeState.status !== "working") {
+      showToast("\u5c1a\u672a\u9009\u62e9\u7acb\u7ed8", "\u8bf7\u5148\u9009\u62e9\u56fe\u7247\u6216\u8863\u67dc\u4e2d\u7684\u7acb\u7ed8\u3002", "warn");
+    }
+  });
   document.getElementById("freeModeApartmentBtn")?.addEventListener("click", goToProducerApartmentFromMap);
   document.getElementById("apartmentGoHomeAloneBtn")?.addEventListener("click", handleApartmentGoHomeAlone);
   document.getElementById("apartmentGoHomeWithIdolBtn")?.addEventListener("click", handleApartmentGoHomeWithIdol);

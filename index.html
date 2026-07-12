@@ -376,9 +376,66 @@
           <span class="apartment-hotspot-kicker">Phone</span>
           <strong>打开手机</strong>
         </button>
+        <button id="apartmentWardrobeBtn" class="apartment-hotspot is-wardrobe" type="button" title="Portrait wardrobe">
+          <span class="apartment-hotspot-kicker">Wardrobe</span>
+          <strong>WARDROBE</strong>
+        </button>
       </div>
     </section>
   </main>
+
+  <section id="portraitWardrobeOverlay" class="portrait-wardrobe-overlay" hidden aria-label="Portrait wardrobe">
+    <div class="portrait-wardrobe-shell" role="dialog" aria-modal="true" aria-labelledby="portraitWardrobeTitle">
+      <header class="portrait-wardrobe-head">
+        <div>
+          <p class="ui-kicker">Look / Fitting</p>
+          <h2 id="portraitWardrobeTitle">LOOK ROOM</h2>
+        </div>
+        <button id="portraitWardrobeCloseBtn" class="icon-button" type="button" aria-label="Close"><svg><use href="#icon-close"></use></svg></button>
+      </header>
+      <div class="portrait-wardrobe-workspace">
+        <nav id="portraitWardrobeCharacters" class="portrait-wardrobe-characters" aria-label="Characters"></nav>
+        <section id="portraitWardrobeStage" class="portrait-wardrobe-stage" aria-label="Portrait preview">
+          <span class="portrait-wardrobe-stage-mark">FITTING 01</span>
+          <img id="portraitWardrobePreview" class="portrait-wardrobe-preview" src="" alt="Portrait preview" draggable="false">
+          <div class="portrait-wardrobe-stage-caption">
+            <strong id="portraitWardrobeCharacterName">PRODUCER</strong>
+            <span id="portraitWardrobeLookName">BUILTIN LOOK</span>
+          </div>
+        </section>
+        <aside class="portrait-wardrobe-controls">
+          <div class="portrait-wardrobe-section-head">
+            <span>LOOK LIBRARY</span>
+            <button id="portraitWardrobeResetBtn" class="portrait-wardrobe-text-btn" type="button">RESET</button>
+          </div>
+          <div id="portraitWardrobeAssets" class="portrait-wardrobe-assets" aria-label="Uploaded portraits"></div>
+          <label class="portrait-wardrobe-upload" for="portraitWardrobeFileInput">
+            <svg aria-hidden="true"><use href="#icon-plus"></use></svg>
+            <span>SELECT PNG / WebP / JPEG</span>
+          </label>
+          <input id="portraitWardrobeFileInput" type="file" accept="image/png,image/webp,image/jpeg" hidden>
+          <label class="portrait-wardrobe-field" for="portraitWardrobeNameInput">
+            <span>LOOK NAME</span>
+            <input id="portraitWardrobeNameInput" type="text" maxlength="120" placeholder="Practice look">
+          </label>
+          <div class="portrait-wardrobe-sliders">
+            <label for="portraitWardrobeScale"><span>SCALE</span><output id="portraitWardrobeScaleValue">100%</output></label>
+            <input id="portraitWardrobeScale" type="range" min="50" max="200" value="100">
+            <label for="portraitWardrobeOffsetX"><span>HORIZONTAL</span><output id="portraitWardrobeOffsetXValue">0</output></label>
+            <input id="portraitWardrobeOffsetX" type="range" min="-100" max="100" value="0">
+            <label for="portraitWardrobeOffsetY"><span>VERTICAL</span><output id="portraitWardrobeOffsetYValue">0</output></label>
+            <input id="portraitWardrobeOffsetY" type="range" min="-100" max="100" value="0">
+          </div>
+          <p id="portraitWardrobeStatus" class="portrait-wardrobe-status" aria-live="polite">READING LIBRARY...</p>
+          <div class="portrait-wardrobe-actions">
+            <button id="portraitWardrobeRestoreBtn" class="portrait-wardrobe-action" type="button">BUILTIN</button>
+            <button id="portraitWardrobeArchiveBtn" class="portrait-wardrobe-action is-danger" type="button">ARCHIVE</button>
+            <button id="portraitWardrobeApplyBtn" class="portrait-wardrobe-action is-primary" type="button">APPLY LOOK</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
 
   <section id="apartmentGoHomeOverlay" class="event-overlay" hidden aria-label="回到公寓">
     <article class="event-panel apartment-go-home-panel">

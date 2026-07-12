@@ -9417,3 +9417,279 @@ body.is-free-mode-active {
   .outing-facility-entrance,
   .outing-facility-food_court { grid-column: auto; grid-row: auto; }
 }
+
+.portrait-wardrobe-overlay {
+  position: fixed;
+  z-index: 1400;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(19, 19, 24, 0.78);
+  backdrop-filter: blur(10px);
+}
+
+.portrait-wardrobe-overlay[hidden] { display: none; }
+
+.portrait-wardrobe-shell {
+  overflow: hidden;
+  width: min(1180px, 100%);
+  max-height: calc(100svh - 36px);
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 8px;
+  background: #f7f6f3;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+}
+
+.portrait-wardrobe-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 72px;
+  padding: 13px 18px;
+  border-bottom: 1px solid rgba(31, 31, 37, 0.12);
+  background: #fff;
+}
+
+.portrait-wardrobe-head h2 {
+  margin: 2px 0 0;
+  color: #242329;
+  font-size: 22px;
+  letter-spacing: 0;
+}
+
+.portrait-wardrobe-workspace {
+  display: grid;
+  grid-template-columns: 112px minmax(420px, 1fr) minmax(300px, 342px);
+  min-height: 560px;
+  max-height: calc(100svh - 110px);
+}
+
+.portrait-wardrobe-characters {
+  overflow-y: auto;
+  padding: 12px 10px;
+  border-right: 1px solid rgba(31, 31, 37, 0.12);
+  background: #27262c;
+}
+
+.portrait-wardrobe-character {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 68px;
+  margin-bottom: 8px;
+  padding: 8px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.portrait-wardrobe-character:hover,
+.portrait-wardrobe-character:focus-visible {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+.portrait-wardrobe-character.is-active {
+  border-color: #f49a34;
+  background: #fff;
+  color: #27262c;
+}
+
+.portrait-wardrobe-stage {
+  --portrait-scale: 1;
+  --portrait-x: 0px;
+  --portrait-y: 0px;
+  position: relative;
+  overflow: hidden;
+  min-height: 455px;
+  background-color: #c8c2bc;
+  background-image: url("./assets/scenes/Wardrobe_Fitting_Room.png");
+  background-position: center 48%;
+  background-size: cover;
+}
+
+.portrait-wardrobe-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(24, 22, 20, 0.08);
+  pointer-events: none;
+}
+
+.portrait-wardrobe-stage-mark {
+  position: absolute;
+  z-index: 3;
+  top: 16px;
+  left: 16px;
+  padding: 6px 9px;
+  border-left: 3px solid #e04f78;
+  background: rgba(255, 255, 255, 0.9);
+  color: #28272c;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.portrait-wardrobe-preview {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: -7%;
+  width: min(84%, 520px);
+  height: 108%;
+  object-fit: contain;
+  object-position: center bottom;
+  transform: translate(calc(-50% + var(--portrait-x)), var(--portrait-y)) scale(var(--portrait-scale));
+  transform-origin: center bottom;
+  filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.28));
+}
+
+.portrait-wardrobe-preview:not([src]),
+.portrait-wardrobe-preview[src=""] { display: none; }
+
+.portrait-wardrobe-stage-caption {
+  position: absolute;
+  z-index: 4;
+  right: 16px;
+  bottom: 16px;
+  min-width: 160px;
+  padding: 10px 12px;
+  border-right: 4px solid #41a785;
+  background: rgba(255, 255, 255, 0.92);
+  color: #28272c;
+  text-align: right;
+}
+
+.portrait-wardrobe-stage-caption strong,
+.portrait-wardrobe-stage-caption span { display: block; }
+.portrait-wardrobe-stage-caption strong { font-size: 16px; }
+.portrait-wardrobe-stage-caption span { margin-top: 2px; color: #68666c; font-size: 12px; }
+
+.portrait-wardrobe-controls {
+  overflow-y: auto;
+  padding: 16px;
+  background: #f7f6f3;
+  color: #29282e;
+}
+
+.portrait-wardrobe-section-head,
+.portrait-wardrobe-sliders label,
+.portrait-wardrobe-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.portrait-wardrobe-section-head > span {
+  font-size: 11px;
+  font-weight: 900;
+  color: #68666c;
+}
+
+.portrait-wardrobe-text-btn {
+  border: 0;
+  background: transparent;
+  color: #346f9f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portrait-wardrobe-assets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  min-height: 78px;
+  margin: 10px 0 12px;
+}
+
+.portrait-wardrobe-asset {
+  overflow: hidden;
+  min-height: 78px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: #e5e2dd;
+}
+
+.portrait-wardrobe-asset img { width: 100%; height: 74px; object-fit: cover; object-position: top center; }
+.portrait-wardrobe-asset.is-active { border-color: #e04f78; }
+
+.portrait-wardrobe-upload {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 1px dashed #8b888f;
+  border-radius: 6px;
+  background: #fff;
+  color: #34333a;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.portrait-wardrobe-upload svg { width: 17px; height: 17px; }
+
+.portrait-wardrobe-field { display: grid; gap: 6px; margin-top: 12px; color: #57555d; font-size: 12px; font-weight: 800; }
+.portrait-wardrobe-field input {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid #c9c5bf;
+  border-radius: 6px;
+  background: #fff;
+  color: #28272c;
+  font: inherit;
+}
+
+.portrait-wardrobe-sliders { display: grid; gap: 5px; margin-top: 14px; }
+.portrait-wardrobe-sliders label { color: #57555d; font-size: 12px; font-weight: 800; }
+.portrait-wardrobe-sliders output { color: #28272c; font-variant-numeric: tabular-nums; }
+.portrait-wardrobe-sliders input { width: 100%; accent-color: #e04f78; }
+
+.portrait-wardrobe-status { min-height: 34px; margin: 12px 0 8px; color: #68666c; font-size: 12px; line-height: 1.4; }
+.portrait-wardrobe-actions { flex-wrap: wrap; }
+.portrait-wardrobe-action {
+  min-height: 40px;
+  flex: 1 1 86px;
+  padding: 8px 10px;
+  border: 1px solid #bbb7b1;
+  border-radius: 6px;
+  background: #fff;
+  color: #343239;
+  font-weight: 850;
+}
+.portrait-wardrobe-action.is-danger { color: #b83f53; }
+.portrait-wardrobe-action.is-primary { border-color: #e04f78; background: #e04f78; color: #fff; }
+.portrait-wardrobe-action:disabled,
+.portrait-wardrobe-upload.is-disabled { opacity: 0.48; cursor: not-allowed; }
+
+#apartmentWardrobeBtn { border-color: rgba(65, 167, 133, 0.56); }
+
+@media (max-width: 700px) {
+  .portrait-wardrobe-overlay { padding: 0; place-items: stretch; }
+  .portrait-wardrobe-shell { width: 100%; max-height: 100svh; border: 0; border-radius: 0; }
+  .portrait-wardrobe-head { min-height: 62px; padding: 10px 12px; }
+  .portrait-wardrobe-head h2 { font-size: 19px; }
+  .portrait-wardrobe-workspace { grid-template-columns: 1fr; max-height: calc(100svh - 62px); overflow-y: auto; }
+  .portrait-wardrobe-characters { display: flex; overflow-x: auto; padding: 8px; border-right: 0; }
+  .portrait-wardrobe-character { flex: 0 0 84px; min-height: 48px; margin: 0 6px 0 0; }
+  .portrait-wardrobe-stage { min-height: 340px; background-position: 49% center; }
+  .portrait-wardrobe-preview { width: min(92%, 430px); height: 110%; }
+  .portrait-wardrobe-controls { overflow: visible; padding: 14px 12px 22px; }
+}
+
+@media (max-width: 340px) {
+  .portrait-wardrobe-assets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .portrait-wardrobe-actions { display: grid; grid-template-columns: 1fr; }
+  .portrait-wardrobe-action { width: 100%; }
+  .portrait-wardrobe-stage-caption { right: 8px; bottom: 8px; min-width: 130px; }
+}
