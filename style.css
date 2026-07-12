@@ -4552,17 +4552,17 @@ p {
   transform-origin: bottom center;
   will-change: transform, opacity;
   opacity: 0;
-  transform: translateY(42%) scale(0.95);
+  transform: translate(var(--portrait-x, 0px), var(--portrait-y, 0px)) translateY(42%) scale(calc(var(--portrait-scale, 1) * 0.95));
 }
 
 .vn-standee.active {
   opacity: 1;
-  transform: translateY(38%) scale(1);
+  transform: translate(var(--portrait-x, 0px), var(--portrait-y, 0px)) translateY(38%) scale(var(--portrait-scale, 1));
 }
 
 .vn-standee.fade-out {
   opacity: 0;
-  transform: translateY(42%) scale(0.98);
+  transform: translate(var(--portrait-x, 0px), var(--portrait-y, 0px)) translateY(42%) scale(calc(var(--portrait-scale, 1) * 0.98));
 }
 
 .vn-dialogue-box {
@@ -5136,11 +5136,11 @@ p {
 
   .vn-standee {
     height: 118%;
-    transform: translateY(34%) scale(0.92);
+    transform: translate(var(--portrait-x, 0px), var(--portrait-y, 0px)) translateY(34%) scale(calc(var(--portrait-scale, 1) * 0.92));
   }
 
   .vn-standee.active {
-    transform: translateY(31%) scale(0.95);
+    transform: translate(var(--portrait-x, 0px), var(--portrait-y, 0px)) translateY(31%) scale(calc(var(--portrait-scale, 1) * 0.95));
   }
 
   .vn-dialogue-box {
@@ -5545,7 +5545,7 @@ p {
   flex: 0 0 auto;
   object-fit: contain;
   object-position: center bottom;
-  transform: translateY(38%);
+  transform: translate(var(--portrait-x, 0px), var(--portrait-y, 0px)) translateY(38%) scale(var(--portrait-scale, 1));
   transform-origin: bottom center;
   transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1);
   pointer-events: none;
@@ -5553,7 +5553,7 @@ p {
 
 .apartment-companion-standee:hover img,
 .apartment-companion-standee:focus-visible img {
-  transform: translateY(35%) scale(1.02);
+  transform: translate(var(--portrait-x, 0px), var(--portrait-y, 0px)) translateY(35%) scale(calc(var(--portrait-scale, 1) * 1.02));
 }
 
 .apartment-companion-standee-label {
@@ -5583,12 +5583,12 @@ p {
 
   .apartment-companion-standee img {
     height: 122%;
-    transform: translateY(34%) scale(0.94);
+    transform: translate(var(--portrait-x, 0px), var(--portrait-y, 0px)) translateY(34%) scale(calc(var(--portrait-scale, 1) * 0.94));
   }
 
   .apartment-companion-standee:hover img,
   .apartment-companion-standee:focus-visible img {
-    transform: translateY(31%) scale(0.97);
+    transform: translate(var(--portrait-x, 0px), var(--portrait-y, 0px)) translateY(31%) scale(calc(var(--portrait-scale, 1) * 0.97));
   }
 }
 

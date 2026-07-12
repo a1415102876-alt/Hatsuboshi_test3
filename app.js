@@ -9432,6 +9432,74 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     return profile?.avatar || "";
   }
 
+  function getBuiltinPortraitMap() {
+    const builtins = { producer: "./assets/novel-standees/producer.png" };
+    Object.keys(idols).forEach((name) => {
+      const url = resolveIdolStandeeSrc(name);
+      if (url) builtins[`idol:${name}`] = url;
+    });
+    return builtins;
+  }
+
+  function resolvePortraitForSpeaker(speaker) {
+    const characterKey = globalThis.HatsuPortraits.characterKeyForSpeaker(
+      speaker,
+      state.producer?.name,
+      canonicalIdolName,
+      (name) => Boolean(idols[name])
+    );
+    if (!characterKey) {
+      return {
+        speaker: String(speaker || ""),
+        characterKey: "",
+        url: "",
+        fallbackUrl: "",
+        source: "builtin",
+        transform: { ...globalThis.HatsuPortraits.DEFAULT_TRANSFORM }
+      };
+    }
+    return {
+      ...globalThis.HatsuPortraits.resolvePortrait(
+        characterKey,
+        state.appearance,
+        getBuiltinPortraitMap(),
+        portraitWardrobeState.invalidUrls
+      ),
+      speaker: String(speaker || "")
+    };
+  }
+
+  function applyResolvedPortraitToImage(img, resolved) {
+    if (!img || !resolved) return false;
+    const transform = globalThis.HatsuPortraits.normalizeTransform(resolved.transform);
+    img.src = String(resolved.url || "");
+    img.style.setProperty("--portrait-scale", String(transform.scale));
+    img.style.setProperty("--portrait-x", `${transform.offsetX}px`);
+    img.style.setProperty("--portrait-y", `${transform.offsetY}px`);
+    img.dataset.portraitSpeaker = String(resolved.speaker || "");
+    img.dataset.portraitCharacterKey = String(resolved.characterKey || "");
+    img.dataset.portraitUserUrl = resolved.source === "user" ? String(resolved.url || "") : "";
+    img.dataset.portraitFallbackUrl = String(resolved.fallbackUrl || resolved.url || "");
+    img.dataset.portraitFallbackApplied = "0";
+    img.onerror = () => handlePortraitImageError(img, resolved.speaker || resolved.characterKey);
+    return Boolean(resolved.url);
+  }
+
+  function handlePortraitImageError(img, speaker) {
+    if (!img || img.dataset.portraitFallbackApplied === "1") return false;
+    const failedUrl = String(img.dataset.portraitUserUrl || "");
+    const fallbackUrl = String(img.dataset.portraitFallbackUrl || "");
+    if (!failedUrl || !fallbackUrl || failedUrl === fallbackUrl) return false;
+    portraitWardrobeState.invalidUrls.add(failedUrl);
+    img.dataset.portraitFallbackApplied = "1";
+    img.onerror = null;
+    img.src = fallbackUrl;
+    img.style.setProperty("--portrait-scale", "1");
+    img.style.setProperty("--portrait-x", "0px");
+    img.style.setProperty("--portrait-y", "0px");
+    return true;
+  }
+
   function getProducerApartmentSceneBackground() {
     ensureFreeModeTimeDefaults();
     return state.freeMode.clockMinutes >= FREE_MODE_MAP_NIGHT_START_MINUTES
@@ -9967,10 +10035,10 @@ ${idolLine}
     const standeeImg = document.getElementById("apartmentCompanionStandeeImg");
     const standeeLabel = document.getElementById("apartmentCompanionStandeeLabel");
     if (standeeBtn && standeeImg && standeeLabel) {
-      const standeeSrc = companion ? resolveIdolStandeeSrc(companion) : "";
-      if (companion && standeeSrc) {
+      const resolvedPortrait = companion ? resolvePortraitForSpeaker(companion) : null;
+      if (companion && resolvedPortrait?.url) {
         standeeBtn.hidden = false;
-        standeeImg.src = standeeSrc;
+        applyResolvedPortraitToImage(standeeImg, resolvedPortrait);
         standeeImg.alt = `${companion}立绘`;
         standeeLabel.textContent = companion;
       } else {
@@ -15983,18 +16051,9 @@ ${buildChoiceHardRules({ phase1: true })}`;
       
       // 2. 加载发言者立绘并置于中央
       if (standeeEl) {
-        let standeeSrc = "";
-        if (isProducer) {
-          standeeSrc = "./assets/novel-standees/producer.png";
-        } else if (vnStandees[slide.speaker] || vnStandees[speakerCanonical]) {
-          standeeSrc = vnStandees[slide.speaker] || vnStandees[speakerCanonical];
-        } else if (idols[speakerCanonical] && idols[speakerCanonical].background) {
-          const baseName = idols[speakerCanonical].background.split("/").pop();
-          standeeSrc = `./assets/novel-standees/${baseName}`;
-        }
-        
-        if (standeeSrc) {
-          standeeEl.src = standeeSrc;
+        const resolvedPortrait = resolvePortraitForSpeaker(slide.speaker);
+        if (resolvedPortrait.url) {
+          applyResolvedPortraitToImage(standeeEl, resolvedPortrait);
           standeeEl.style.display = "block";
           setTimeout(() => {
             standeeEl.classList.remove("fade-out");
