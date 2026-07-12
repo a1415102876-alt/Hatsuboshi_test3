@@ -5,6 +5,7 @@
   const SHELL_ID = "hatsu-persistent-game-shell";
   const FRAME_ID = "hatsu-persistent-game-frame";
   const EXIT_ID = "hatsu-persistent-game-exit";
+  const LEGACY_FRAME_ID = "hatsu-produce-persistent-frame";
   const DEFAULT_FRONTEND_URL = "http://127.0.0.1:8000/hatsu-produce-local/st.html";
 
   const entryButton = document.getElementById("hatsu-launcher-start-btn");
@@ -38,6 +39,13 @@
     const statusListeners = new Set();
 
     function ensureShell() {
+      const legacyFrame = hostDocument.getElementById(LEGACY_FRAME_ID);
+      if (legacyFrame) {
+        legacyFrame.hidden = true;
+        legacyFrame.style.display = "none";
+        legacyFrame.setAttribute("aria-hidden", "true");
+      }
+
       if (shell && frame) return { shell, frame };
 
       shell = hostDocument.getElementById(SHELL_ID);

@@ -213,6 +213,25 @@ test("exit hides the shell and resume preserves the iframe node and src", () => 
   assert.equal(frame.src, EXPECTED_FRONTEND_URL);
 });
 
+test("opening the new launcher hides the legacy persistent iframe", () => {
+  const hostDocument = new FakeDocument();
+  const legacyFrame = hostDocument.createElement("iframe");
+  legacyFrame.id = "hatsu-produce-persistent-frame";
+  legacyFrame.style.display = "block";
+  hostDocument.body.appendChild(legacyFrame);
+
+  const env = runLauncherInHost({ hostWindow: { document: hostDocument } });
+  env.startButton.click();
+  env.hostDocument.getElementById("hatsu-persistent-game-exit").click();
+
+  assert.equal(legacyFrame.hidden, true);
+  assert.equal(legacyFrame.style.display, "none");
+  assert.equal(
+    env.hostDocument.getElementById("hatsu-persistent-game-shell").hidden,
+    true
+  );
+});
+
 test("removing a message floor does not remove the host game shell", () => {
   const env = runLauncherInHost();
   env.startButton.click();
