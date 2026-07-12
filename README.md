@@ -51,3 +51,29 @@ window.HatsuLauncherConfig = {
 - P 手账提示词、育成日志与结算明细
 - 行动后全屏事件描述页
 - 内部通知与模态框
+
+## Persistent message-floor launcher
+
+When a TavernHelper regex renders every AI reply as a frontend page, load the compact launcher instead of loading `st.html` directly:
+
+```html
+<body>
+  <script>
+    $('body').load('http://127.0.0.1:8000/hatsu-produce-local/launcher.html');
+  </script>
+</body>
+```
+
+The launcher card creates or reveals one game iframe attached directly to the SillyTavern host document. Every rendered message controls the same iframe.
+
+Exit behavior: hide-only. It does not cancel an in-flight generation, release a Harness lease, or reload the game iframe. Starting again resumes the same in-memory page state.
+
+A shujuku floor refresh can rebuild chat messages without removing the host-level game iframe. A SillyTavern full refresh still reloads the runtime and may invoke normal Harness Recovery for an interrupted turn.
+
+Manual checks:
+
+1. Confirm each rendered AI floor shows only the compact launcher card.
+2. Start the game and confirm `#hatsu-persistent-game-shell` is a direct child of the host document body.
+3. Exit and confirm the shell is hidden while `#hatsu-persistent-game-frame` remains in the DOM with the same `src`.
+4. Start from another message floor and confirm the same game state resumes.
+5. Trigger a shujuku table refresh and confirm the game does not reload solely because floors were rebuilt.

@@ -13,6 +13,7 @@ try {
 } catch (error) {
   launcherHtml = "";
 }
+const readmeSource = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 
 const EXPECTED_FRONTEND_URL = "http://127.0.0.1:8000/hatsu-produce-local/st.html";
 
@@ -186,6 +187,17 @@ test("repeated launchers reuse the same host overlay and iframe", () => {
   );
 });
 
+test("exit updates a live launcher card to the background state", () => {
+  const env = runLauncherInHost();
+  env.startButton.click();
+  assert.equal(env.status.textContent, "\u6e38\u620f\u5df2\u6253\u5f00");
+
+  env.hostDocument.getElementById("hatsu-persistent-game-exit").click();
+
+  assert.equal(env.status.textContent, "\u6e38\u620f\u6b63\u5728\u540e\u53f0\u8fd0\u884c");
+  assert.equal(env.startButton.textContent, "\u7ee7\u7eed\u6e38\u620f");
+});
+
 test("exit hides the shell and resume preserves the iframe node and src", () => {
   const env = runLauncherInHost();
   env.startButton.click();
@@ -234,4 +246,15 @@ test("launcher page configures the canonical st bridge URL", () => {
     launcherHtml,
     /http:\/\/127\.0\.0\.1:8000\/hatsu-produce-local\/st\.html/
   );
+});
+
+test("README documents the regex launcher and hide-only exit behavior", () => {
+  assert.match(
+    readmeSource,
+    /\$\('body'\)\.load\('http:\/\/127\.0\.0\.1:8000\/hatsu-produce-local\/launcher\.html'\)/
+  );
+  assert.match(readmeSource, /Exit behavior: hide-only/i);
+  assert.match(readmeSource, /does not cancel[^\n]*generation/i);
+  assert.match(readmeSource, /shujuku[^\n]*floor refresh/i);
+  assert.match(readmeSource, /SillyTavern[^\n]*full refresh[^\n]*Harness Recovery/i);
 });

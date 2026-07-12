@@ -35,6 +35,7 @@
     const hostDocument = hostWindow.document;
     let shell = null;
     let frame = null;
+    const statusListeners = new Set();
 
     function ensureShell() {
       if (shell && frame) return { shell, frame };
@@ -96,20 +97,41 @@
       return { shell, frame };
     }
 
+    function notifyStatus() {
+      const status = controller.getStatus();
+      for (const listener of statusListeners) {
+        try {
+          listener(status);
+        } catch (error) {
+          statusListeners.delete(listener);
+        }
+      }
+    }
+
     const controller = {
       open() {
         const mounted = ensureShell();
         mounted.shell.hidden = false;
+        notifyStatus();
         return mounted.frame;
       },
       hide() {
         const currentShell = shell || hostDocument.getElementById(SHELL_ID);
-        if (currentShell) currentShell.hidden = true;
+        if (currentShell) {
+          currentShell.hidden = true;
+          notifyStatus();
+        }
       },
       getStatus() {
         const currentShell = shell || hostDocument.getElementById(SHELL_ID);
         if (!currentShell) return "not_started";
         return currentShell.hidden ? "hidden" : "visible";
+      },
+      subscribe(listener) {
+        if (typeof listener !== "function") return () => {};
+        statusListeners.add(listener);
+        listener(controller.getStatus());
+        return () => statusListeners.delete(listener);
       }
     };
 
@@ -117,9 +139,9 @@
     return controller;
   }
 
-  function renderEntryStatus(controller) {
+  function renderEntryStatus(controller, currentStatus) {
     if (!entryStatus || !entryButton) return;
-    const status = controller.getStatus();
+    const status = currentStatus || controller.getStatus();
     if (status === "visible") {
       entryStatus.textContent = "游戏已打开";
       entryButton.textContent = "返回游戏";
@@ -142,9 +164,13 @@
   }
 
   const controller = createController(hostWindow);
-  renderEntryStatus(controller);
+  const unsubscribe = controller.subscribe((status) => renderEntryStatus(controller, status));
+  if (typeof window.addEventListener === "function") {
+    const cleanup = () => unsubscribe();
+    window.addEventListener("pagehide", cleanup, { once: true });
+    window.addEventListener("beforeunload", cleanup, { once: true });
+  }
   entryButton?.addEventListener("click", () => {
     controller.open();
-    renderEntryStatus(controller);
   });
 })();
