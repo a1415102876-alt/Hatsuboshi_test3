@@ -2350,6 +2350,7 @@
         buzz: { items: [], buzzDayKey: "", hotTopic: "" }
       }
     },
+    appearance: { schemaVersion: 1, equipped: {} },
     activeStoryNode: null,
     log: [],
     boundCharacter: null,
@@ -2774,6 +2775,289 @@
     if (typeof renderSecondaryApiDebug === "function") renderSecondaryApiDebug();
     return record;
   }
+  const portraitWardrobeState = {
+    open: false,
+    selectedCharacterKey: "producer",
+    library: globalThis.HatsuPortraits.normalizeLibrary(null),
+    pendingOperation: null,
+    selectedAssetId: "",
+    status: "idle",
+    invalidUrls: new Set(),
+    previewUrl: "",
+    selectedFile: null,
+    selectedMeta: null,
+    draftName: "",
+    draftTransform: { ...globalThis.HatsuPortraits.DEFAULT_TRANSFORM },
+    timeoutId: 0
+  };
+
+  function decodePortraitImageMeta(file) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const image = new Image();
+      image.onload = () => {
+        const result = { width: image.naturalWidth, height: image.naturalHeight };
+        URL.revokeObjectURL(url);
+        resolve(result);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("decode_failed"));
+      };
+      image.src = url;
+    });
+  }
+
+  function readPortraitFileAsBase64(file, deps = {}) {
+    if (typeof deps.readAsDataUrl === "function") {
+      return Promise.resolve(deps.readAsDataUrl(file)).then((value) => String(value || "").replace(/^data:[^;]+;base64,/, ""));
+    }
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || "").replace(/^data:[^;]+;base64,/, ""));
+      reader.onerror = () => reject(reader.error || new Error("file_read_failed"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function handlePortraitOperationTimeout(operationId, action) {
+    const operation = portraitWardrobeState.pendingOperation;
+    if (!operation || operation.operationId !== operationId || operation.awaitingAction !== action) return false;
+    portraitWardrobeState.timeoutId = 0;
+    portraitWardrobeState.status = "retryable";
+    operation.lastError = "timeout";
+    if (typeof renderPortraitWardrobe === "function") renderPortraitWardrobe();
+    return true;
+  }
+
+  function requestPortraitHostOperation(operation, action, payload = {}, deps = {}) {
+    if (!operation || portraitWardrobeState.pendingOperation !== operation) return false;
+    const isHost = deps.isHost || isSillyTavernHost;
+    if (!isHost()) return false;
+    const postMessage = deps.postMessage || ((message) => window.parent.postMessage(message, "*"));
+    const clearTimer = deps.clearTimer || clearTimeout;
+    const setTimer = deps.setTimer || ((callback, delay) => window.setTimeout(callback, delay));
+    if (portraitWardrobeState.timeoutId) clearTimer(portraitWardrobeState.timeoutId);
+    operation.awaitingAction = action;
+    operation.lastError = "";
+    portraitWardrobeState.status = "working";
+    postMessage({
+      source: "hatsuboshi-produce",
+      type: "portraitFileOperation",
+      operationId: operation.operationId,
+      saveScope: operation.saveScope,
+      action,
+      payload
+    });
+    portraitWardrobeState.timeoutId = setTimer(
+      () => handlePortraitOperationTimeout(operation.operationId, action),
+      15000
+    );
+    if (typeof renderPortraitWardrobe === "function") renderPortraitWardrobe();
+    return true;
+  }
+
+  async function selectPortraitPreviewFile(file, deps = {}) {
+    if (!file) return { ok: false, error: "file_required" };
+    const decodeImageMeta = deps.decodeImageMeta || decodePortraitImageMeta;
+    const createObjectURL = deps.createObjectURL || ((value) => URL.createObjectURL(value));
+    const revokeObjectURL = deps.revokeObjectURL || ((url) => URL.revokeObjectURL(url));
+    try {
+      const decoded = await decodeImageMeta(file);
+      const validation = globalThis.HatsuPortraits.validateDecodedImageMeta({
+        type: file.type,
+        size: file.size,
+        width: decoded.width,
+        height: decoded.height
+      });
+      if (!validation.ok) return validation;
+      if (portraitWardrobeState.previewUrl) revokeObjectURL(portraitWardrobeState.previewUrl);
+      portraitWardrobeState.previewUrl = createObjectURL(file);
+      portraitWardrobeState.selectedFile = file;
+      portraitWardrobeState.selectedMeta = {
+        type: String(file.type || ""),
+        size: Number(file.size || 0),
+        width: Number(decoded.width),
+        height: Number(decoded.height)
+      };
+      portraitWardrobeState.draftName = String(file.name || "").replace(/\.[^.]+$/, "").slice(0, 120);
+      portraitWardrobeState.status = "preview";
+      if (typeof renderPortraitWardrobe === "function") renderPortraitWardrobe();
+      return { ok: true };
+    } catch (error) {
+      portraitWardrobeState.status = "invalid";
+      return { ok: false, error: String(error?.message || error || "decode_failed") };
+    }
+  }
+
+  function beginPortraitCommit(deps = {}) {
+    const isHost = deps.isHost || isSillyTavernHost;
+    if (!isHost()) return { ok: false, error: "host_required" };
+    if (portraitWardrobeState.pendingOperation) return { ok: false, error: "operation_pending" };
+    const file = portraitWardrobeState.selectedFile;
+    const meta = portraitWardrobeState.selectedMeta;
+    const saveScope = String(activeHostSaveScope || "");
+    if (!file || !meta) return { ok: false, error: "file_required" };
+    if (!saveScope) return { ok: false, error: "save_scope_required" };
+    const operationId = globalThis.HatsuPortraits.createOperationId(
+      typeof deps.now === "function" ? deps.now() : Date.now(),
+      typeof deps.random === "function" ? deps.random() : Math.random()
+    );
+    const fileName = globalThis.HatsuPortraits.createUploadFileName(operationId, meta.type);
+    const assetId = globalThis.HatsuPortraits.createAssetId(operationId);
+    const transform = globalThis.HatsuPortraits.normalizeTransform(portraitWardrobeState.draftTransform);
+    const url = `/user/files/${fileName}`;
+    const operation = {
+      operationId,
+      saveScope,
+      characterKey: String(portraitWardrobeState.selectedCharacterKey || "producer"),
+      transform,
+      name: String(portraitWardrobeState.draftName || file.name || "\u81ea\u5b9a\u4e49\u7acb\u7ed8").slice(0, 120),
+      file,
+      mimeType: meta.type,
+      size: meta.size,
+      width: meta.width,
+      height: meta.height,
+      fileName,
+      assetId,
+      url,
+      awaitingAction: "",
+      stage: "verify",
+      lastError: "",
+      asset: null
+    };
+    operation.asset = {
+      assetId,
+      operationId,
+      characterKey: operation.characterKey,
+      name: operation.name,
+      url,
+      mimeType: operation.mimeType,
+      width: operation.width,
+      height: operation.height,
+      size: operation.size,
+      transform,
+      archived: false
+    };
+    portraitWardrobeState.pendingOperation = operation;
+    requestPortraitHostOperation(operation, "verify", { url }, deps);
+    return { ok: true, operationId };
+  }
+
+  async function handlePortraitHostResult(payload, deps = {}) {
+    const operation = portraitWardrobeState.pendingOperation;
+    if (!operation) return false;
+    if (String(payload?.operationId || "") !== operation.operationId) return false;
+    if (String(payload?.saveScope || "") !== operation.saveScope) return false;
+    if (operation.saveScope !== String(activeHostSaveScope || "")) return false;
+    if (String(payload?.action || "") !== operation.awaitingAction) return false;
+    const clearTimer = deps.clearTimer || clearTimeout;
+    if (portraitWardrobeState.timeoutId) clearTimer(portraitWardrobeState.timeoutId);
+    portraitWardrobeState.timeoutId = 0;
+    if (payload.ok !== true) {
+      operation.lastError = String(payload.error || "host_operation_failed");
+      portraitWardrobeState.status = "retryable";
+      if (typeof renderPortraitWardrobe === "function") renderPortraitWardrobe();
+      return true;
+    }
+
+    if (payload.action === "verify") {
+      if (payload.exists === true) {
+        operation.stage = "merge_library";
+        requestPortraitHostOperation(operation, "readLibrary", {}, deps);
+      } else {
+        const readFile = deps.readFileBase64 || ((file) => readPortraitFileAsBase64(file));
+        let encoded;
+        try {
+          encoded = await readFile(operation.file);
+        } catch (error) {
+          operation.lastError = String(error?.message || error || "file_read_failed");
+          portraitWardrobeState.status = "retryable";
+          if (typeof renderPortraitWardrobe === "function") renderPortraitWardrobe();
+          return true;
+        }
+        if (portraitWardrobeState.pendingOperation !== operation || operation.saveScope !== String(activeHostSaveScope || "")) return false;
+        operation.stage = "upload";
+        requestPortraitHostOperation(operation, "upload", { name: operation.fileName, data: encoded }, deps);
+      }
+      return true;
+    }
+    if (payload.action === "upload") {
+      if (String(payload.url || "") !== operation.url) {
+        operation.lastError = "upload_path_mismatch";
+        portraitWardrobeState.status = "retryable";
+        return true;
+      }
+      operation.stage = "merge_library";
+      requestPortraitHostOperation(operation, "readLibrary", {}, deps);
+      return true;
+    }
+    if (payload.action === "readLibrary" && operation.stage === "merge_library") {
+      const latest = globalThis.HatsuPortraits.normalizeLibrary(payload.library);
+      operation.expectedLibrary = globalThis.HatsuPortraits.mergeLibraryAsset(latest, operation.asset);
+      operation.stage = "write_library";
+      requestPortraitHostOperation(operation, "writeLibrary", { library: operation.expectedLibrary }, deps);
+      return true;
+    }
+    if (payload.action === "writeLibrary" && operation.stage === "write_library") {
+      operation.stage = "read_back";
+      requestPortraitHostOperation(operation, "readLibrary", {}, deps);
+      return true;
+    }
+    if (payload.action === "readLibrary" && operation.stage === "read_back") {
+      const library = globalThis.HatsuPortraits.normalizeLibrary(payload.library);
+      const confirmed = library.assets[operation.assetId];
+      if (!confirmed || confirmed.url !== operation.url) {
+        operation.lastError = "library_readback_missing";
+        portraitWardrobeState.status = "retryable";
+        return true;
+      }
+      portraitWardrobeState.library = library;
+      equipPortraitReference(confirmed, operation.transform);
+      portraitWardrobeState.pendingOperation = null;
+      portraitWardrobeState.status = "complete";
+      if (typeof renderPortraitWardrobe === "function") renderPortraitWardrobe();
+      return true;
+    }
+    return false;
+  }
+
+  function retryPortraitCommit(deps = {}) {
+    const operation = portraitWardrobeState.pendingOperation;
+    if (!operation || portraitWardrobeState.status !== "retryable") return false;
+    operation.stage = "verify";
+    return requestPortraitHostOperation(operation, "verify", { url: operation.url }, deps);
+  }
+
+  function equipPortraitReference(asset, transform) {
+    const reference = {
+      ...asset,
+      source: "user",
+      archived: false,
+      transform: globalThis.HatsuPortraits.normalizeTransform(transform || asset?.transform)
+    };
+    const appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
+    appearance.equipped[reference.characterKey] = reference;
+    state.appearance = globalThis.HatsuPortraits.normalizeAppearanceState(appearance);
+    saveState("portrait.equip");
+    return state.appearance.equipped[reference.characterKey];
+  }
+
+  function closePortraitWardrobe(deps = {}) {
+    if (portraitWardrobeState.pendingOperation && deps.force !== true) return false;
+    const revokeObjectURL = deps.revokeObjectURL || ((url) => URL.revokeObjectURL(url));
+    const clearTimer = deps.clearTimer || clearTimeout;
+    if (portraitWardrobeState.timeoutId) clearTimer(portraitWardrobeState.timeoutId);
+    portraitWardrobeState.timeoutId = 0;
+    if (portraitWardrobeState.previewUrl) revokeObjectURL(portraitWardrobeState.previewUrl);
+    portraitWardrobeState.previewUrl = "";
+    portraitWardrobeState.selectedFile = null;
+    portraitWardrobeState.selectedMeta = null;
+    portraitWardrobeState.open = false;
+    portraitWardrobeState.status = "idle";
+    return true;
+  }
+
   let state = loadState();
 
   ensureStateShape();
@@ -2885,6 +3169,7 @@
 
   function ensureStateShape() {
     state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
+    state.appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
     state.gameMode = state.gameMode === "hybrid" ? "hybrid" : "classic";
     state.launchMode = ["produce", "sandbox"].includes(state.launchMode) ? state.launchMode : null;
     state.launchMenuPaused = Boolean(state.launchMenuPaused);
@@ -18981,6 +19266,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (payload.type === "character") {
       console.log("[app.js] Applying character payload. Name:", payload.character?.name, "SaveScope:", payload.saveScope);
       applyHostCharacter(payload.character, payload.saveScope, payload.savedState, payload.hasSavedState);
+      return;
+    }
+    if (payload.type === "portraitFileOperationResult") {
+      handlePortraitHostResult(payload);
       return;
     }
     if (payload.type === "chronicleCheckpoints") {
