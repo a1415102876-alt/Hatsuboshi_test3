@@ -251,6 +251,24 @@ test("sandbox First Live rules normalize challenge state and calculate tiered av
   assert.deepEqual(JSON.parse(JSON.stringify(migrated.history)), []);
 });
 
+test("sandbox First Live can start through 19:00 but not after", () => {
+  const sandbox = {};
+  vm.runInNewContext(`
+    const FIRST_LIVE_START_DEADLINE_MINUTES = 19 * 60;
+    ${readFunction("canStartSandboxFirstLiveAt")}
+    this.canStart = canStartSandboxFirstLiveAt;
+  `, sandbox);
+
+  assert.equal(sandbox.canStart(8 * 60), true);
+  assert.equal(sandbox.canStart(19 * 60), true);
+  assert.equal(sandbox.canStart(19 * 60 + 1), false);
+
+  assert.match(readFunction("prepareSandboxFirstLiveAttempt"), /canStartSandboxFirstLiveAt/);
+  assert.match(readFunction("getSandboxFirstLiveChallengeStatusText"), /canStartSandboxFirstLiveAt/);
+  assert.match(readFunction("updateMapLocationEntryActions"), /canStartSandboxFirstLiveAt/);
+  assert.doesNotMatch(readFunction("prepareSandboxFirstLiveAttempt"), /too_early/);
+});
+
 test("sandbox map exposes stage and dormitory with dedicated entry actions", () => {
   assert.match(source, /id: "campus_stage"/);
   assert.match(source, /id: "student_dormitory"/);
@@ -351,7 +369,7 @@ test("sandbox First Live recovery keeps turn identity but rotates request id", (
 
 test("sandbox First Live UI exposes time and challenge status gates", () => {
   assert.match(source, /function getSandboxFirstLiveChallengeStatusText\(/);
-  assert.match(readFunction("updateMapLocationEntryActions"), /FIRST_LIVE_MINUTES/);
+  assert.match(readFunction("updateMapLocationEntryActions"), /canStartSandboxFirstLiveAt/);
   assert.match(readFunction("updateMapLocationEntryActions"), /recovery_required/);
   assert.match(readFunction("renderActionButtons"), /getSandboxFirstLiveChallengeStatusText/);
 });

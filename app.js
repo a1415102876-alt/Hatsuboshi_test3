@@ -718,7 +718,7 @@
   const HYBRID_FACILITY_TRAINING_LOCATIONS = ["gymnasium", "special_education"];
   const HYBRID_FACILITY_ACTION_MINUTES = 60;
   const STUDENT_DORMITORY_REST_MINUTES = 120;
-  const FIRST_LIVE_MINUTES = 19 * 60;
+  const FIRST_LIVE_START_DEADLINE_MINUTES = 19 * 60;
   const FIRST_LIVE_ACTION_MINUTES = 180;
   const SANDBOX_SELECTABLE_IDOLS = ["月村手毬", "藤田琴音", "花海咲季", "秦谷美铃", "筱泽广", "葛城莉莉娅"];
   const SANDBOX_ASARI_OPENING_STORY = `【初星正文开始】
@@ -6746,6 +6746,11 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     };
   }
 
+  function canStartSandboxFirstLiveAt(clockMinutes = state.freeMode?.clockMinutes) {
+    const clock = Number(clockMinutes);
+    return Number.isFinite(clock) && clock <= FIRST_LIVE_START_DEADLINE_MINUTES;
+  }
+
   function prepareSandboxFirstLiveAttempt(options = {}) {
     options = options && typeof options === "object" ? options : {};
     if (!options.confirmed) return { ok: false, reason: "confirmation_required" };
@@ -6759,7 +6764,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     ensureFreeModeTimeDefaults();
     const currentDay = Number(state.freeMode.postLiveDay) || 1;
     const clockMinutes = Number(state.freeMode.clockMinutes) || 0;
-    if (clockMinutes < FIRST_LIVE_MINUTES) return { ok: false, reason: "too_early" };
+    if (!canStartSandboxFirstLiveAt(clockMinutes)) return { ok: false, reason: "too_late" };
     const challenge = normalizeSandboxFirstLiveChallenge(state.sandbox?.firstLiveChallenge);
     if (challenge.status === "completed") return { ok: false, reason: "completed" };
     if (challenge.status === "cooldown" && currentDay < Number(challenge.nextAvailableDay || 0)) {
@@ -6855,7 +6860,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const result = prepareSandboxFirstLiveAttempt({ confirmed: true });
     if (!result.ok && result.reason !== "channel_occupied") {
       const messages = {
-        too_early: "校内舞台需要在 19:00 后才能举办 First Live。",
+        too_late: "校内舞台 First Live 最晚需要在 19:00 开始。",
         cooldown: "本次挑战失败后仍在冷却中。",
         completed: "校内舞台 First Live 已完成。",
         attempt_in_progress: "上一场 First Live 仍在处理。"
@@ -11160,14 +11165,13 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   function getSandboxFirstLiveChallengeStatusText() {
     const challenge = normalizeSandboxFirstLiveChallenge(state.sandbox?.firstLiveChallenge);
     const day = Number(state.freeMode?.postLiveDay) || 1;
-    const clock = Number(state.freeMode?.clockMinutes) || 0;
     if (challenge.status === "completed") return "已完成";
     if (challenge.status === "generating") return "叙事生成中";
     if (challenge.status === "recovery_required") return "叙事待恢复";
     if (challenge.status === "cooldown" && day < Number(challenge.nextAvailableDay || 0)) {
       return `冷却至第 ${challenge.nextAvailableDay} 天`;
     }
-    if (clock < FIRST_LIVE_MINUTES) return "19:00 后开放";
+    if (!canStartSandboxFirstLiveAt()) return "今日挑战时间已结束";
     return "可挑战";
   }
 
@@ -13878,12 +13882,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
           if (facilityKind === "first_live") {
             const challenge = normalizeSandboxFirstLiveChallenge(state.sandbox?.firstLiveChallenge);
             const day = Number(state.freeMode?.postLiveDay) || 1;
-            const clock = Number(state.freeMode?.clockMinutes) || 0;
             const locked = challenge.status === "completed"
               || challenge.status === "generating"
               || challenge.status === "recovery_required"
               || (challenge.status === "cooldown" && day < Number(challenge.nextAvailableDay || 0))
-              || clock < FIRST_LIVE_MINUTES;
+              || !canStartSandboxFirstLiveAt();
             facilityBtn.disabled = locked;
             facilityBtn.textContent = locked ? `First Live：${getSandboxFirstLiveChallengeStatusText()}` : "举办 First Live";
           }
