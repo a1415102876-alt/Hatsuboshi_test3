@@ -12514,6 +12514,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     saveState();
     scanStorytellerNotificationAtCheckpoint("time_advance", { locationId: state.freeMode?.activeLocationId });
     renderFreeModeStage();
+    renderProducerApartmentStage();
     updateFreeModeTimeOverlayUI();
     showToast("时间推进", `已推进 ${toAdvance} 分钟，当前 ${formatFreeModeClock()}。`, "info");
     if (result.hitDayEnd) {

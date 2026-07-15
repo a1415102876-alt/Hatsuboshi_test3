@@ -82,6 +82,39 @@ test("world map locations and free mode time rules are wired", () => {
   assert.match(source, /dataset\.action === "world_map"/);
 });
 
+test("manual time advancement refreshes the producer apartment state", () => {
+  const calls = [];
+  const sandbox = {
+    state: { freeMode: { clockMinutes: 21 * 60 + 20, activeLocationId: "producer_apartment" } },
+    isFreeModeActive: () => true,
+    isFreeModeTravelAllowed: () => true,
+    isMapLocationExploreActive: () => false,
+    parseFreeModeManualAdvanceMinutes: () => 40,
+    ensureFreeModeTimeDefaults: () => {},
+    getFreeModeTravelEndMinutes: () => 22 * 60,
+    advanceFreeModeTime(minutes) {
+      calls.push(["advance", minutes]);
+      sandbox.state.freeMode.clockMinutes += minutes;
+      return { hitDayEnd: true };
+    },
+    saveState: () => calls.push("save"),
+    scanStorytellerNotificationAtCheckpoint: () => calls.push("scan"),
+    renderFreeModeStage: () => calls.push("render-map"),
+    renderProducerApartmentStage: () => calls.push("render-apartment"),
+    updateFreeModeTimeOverlayUI: () => calls.push("render-time-overlay"),
+    showToast: () => calls.push("toast"),
+    formatFreeModeClock: () => "22:00",
+    maybeTriggerEveningGoHomePrompt: () => calls.push("evening-prompt")
+  };
+  vm.runInNewContext(`${readFunction("applyFreeModeManualTimeAdvance")}; this.advance = applyFreeModeManualTimeAdvance;`, sandbox);
+
+  sandbox.advance(40);
+
+  assert.equal(sandbox.state.freeMode.clockMinutes, 22 * 60);
+  assert.ok(calls.indexOf("render-map") > calls.findIndex((call) => Array.isArray(call) && call[0] === "advance"));
+  assert.ok(calls.indexOf("render-apartment") > calls.findIndex((call) => Array.isArray(call) && call[0] === "advance"));
+});
+
 
 test("sandbox scout prompt handles wrong location as clue search", () => {
   const sandbox = {
