@@ -291,6 +291,54 @@ test("same turn reuses its existing candidate without invoking selection again",
   assert.equal(selections, 1);
 });
 
+test("an unresolved invite cannot be overwritten by a later attach turn", () => {
+  const state = stateFixture();
+  const invite = {
+    incidentId: "incident:invite-a",
+    definitionId: "invite-peer",
+    planId: state.freeMode.world.storyteller.plan.planId,
+    saveScope: "chat-a",
+    dayKey: "live+2",
+    dayOrdinal: 2,
+    sourceTurnId: "notify:live+2:600:student_store",
+    status: "notified",
+    channel: "invite",
+    category: "visitor",
+    severity: "minor",
+    archetypeId: "peer_invitation",
+    actorIds: ["idol:月村手毬"],
+    targetIds: ["producer"],
+    locationId: "student_store",
+    modifierIds: [],
+    fingerprint: "visitor|peer_invitation|idol:月村手毬|student_store|"
+  };
+  state.freeMode.world.storyteller.pendingCandidate = invite;
+  let selections = 0;
+  const incidentApi = loadIncidentApi();
+  const helpers = loadAppHelpers(state, {
+    globalThis: {
+      HatsuWorldStorytellerIncidents: {
+        ...incidentApi,
+        selectIncidentCandidate(input) {
+          selections += 1;
+          return incidentApi.selectIncidentCandidate(input);
+        }
+      }
+    }
+  });
+  const before = JSON.stringify(state.freeMode.world.storyteller.pendingCandidate);
+
+  const result = helpers.prepareStorytellerCandidateForOrdinaryTurn("training", "Vo", {
+    turnId: "turn-after-invite",
+    presentActorIds: ["idol:月村手毬"]
+  });
+
+  assert.equal(result.candidate, null);
+  assert.equal(result.reason, "candidate_unresolved");
+  assert.equal(selections, 0);
+  assert.equal(JSON.stringify(state.freeMode.world.storyteller.pendingCandidate), before);
+});
+
 test("prepare stores only the bounded selection diagnostic outside the candidate", () => {
   const state = stateFixture();
   const helpers = loadAppHelpers(state);

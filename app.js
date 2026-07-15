@@ -4112,6 +4112,15 @@
     ) {
       return { candidate: existing, reason: "existing_candidate" };
     }
+    if (
+      existing
+      && ["pending", "attached", "notified", "deferred", "invited"].includes(existing.status)
+      && existing.saveScope === context.saveScope
+      && existing.dayKey === context.dayKey
+      && existing.planId === plan.planId
+    ) {
+      return { candidate: null, reason: "candidate_unresolved" };
+    }
     const selected = api.selectIncidentCandidate(context);
     storyteller.lastSelectionDiagnostic = api.normalizeSelectionDiagnostic
       ? api.normalizeSelectionDiagnostic(selected.diagnostic)
