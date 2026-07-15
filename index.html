@@ -1536,6 +1536,22 @@
                   <button id="worldEngineStyleSaveBtn" type="button" class="world-engine-settings-primary">保存次日比例</button>
                 </section>
                 <section class="world-engine-settings-section">
+                  <h2>事件密度</h2>
+                  <div id="worldEngineDensityModes" class="world-engine-density-modes" role="group" aria-label="次日事件密度">
+                    <button type="button" data-world-engine-density="low" aria-pressed="false">较少</button>
+                    <button type="button" data-world-engine-density="standard" aria-pressed="true">标准</button>
+                    <button type="button" data-world-engine-density="high" aria-pressed="false">较多</button>
+                    <button type="button" data-world-engine-density="custom" aria-pressed="false">自定义</button>
+                  </div>
+                  <div id="worldEngineDensityCustom" class="world-engine-density-custom" hidden>
+                    <label for="worldEngineDensityMinor"><span>轻微</span><input id="worldEngineDensityMinor" type="number" min="0" max="12" step="1" value="4"></label>
+                    <label for="worldEngineDensityModerate"><span>中等</span><input id="worldEngineDensityModerate" type="number" min="0" max="12" step="1" value="3"></label>
+                    <label for="worldEngineDensityMajor"><span>重大</span><input id="worldEngineDensityMajor" type="number" min="0" max="1" step="1" value="1"></label>
+                  </div>
+                  <p id="worldEngineDensityStatus" class="world-engine-settings-status">今日按当前计划运行 · 标准档将在次日生效</p>
+                  <button id="worldEngineDensitySaveBtn" type="button" class="world-engine-settings-primary">保存次日密度</button>
+                </section>
+                <section class="world-engine-settings-section">
                   <h2>次 API</h2>
                   <label class="world-engine-toggle" for="worldEngineApiEnabled">
                     <span><strong>启用世界层生成</strong><small>公共世界、委托与 Director 共用</small></span>

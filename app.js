@@ -3754,6 +3754,7 @@
       ? state.freeMode.world.storyteller
       : {};
     const styleApi = globalThis.HatsuWorldStorytellerStyles;
+    const planApi = globalThis.HatsuWorldStorytellerPlan;
     const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
     const observationApi = globalThis.HatsuWorldStorytellerObservations;
     const currentStyleDayKey = getWorldFeedDayKey(state);
@@ -3770,6 +3771,9 @@
       styleStreak: styleApi?.normalizeStyleStreak
         ? styleApi.normalizeStyleStreak(storyteller.styleStreak)
         : null,
+      eventDensityConfig: planApi?.normalizeEventDensityConfig
+        ? planApi.normalizeEventDensityConfig(storyteller.eventDensityConfig)
+        : { mode: "standard", customBudget: { minor: 4, moderate: 3, major: 1 } },
       observations: Array.isArray(storyteller.observations) && observationApi?.normalizeStorytellerObservation
         ? storyteller.observations
           .map((observation) => observationApi.normalizeStorytellerObservation(observation))
@@ -3976,6 +3980,7 @@
         generatedByJobId,
         stats,
         recentFingerprints: storyteller.recentFingerprints,
+        eventDensityConfig: storyteller.eventDensityConfig,
         styleMix: storyteller.styleConfig?.activeMix,
         styleMixRevision: storyteller.styleConfig?.styleMixRevision
       });
@@ -5409,7 +5414,72 @@
       staleRecovery.hidden = !exactOwner || age < DIRECTOR_MODEL_CHANNEL_TIMEOUT_MS;
     }
     updateWorldEngineStyleSettingsUI();
+    updateWorldEngineDensitySettingsUI();
     renderSecondaryApiDebug();
+  }
+
+  function setWorldEngineDensityMode(mode) {
+    const normalizedMode = ["low", "standard", "high", "custom"].includes(mode) ? mode : "standard";
+    document.querySelectorAll("[data-world-engine-density]").forEach((button) => {
+      const active = button.dataset.worldEngineDensity === normalizedMode;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
+    const custom = document.getElementById("worldEngineDensityCustom");
+    if (custom) custom.hidden = normalizedMode !== "custom";
+  }
+
+  function updateWorldEngineDensitySettingsUI() {
+    const api = globalThis.HatsuWorldStorytellerPlan;
+    if (!api?.normalizeEventDensityConfig || !api?.resolveEventDensityBudget) return;
+    const storyteller = state.freeMode?.world?.storyteller || {};
+    const config = api.normalizeEventDensityConfig(storyteller.eventDensityConfig);
+    setWorldEngineDensityMode(config.mode);
+    const minor = document.getElementById("worldEngineDensityMinor");
+    const moderate = document.getElementById("worldEngineDensityModerate");
+    const major = document.getElementById("worldEngineDensityMajor");
+    if (minor) minor.value = String(config.customBudget.minor);
+    if (moderate) moderate.value = String(config.customBudget.moderate);
+    if (major) major.value = String(config.customBudget.major);
+    const status = document.getElementById("worldEngineDensityStatus");
+    if (status) {
+      const next = api.resolveEventDensityBudget(config, "crisis_allowed");
+      const today = storyteller.plan?.severityBudget || { minor: 0, moderate: 0, major: 0 };
+      const modeLabel = { low: "较少", standard: "标准", high: "较多", custom: "自定义" }[config.mode];
+      status.textContent = `今日 ${today.minor || 0}/${today.moderate || 0}/${today.major || 0} · 次日 ${modeLabel} ${next.minor}/${next.moderate}/危机+${next.major}`;
+    }
+  }
+
+  function saveWorldEngineDensitySettings() {
+    const selectedMode = document.querySelector("[data-world-engine-density].is-active")?.dataset.worldEngineDensity || "standard";
+    const raw = {
+      mode: selectedMode,
+      customBudget: {
+        minor: Number(document.getElementById("worldEngineDensityMinor")?.value),
+        moderate: Number(document.getElementById("worldEngineDensityModerate")?.value),
+        major: Number(document.getElementById("worldEngineDensityMajor")?.value)
+      }
+    };
+    const values = [raw.customBudget.minor, raw.customBudget.moderate, raw.customBudget.major];
+    const total = raw.customBudget.minor + raw.customBudget.moderate;
+    if (selectedMode === "custom" && (
+      !values.every(Number.isInteger)
+      || total < 5
+      || total > 12
+      || ![0, 1].includes(raw.customBudget.major)
+    )) {
+      showToast("无法保存", "轻微与中等合计须为 5 至 12，重大须为 0 或 1。", "warn");
+      return false;
+    }
+    const api = globalThis.HatsuWorldStorytellerPlan;
+    const storyteller = state.freeMode?.world?.storyteller;
+    if (!storyteller || !api?.normalizeEventDensityConfig) return false;
+    storyteller.eventDensityConfig = api.normalizeEventDensityConfig(raw);
+    saveState("storyteller.density_saved");
+    updateWorldEngineDensitySettingsUI();
+    renderWorldEnginePhoneApp();
+    showToast("事件密度已保存", "新预算将在次日计划生效。", "info");
+    return true;
   }
 
   function updateWorldEngineStyleSettingsUI() {
@@ -16837,6 +16907,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
     document.getElementById("worldEngineSettingsBackBtn")?.addEventListener("click", closeWorldEngineAdvancedSettings);
     document.getElementById("worldEngineApiSaveBtn")?.addEventListener("click", saveWorldEngineApiSettings);
     document.getElementById("worldEngineStyleSaveBtn")?.addEventListener("click", saveWorldEngineStyleMix);
+    document.getElementById("worldEngineDensityModes")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-world-engine-density]");
+      if (button) setWorldEngineDensityMode(button.dataset.worldEngineDensity);
+    });
+    document.getElementById("worldEngineDensitySaveBtn")?.addEventListener("click", saveWorldEngineDensitySettings);
     document.getElementById("worldEngineHeroicWeight")?.addEventListener("input", () => syncWorldEngineStyleInputs("heroic"));
     document.getElementById("worldEngineRomanceWeight")?.addEventListener("input", () => syncWorldEngineStyleInputs("romance"));
     document.getElementById("worldEngineApiTestBtn")?.addEventListener("click", runSecondaryApiTest);

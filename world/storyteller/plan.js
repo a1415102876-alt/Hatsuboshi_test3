@@ -12,6 +12,11 @@
     task: 30,
     opportunity: 35
   });
+  const EVENT_DENSITY_PRESETS = Object.freeze({
+    low: Object.freeze({ minor: 3, moderate: 2, major: 1 }),
+    standard: Object.freeze({ minor: 4, moderate: 3, major: 1 }),
+    high: Object.freeze({ minor: 6, moderate: 3, major: 1 })
+  });
 
   function bounded(value, max = 160) {
     const text = String(value || "").replace(/\s+/g, " ").trim();
@@ -44,7 +49,46 @@
     };
   }
 
-  function defaultStorytellerPlan(dayKey = "", saveScope = "", styleMix, styleMixRevision = 0) {
+  function normalizeEventDensityConfig(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const mode = ["low", "standard", "high", "custom"].includes(source.mode)
+      ? source.mode
+      : "standard";
+    const raw = source.customBudget && typeof source.customBudget === "object"
+      ? source.customBudget
+      : {};
+    const values = [Number(raw.minor), Number(raw.moderate), Number(raw.major)];
+    const customIsValid = values.every(Number.isInteger)
+      && values[0] >= 0
+      && values[1] >= 0
+      && values[2] >= 0
+      && values[2] <= 1
+      && values[0] + values[1] >= 5
+      && values[0] + values[1] <= 12;
+    if (mode === "custom" && !customIsValid) {
+      return { mode: "standard", customBudget: { ...EVENT_DENSITY_PRESETS.standard } };
+    }
+    return {
+      mode,
+      customBudget: customIsValid
+        ? { minor: values[0], moderate: values[1], major: values[2] }
+        : { ...EVENT_DENSITY_PRESETS.standard }
+    };
+  }
+
+  function resolveEventDensityBudget(config, pacing = "normal") {
+    const normalized = normalizeEventDensityConfig(config);
+    const selected = normalized.mode === "custom"
+      ? normalized.customBudget
+      : EVENT_DENSITY_PRESETS[normalized.mode];
+    return {
+      minor: selected.minor,
+      moderate: selected.moderate,
+      major: pacing === "crisis_allowed" ? selected.major : 0
+    };
+  }
+
+  function defaultStorytellerPlan(dayKey = "", saveScope = "", styleMix, styleMixRevision = 0, eventDensityConfig) {
     const normalizedDayKey = bounded(dayKey, 120);
     const normalizedScope = bounded(saveScope, 160);
     const seed = bounded(`${normalizedDayKey}|${normalizedScope}`, 160);
@@ -62,7 +106,7 @@
       seed,
       pacing: "normal",
       categoryWeights: { ...DEFAULT_WEIGHTS },
-      severityBudget: { minor: 2, moderate: 1, major: 0 },
+      severityBudget: resolveEventDensityBudget(eventDensityConfig, "normal"),
       diversity: defaultDiversity(),
       styleMix: normalizedMix,
       styleMixRevision: normalizedStyleRevision,
@@ -91,8 +135,8 @@
       pacing: PACING.includes(value.pacing) ? value.pacing : "normal",
       categoryWeights: weights,
       severityBudget: {
-        minor: boundedInt(value.severityBudget?.minor, 0, 6, base.severityBudget.minor),
-        moderate: boundedInt(value.severityBudget?.moderate, 0, 3, base.severityBudget.moderate),
+        minor: boundedInt(value.severityBudget?.minor, 0, 12, base.severityBudget.minor),
+        moderate: boundedInt(value.severityBudget?.moderate, 0, 12, base.severityBudget.moderate),
         major: boundedInt(value.severityBudget?.major, 0, 1, base.severityBudget.major)
       },
       diversity: {
@@ -117,7 +161,8 @@
     const stats = input.stats && typeof input.stats === "object" ? input.stats : {};
     const observedDays = boundedInt(stats.observedDays, 0, 30, 0);
     const seed = bounded(input.seed, 160) || bounded(`${dayKey}|${saveScope}`, 160);
-    const base = defaultStorytellerPlan(dayKey, saveScope, input.styleMix, input.styleMixRevision);
+    const densityConfig = normalizeEventDensityConfig(input.eventDensityConfig);
+    const base = defaultStorytellerPlan(dayKey, saveScope, input.styleMix, input.styleMixRevision, densityConfig);
     if (!dayKey || !saveScope || observedDays === 0) {
       return normalizeStorytellerPlan({ ...base, seed, status: "committed" });
     }
@@ -144,13 +189,13 @@
         : calmDays >= 3
           ? "calm"
           : "normal";
-    const major = pacing === "crisis_allowed" ? 1 : 0;
     const identity = JSON.stringify({
       dayKey,
       saveScope,
       seed,
       stats,
       recentFingerprints: input.recentFingerprints || [],
+      eventDensityConfig: densityConfig,
       styleMix: base.styleMix,
       styleMixRevision: base.styleMixRevision
     });
@@ -160,7 +205,7 @@
       seed,
       pacing,
       categoryWeights: weights,
-      severityBudget: { minor: pacing === "calm" ? 1 : 2, moderate: pacing === "calm" ? 0 : 1, major },
+      severityBudget: resolveEventDensityBudget(densityConfig, pacing),
       generatedByJobId: bounded(input.generatedByJobId, 160),
       status: "committed"
     });
@@ -175,6 +220,9 @@
   }
 
   global.HatsuWorldStorytellerPlan = {
+    EVENT_DENSITY_PRESETS,
+    normalizeEventDensityConfig,
+    resolveEventDensityBudget,
     defaultStorytellerPlan,
     normalizeStorytellerPlan,
     buildStorytellerPlan,

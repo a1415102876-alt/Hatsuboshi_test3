@@ -107,6 +107,20 @@ test("daily Storyteller plan scheduler is local scoped and idempotent", () => {
   assert.match(stSource, /storyteller\/plan\.js/);
 });
 
+test("saved event density is normalized and passed only into new Storyteller plans", () => {
+  const shapeStart = appSource.indexOf("function ensureStateShape");
+  const shapeEnd = appSource.indexOf("function recordStorytellerObservation", shapeStart);
+  const shapeBody = appSource.slice(shapeStart, shapeEnd);
+  assert.match(shapeBody, /normalizeEventDensityConfig/);
+  assert.match(shapeBody, /storyteller\.eventDensityConfig/);
+
+  const planStart = appSource.indexOf("function ensureStorytellerPlanForCheckpoint");
+  const planEnd = appSource.indexOf("function activateStorytellerStyleMixForDay", planStart);
+  const planBody = appSource.slice(planStart, planEnd);
+  assert.match(planBody, /eventDensityConfig:\s*storyteller\.eventDensityConfig/);
+  assert.ok(planBody.indexOf("isCurrentStorytellerPlan") < planBody.indexOf("buildStorytellerPlan"));
+});
+
 test("manual Storyteller replacement remains behind confirmation and owner checks", () => {
   const manualStart = appSource.indexOf("function requestManualWorldDirectorRecalculation");
   const manualEnd = appSource.indexOf("function maybeFollowWorldDirectorAfterPublicWorld", manualStart);

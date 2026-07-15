@@ -9300,6 +9300,62 @@ body.is-free-mode-active {
   gap: 8px;
 }
 
+.world-engine-density-modes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.world-engine-density-modes button {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--we-line);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--we-muted);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.world-engine-density-modes button.is-active {
+  border-color: var(--we-teal);
+  background: var(--we-teal);
+  color: #fff;
+}
+
+.world-engine-density-custom {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.world-engine-density-custom[hidden] {
+  display: none;
+}
+
+.world-engine-density-custom label {
+  display: grid;
+  gap: 4px;
+  color: var(--we-muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.world-engine-density-custom input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--we-line);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--we-ink);
+  text-align: center;
+  font: 800 11px var(--font-mono);
+}
+
 .world-engine-settings-primary,
 .world-engine-settings-secondary,
 .world-engine-settings-command,

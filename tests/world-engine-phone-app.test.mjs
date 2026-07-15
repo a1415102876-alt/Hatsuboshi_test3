@@ -44,11 +44,69 @@ test("phone registry, route, and DOM expose the world engine app", () => {
     "worldEngineSettingsBtn", "worldEngineMainView", "worldEngineSettingsView", "worldEngineSettingsBackBtn",
     "worldEngineApiEnabled", "worldEngineApiBaseUrl", "worldEngineApiModel", "worldEngineApiKey",
     "worldEngineApiSaveBtn", "worldEngineApiTestBtn", "worldEngineCommissionRegenBtn", "worldEngineStaleRecoveryBtn",
-    "worldEngineHeroicWeight", "worldEngineRomanceWeight", "worldEngineStyleSaveBtn"
+    "worldEngineHeroicWeight", "worldEngineRomanceWeight", "worldEngineStyleSaveBtn",
+    "worldEngineDensityModes", "worldEngineDensityCustom", "worldEngineDensityMinor",
+    "worldEngineDensityModerate", "worldEngineDensityMajor", "worldEngineDensityStatus",
+    "worldEngineDensitySaveBtn"
   ]) assert.match(html, new RegExp(`id="${id}"`), `${id} must exist`);
   const commissionStart = html.indexOf('id="sideQuestOverlay"');
   const commissionEnd = html.indexOf('id="affinityOverlay"', commissionStart);
   assert.doesNotMatch(html.slice(commissionStart, commissionEnd), /sideQuestApiPanel|sideQuestApiKey/);
+});
+
+test("world engine density controls save next-day config without rebuilding today's plan", () => {
+  assert.match(html, /data-world-engine-density="low"/);
+  assert.match(html, /data-world-engine-density="standard"/);
+  assert.match(html, /data-world-engine-density="high"/);
+  assert.match(html, /data-world-engine-density="custom"/);
+  assert.match(readFunction("bindPhoneWorldEngineEvents"), /worldEngineDensitySaveBtn/);
+  assert.match(readFunction("bindPhoneWorldEngineEvents"), /data-world-engine-density/);
+  const saveBody = readFunction("saveWorldEngineDensitySettings");
+  assert.doesNotMatch(saveBody, /ensureStorytellerPlanForCheckpoint|requestManualWorldDirector|requestHost/);
+});
+
+test("custom density validates totals and preserves today's committed budget", () => {
+  const calls = [];
+  const elements = new Map([
+    ["worldEngineDensityMinor", { value: "2" }],
+    ["worldEngineDensityModerate", { value: "2" }],
+    ["worldEngineDensityMajor", { value: "1" }]
+  ]);
+  const selected = { dataset: { worldEngineDensity: "custom" } };
+  const state = {
+    freeMode: { world: { storyteller: {
+      eventDensityConfig: { mode: "standard", customBudget: { minor: 4, moderate: 3, major: 1 } },
+      plan: { severityBudget: { minor: 4, moderate: 3, major: 0 } }
+    } } }
+  };
+  const context = {
+    state,
+    document: {
+      getElementById: (id) => elements.get(id) || null,
+      querySelector: () => selected
+    },
+    HatsuWorldStorytellerPlan: {
+      normalizeEventDensityConfig: (value) => JSON.parse(JSON.stringify(value))
+    },
+    saveState: (reason) => calls.push(["save", reason]),
+    updateWorldEngineDensitySettingsUI: () => calls.push(["update"]),
+    renderWorldEnginePhoneApp: () => calls.push(["render"]),
+    showToast: (...args) => calls.push(["toast", ...args])
+  };
+  context.globalThis = context;
+  vm.runInNewContext(`${readFunction("saveWorldEngineDensitySettings")}; this.saveDensity = saveWorldEngineDensitySettings;`, context);
+
+  assert.equal(context.saveDensity(), false);
+  assert.deepEqual(calls.filter(([type]) => type === "save"), []);
+  elements.get("worldEngineDensityMinor").value = "7";
+  elements.get("worldEngineDensityModerate").value = "5";
+  assert.equal(context.saveDensity(), true);
+  assert.deepEqual(JSON.parse(JSON.stringify(state.freeMode.world.storyteller.eventDensityConfig)), {
+    mode: "custom",
+    customBudget: { minor: 7, moderate: 5, major: 1 }
+  });
+  assert.deepEqual(state.freeMode.world.storyteller.plan.severityBudget, { minor: 4, moderate: 3, major: 0 });
+  assert.deepEqual(calls.filter(([type]) => type === "save"), [["save", "storyteller.density_saved"]]);
 });
 
 test("world engine style controls are wired to a pending next-day save", () => {
