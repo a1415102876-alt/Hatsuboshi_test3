@@ -265,10 +265,98 @@ node --test tests/free-mode.test.mjs tests/harness-recovery.test.mjs tests/prima
 4. 再处理“取消每日三次训练限制，改由体力和时间限制”的独立设计，不要混入 First Live 修补。
 5. Shujuku 楼层刷新问题单独诊断，不要与世界引擎或 First Live 一起修改。
 
-## 12. 新会话建议开场指令
+## 12. 2026-07-15 沙盒次 API 启动页与 Storyteller 事件密度
+
+已完成并提交：
+
+- `c2e3233 Add sandbox secondary API setup flow`
+- `f1dece6 Add configurable Storyteller event density`
+- `1ec2be9 Show daily Storyteller attach audit`
+- `8386641 Create Storyteller plan on static sandbox first day`
+- `a15b13b Preserve unresolved Storyteller candidates`
+
+### 沙盒次 API 启动页
+
+沙盒启动顺序现为：
+
+`选择担当 → 制作人档案 → 次 API 设置 → 邀请剧情`
+
+新增状态：
+
+- `state.sandbox.apiSetupPending`
+- `state.sandbox.pendingIdol`
+
+页面复用 `state.tasks.secondaryApi`、浏览器本地 API Key 和现有 `runSecondaryApiTest()`。测试失败或配置不完整不阻止“保存并继续”；“暂不填写”只保存 `enabled: false`，保留地址、模型和本地 Key。刷新时可根据 pending 状态恢复同一候选担当和设置页面。育成模式流程不变。
+
+### Storyteller 事件密度
+
+默认档位改为“标准”：普通日 `轻微 4 + 中等 3`，共 7 个预算；危机日额外开放重大 1 个。世界引擎高级设置提供：
+
+- 较少：`3 + 2`
+- 标准：`4 + 3`
+- 较多：`6 + 3`
+- 自定义：轻微与中等合计 5 至 12，重大只能为 0 或 1
+
+配置保存在 `state.freeMode.world.storyteller.eventDensityConfig`，只在建立次日 Storyteller Plan 时读取。保存设置不会修改或重建当天计划。平静日不再把普通事件预算压到 5 以下；重大预算仍只在 `crisis_allowed` 生效。
+
+### 今日 Attach 审计
+
+世界引擎“事件”页现在同时显示：
+
+- 轻微、中等、重大各自的已用/总量；
+- 今日 Attach 与 Invite 已生成数量；
+- Invite 收件箱；
+- 今日全部 Attach 的时间、来源行动、地点、类别、强度、事件骨架、参与角色、文风和状态；
+- 无 Attach 时最近一次公开的未生成原因。
+
+审计模型由 `world/storyteller/phone-view.js` 合并 `pendingCandidate`、`recentCandidates` 和 `observations`，按当前日期与计划筛选并去重。输出不包含 Prompt、存档 scope、请求/租约标识或内部事件定义 ID。
+
+未处理的 Invite 或 Attach 现在不能被下一次普通行动覆盖，避免候选和审计记录丢失。
+
+### 沙盒首日
+
+`enterSandboxCampusAfterOpening()` 在静态世界池路径完成 daily tick 后建立一次当前 Storyteller Plan。次 API 路径仍由原有异步完成回调建立计划，不重复调用。
+
+### 验证
+
+语法与专项验证：
+
+```text
+node --check app.js
+node --check world/storyteller/plan.js
+node --check world/storyteller/phone-view.js
+git diff --check
+专项套件：150 / 150 pass
+候选生命周期补充套件：65 / 65 pass
+```
+
+全量验证：
+
+```text
+694 tests / 688 pass / 6 fail
+```
+
+6 项失败与修改前基线一致：
+
+1. `selected idols are all required in a zero-cost interaction`
+2. `producer profile includes gender in state, form, save flow, and prompts`
+3. `st.html loader uses a responsive mobile viewport instead of a fixed desktop canvas`
+4. `st.html pauses floor hiding when the opening floor is not mounted`
+5. `advanceDay only advances schedule from summary round`
+6. `day 21 summary round advances into First Live schedule`
+
+本机没有 Playwright 依赖，以下项目仍需在真实 SillyTavern 手工验收：
+
+1. 沙盒档案提交后显示次 API 页面，刷新后仍停留在该步骤。
+2. 测试连接失败后仍可保存并继续。
+3. 暂不填写后，在世界引擎高级设置中仍能看到之前填写的地址、模型和 Key。
+4. 桌面与手机宽度下，密度控件和 Attach 列表无文字溢出或重叠。
+5. 实际完成普通行动后，酒馆 Prompt 出现 `[Storyteller 事件骨架]`，事件页同步出现对应 Attach 状态。
+
+## 13. 新会话建议开场指令
 
 ```text
 请先阅读 docs/current-handoff.md，并检查当前 git status。
-当前工作区包含大量未提交修改，不要 reset、checkout 或覆盖现有文件。
-先在真实 SillyTavern 中验收校内舞台 First Live 与学生宿舍；如发现问题，先写复现测试，再做最小修复。
+当前分支包含已提交的沙盒次 API 启动页、Storyteller 事件密度与 Attach 审计，不要 reset、checkout 或覆盖现有文件。
+先在真实 SillyTavern 中验收沙盒次 API 启动流程、事件密度设置和 Attach 列表；如发现问题，先写复现测试，再做最小修复。
 ```
