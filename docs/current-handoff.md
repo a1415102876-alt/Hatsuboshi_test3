@@ -360,3 +360,24 @@ git diff --check
 当前分支包含已提交的沙盒次 API 启动页、Storyteller 事件密度与 Attach 审计，不要 reset、checkout 或覆盖现有文件。
 先在真实 SillyTavern 中验收沙盒次 API 启动流程、事件密度设置和 Attach 列表；如发现问题，先写复现测试，再做最小修复。
 ```
+
+## 14. 2026-07-15 亚纱里老师 VN 立绘修复
+
+根因是统一立绘衣柜解析器只识别制作人和 `idols` 中的偶像，`vnStandees` 中的 NPC 无法取得角色键，因此 `resolvePortraitForSpeaker("亚纱里老师")` 返回空 URL。
+
+修复后：
+
+- `getBuiltinPortraitMap()` 将非偶像的 `vnStandees` 条目登记为 `npc:<名称>`。
+- `resolvePortraitForSpeaker()` 在制作人/偶像解析失败后，使用已登记的 NPC 内建立绘。
+- 亚纱里解析为 `npc:亚纱里老师`，使用 `./assets/novel-standees/asari-sensei.png`。
+- 未知 NPC 仍返回空立绘。
+- NPC 不进入 `idols`、立绘衣柜角色列表或偶像业务逻辑。
+
+验证：
+
+```text
+立绘与 VN 专项：35 / 35 pass
+全量：695 tests / 689 pass / 6 fail
+```
+
+6 项失败与既有基线一致，没有新增失败。

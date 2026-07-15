@@ -11567,17 +11567,27 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       const url = resolveIdolStandeeSrc(name);
       if (url) builtins[`idol:${name}`] = url;
     });
+    Object.entries(vnStandees).forEach(([name, url]) => {
+      const canonical = canonicalIdolName(name);
+      if (canonical && !idols[canonical] && url) builtins[`npc:${canonical}`] = url;
+    });
     return builtins;
   }
 
   function resolvePortraitForSpeaker(speaker) {
     const appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
-    const characterKey = globalThis.HatsuPortraits.characterKeyForSpeaker(
+    const canonicalSpeaker = canonicalIdolName(speaker);
+    const standardKey = globalThis.HatsuPortraits.characterKeyForSpeaker(
       speaker,
       state.producer?.name,
       canonicalIdolName,
       (name) => Boolean(idols[name]),
       appearance.bindings.producer.aliases
+    );
+    const characterKey = standardKey || (
+      canonicalSpeaker && !idols[canonicalSpeaker] && vnStandees[canonicalSpeaker]
+        ? `npc:${canonicalSpeaker}`
+        : ""
     );
     if (!characterKey) {
       return {

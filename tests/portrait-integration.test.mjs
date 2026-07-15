@@ -39,7 +39,10 @@ function loadIntegration() {
       }
     },
     idols: { "idol-a": { background: "./assets/idol-a.png" } },
-    vnStandees: { "idol-a": "./assets/novel-standees/idol-a.png" },
+    vnStandees: {
+      "idol-a": "./assets/novel-standees/idol-a.png",
+      "亚纱里老师": "./assets/novel-standees/asari-sensei.png"
+    },
     canonicalIdolName: (name) => name === "alias-a" ? "idol-a" : name,
     resolveIdolStandeeSrc: (name) => name === "idol-a" ? "./assets/novel-standees/idol-a.png" : "",
     portraitWardrobeState: { invalidUrls: new Set() },
@@ -75,6 +78,15 @@ test("speaker resolver maps producer aliases and canonical idol names", () => {
   assert.equal(sandbox.api.resolvePortraitForSpeaker("CUSTOM-COACH").url, "/user/files/custom.png");
   assert.equal(sandbox.api.resolvePortraitForSpeaker("alias-a").url, "./assets/novel-standees/idol-a.png");
   assert.equal(sandbox.api.resolvePortraitForSpeaker("unknown").url, "");
+});
+
+test("speaker resolver preserves built-in VN portraits for non-idol NPCs", () => {
+  const sandbox = loadIntegration();
+  const resolved = sandbox.api.resolvePortraitForSpeaker("亚纱里老师");
+  assert.equal(resolved.characterKey, "npc:亚纱里老师");
+  assert.equal(resolved.url, "./assets/novel-standees/asari-sensei.png");
+  assert.equal(resolved.source, "builtin");
+  assert.equal(sandbox.api.resolvePortraitForSpeaker("未知老师").url, "");
 });
 
 test("resolved portrait applies source transform and fallback metadata", () => {
