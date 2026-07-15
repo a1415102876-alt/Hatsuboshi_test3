@@ -2662,7 +2662,7 @@
         bgmManager.play("talk");
         return;
       }
-      if (title.includes("登台前准备") || title.includes("First Live 登台前准备") || (state.activeStoryNode && state.activeStoryNode.type === "firstLivePre")) {
+      if (title.includes("登台前准备") || title.includes("First Live 登台前准备") || ["firstLivePre", "sandboxFirstLivePre"].includes(state.activeStoryNode?.type)) {
         bgmManager.play("live_prep");
         return;
       }
@@ -10646,6 +10646,54 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       console.warn("Video load error, skipping theater mode.", e);
       cleanupAndFinish();
     };
+  }
+
+  function showSandboxFirstLivePostStage() {
+    const attempt = state.sandbox?.firstLiveChallenge?.activeAttempt;
+    const narrative = attempt?.narrative;
+    const postStory = String(narrative?.post || "").trim();
+    if (!attempt || !postStory) return false;
+
+    attempt.presentationStage = "post";
+    state.activeStoryNode = { type: "sandboxFirstLivePost", ready: true };
+    state.lastStory = postStory;
+    saveState();
+    render();
+    openEventOverlay(
+      "First Live 演后记",
+      attempt.success ? "演出成功" : "演出失败",
+      narrative.post
+    );
+    return true;
+  }
+
+  function startSandboxFirstLivePresentation() {
+    const attempt = state.sandbox?.firstLiveChallenge?.activeAttempt;
+    if (!attempt?.narrative?.post) return false;
+
+    attempt.presentationStage = "video";
+    state.activeStoryNode = { type: "sandboxFirstLivePost", ready: false };
+    deferredLivePostReply = null;
+    saveState();
+    render();
+    setElementHidden("eventOverlay", true);
+
+    const showPostStage = () => showSandboxFirstLivePostStage();
+    const videoUrl = idolLiveVideos[state.idol];
+    if (videoUrl) {
+      triggerWipeTransition(() => playLiveVideo(videoUrl, showPostStage));
+    } else {
+      showPostStage();
+    }
+    return true;
+  }
+
+  function completeSandboxFirstLivePresentation() {
+    const attempt = state.sandbox?.firstLiveChallenge?.activeAttempt;
+    if (attempt) attempt.presentationStage = "completed";
+    state.activeStoryNode = null;
+    saveState();
+    render();
   }
 
   function startFirstLivePostStage() {
@@ -18808,7 +18856,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
         confirm.textContent = 
           node?.type === "affinity" && node.threshold === 0 
             ? "确认开始育成" 
-            : node?.type === "firstLivePre" 
+            : ["firstLivePre", "sandboxFirstLivePre"].includes(node?.type)
               ? "Live 开始" 
               : "确定";
       }
@@ -19093,7 +19141,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       if (node.type === "sandboxOpening" || node.type === "sandboxInvite") {
         return "./assets/scenes/Producer_Class.png";
       }
-      if (node.type === "firstLivePre" || node.type === "firstLivePost") {
+      if (["firstLivePre", "firstLivePost", "sandboxFirstLivePre", "sandboxFirstLivePost"].includes(node.type)) {
         return "./assets/scenes/campus.png";
       }
       if (node.type === "affinity") {
@@ -20518,6 +20566,18 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
           return;
         }
         completeFirstLivePostFlow();
+      } else if (node?.type === "sandboxFirstLivePre") {
+        if (!node.ready) {
+          setElementHidden("eventOverlay", true);
+          return;
+        }
+        startSandboxFirstLivePresentation();
+      } else if (node?.type === "sandboxFirstLivePost") {
+        if (!node.ready) {
+          setElementHidden("eventOverlay", true);
+          return;
+        }
+        completeSandboxFirstLivePresentation();
       } else if (["freechat", "interaction", "gift"].includes(node?.type)) {
         if (!node.ready) {
           setElementHidden("eventOverlay", true);
@@ -21099,10 +21159,15 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     }
     const challenge = state.sandbox.firstLiveChallenge;
     const attempt = challenge.activeAttempt;
-    state.lastStory = `${narrative.pre}\n\n${narrative.post}`;
+    const combinedStory = `${narrative.pre}\n\n${narrative.post}`;
+    if (attempt) {
+      attempt.narrative = { pre: narrative.pre, post: narrative.post };
+      attempt.presentationStage = "pre";
+    }
+    state.lastStory = narrative.pre;
     state.lastPrompt = state.harness.activeTurn?.generationPrompt || state.lastPrompt;
-    if (state.log[0]) state.log[0].aiReply = state.lastStory;
-    state.activeStoryNode = null;
+    if (state.log[0]) state.log[0].aiReply = combinedStory;
+    state.activeStoryNode = { type: "sandboxFirstLivePre", ready: true };
     pendingAiRequestId = "";
     state.pendingAiRequestId = "";
     if (attempt) attempt.status = "completed";
@@ -21111,7 +21176,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     requestChronicleUpdate(rawText, renderedText, text, messageId);
     saveState("harness.sandbox_first_live_completed");
     render();
-    openEventOverlay("校内舞台 · First Live", "演出叙事已完成", state.lastStory);
+    openEventOverlay("First Live 登台前准备", "演出判定已完成，准备登台", narrative.pre);
     sendAiReplyAck(requestId, true, false);
     return true;
   }

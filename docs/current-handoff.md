@@ -381,3 +381,38 @@ git diff --check
 ```
 
 6 项失败与既有基线一致，没有新增失败。
+
+## 15. 2026-07-15 沙盒 First Live 完整演出流程
+
+根因是沙盒 First Live 虽然一次请求生成了 `live_pre` 与 `live_post`，但有效回复处理器直接把两段拼接到同一个事件窗口，没有调用育成模式已有的 Live Theater。
+
+修复后成功与失败都按以下顺序展示：
+
+```text
+live_pre 上台前剧情
+-> 玩家点击“Live 开始”
+-> 播放当前担当的 Live 视频
+-> 视频结束、跳过、加载失败或无视频
+-> live_post 演后剧情
+-> 返回沙盒
+```
+
+实现边界：
+
+- 新增 `sandboxFirstLivePre` 与 `sandboxFirstLivePost` 展示节点。
+- 复用现有 `idolLiveVideos`、`triggerWipeTransition()` 与 `playLiveVideo()`。
+- 解析后的 `pre`、`post` 和 `presentationStage` 保存在当前 active attempt。
+- 沙盒仍只进行一次模型请求，不调用经典 `startFirstLivePostStage()`。
+- 不重复抽取 roll、不再次推进 3 小时、不重复任务或冷却结算，也不触发育成模式的自由模式解锁。
+- 完整合并正文仍写入行动日志和 Chronicle，但玩家界面按三个阶段依次展示。
+
+验证：
+
+```text
+语法：node --check app.js 通过
+First Live / VN 专项：59 / 59 pass
+First Live / Recovery / ownership 组合：98 / 98 pass
+全量：698 tests / 692 pass / 6 fail
+```
+
+6 项失败与既有基线一致，没有新增失败。真实 SillyTavern 中仍需手工确认远程 Live 视频能够播放、跳过和在 CDN 加载失败时正常进入演后剧情。

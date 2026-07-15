@@ -359,6 +359,26 @@ test("sandbox First Live prompt and parser require both live blocks", () => {
   assert.equal(sandbox.api.extractSandboxFirstLiveNarrative("【live_pre开始】只有前半段。 【live_pre结束】"), null);
 });
 
+test("sandbox First Live accepted reply opens the pre-live stage before the post-live stage", () => {
+  const body = readFunction("handleSandboxFirstLiveReply");
+  assert.match(body, /attempt\.narrative\s*=\s*\{[\s\S]*pre:\s*narrative\.pre[\s\S]*post:\s*narrative\.post/);
+  assert.match(body, /presentationStage\s*=\s*"pre"/);
+  assert.match(body, /type:\s*"sandboxFirstLivePre"/);
+  assert.match(body, /state\.lastStory\s*=\s*narrative\.pre/);
+  assert.match(body, /openEventOverlay\([\s\S]*narrative\.pre/);
+});
+
+test("sandbox First Live presentation reuses Live Theater without a second model request", () => {
+  const startBody = readFunction("startSandboxFirstLivePresentation");
+  const postBody = readFunction("showSandboxFirstLivePostStage");
+  assert.match(startBody, /idolLiveVideos\[state\.idol\]/);
+  assert.match(startBody, /playLiveVideo\(videoUrl, showPostStage\)/);
+  assert.match(startBody, /showPostStage\(\)/);
+  assert.doesNotMatch(startBody, /requestHostPromptSend|startFirstLivePostStage|Math\.random|advanceFreeModeTime/);
+  assert.match(postBody, /type:\s*"sandboxFirstLivePost"/);
+  assert.match(postBody, /narrative\.post/);
+});
+
 test("sandbox First Live recovery keeps turn identity but rotates request id", () => {
   assert.match(readFunction("retryHarnessNarrativeRecovery"), /sandbox_first_live_recovery/);
   assert.match(readFunction("retryHarnessNarrativeRecovery"), /turnId: turn\.turnId/);

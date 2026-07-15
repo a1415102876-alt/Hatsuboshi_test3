@@ -21,6 +21,15 @@ test("First Live post reply waits until the live theater closes", () => {
   assert.match(postBody, /deferredLivePostReply = null/);
 });
 
+test("sandbox First Live routes shared VN controls through its own presentation stages", () => {
+  const controlsBody = readFunction("setEventActionsEnabled");
+  const closeBody = readFunction("closeEventOverlay");
+
+  assert.match(controlsBody, /sandboxFirstLivePre/);
+  assert.match(closeBody, /sandboxFirstLivePre[\s\S]*startSandboxFirstLivePresentation/);
+  assert.match(closeBody, /sandboxFirstLivePost[\s\S]*completeSandboxFirstLivePresentation/);
+});
+
 function readFunction(functionName) {
   const declaration = `function ${functionName}`;
   const start = source.indexOf(declaration);
