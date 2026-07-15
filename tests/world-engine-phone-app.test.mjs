@@ -408,13 +408,50 @@ test("Storyteller candidate renderer is read-only and contains no controls", () 
 });
 
 test("world engine event renderer exposes only accept defer and ignore commands", () => {
-  const body = readFunction("renderWorldEngineEvents");
+  const body = readFunction("renderWorldEngineEventInbox") + readFunction("renderWorldEngineEvents");
   assert.match(body, /data-storyteller-event-action="accept"/);
   assert.match(body, /data-storyteller-event-action="defer"/);
   assert.match(body, /data-storyteller-event-action="ignore"/);
   assert.match(body, /inbox\.confirmationCopy/);
   assert.match(body, /inbox\.modifierLabels/);
   assert.doesNotMatch(body, /requestHostPromptSend|tryAcquirePrimaryModelChannel|saveState/);
+});
+
+test("world engine event renderer combines budget inbox and escaped attach audit", () => {
+  const context = {
+    escapePhoneText: (value) => String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+  };
+  for (const name of ["renderWorldEngineEventBudget", "renderWorldEngineEventInbox", "renderWorldEngineAttachAudit", "renderWorldEngineEvents"]) {
+    vm.runInNewContext(`${readFunction(name)}; this.${name} = ${name};`, context);
+  }
+  const malicious = '<img src=x onerror="alert(1)">';
+  const output = context.renderWorldEngineEvents({ storyteller: {
+    inbox: {
+      available: true, statusLabel: "待处理", archetypeLabel: "同伴邀约", categoryLabel: "来访者",
+      severityLabel: "轻微", locationLabel: "中庭", actorLabels: ["秦谷美铃"], modifierLabels: [], confirmationCopy: ""
+    },
+    eventAudit: {
+      budget: { minor: { used: 2, total: 4 }, moderate: { used: 1, total: 3 }, major: { used: 0, total: 0 } },
+      channels: { attach: 2, invite: 1 },
+      attachEvents: [{
+        timeLabel: "11:00", sourceLabel: "地图探索", locationLabel: "中庭", categoryLabel: "环境变化",
+        severityLabel: "中等", skeletonLabel: malicious, actorLabels: [malicious], styleLabel: "恋爱故事", statusLabel: "已过期"
+      }],
+      emptyReason: ""
+    }
+  } });
+  assert.match(output, /轻微[\s\S]*2\/4/);
+  assert.match(output, /Attach 2/);
+  assert.match(output, /Invite 1/);
+  assert.match(output, /11:00/);
+  assert.match(output, /已过期/);
+  assert.match(output, /data-storyteller-event-action="accept"/);
+  assert.doesNotMatch(output, /<img|onerror="/);
+  assert.match(output, /&lt;img/);
 });
 
 test("major Storyteller actions use one reusable confirmation dialog", () => {
@@ -434,6 +471,9 @@ test("world engine phone rendering contains no direct model or save calls", () =
     "renderWorldEngineToday",
     "renderWorldEnginePressures",
     "renderWorldEngineRuntime",
+    "renderWorldEngineEventBudget",
+    "renderWorldEngineEventInbox",
+    "renderWorldEngineAttachAudit",
     "renderWorldEngineEvents",
     "renderWorldEnginePhoneApp"
   ];

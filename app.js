@@ -17164,9 +17164,22 @@ ${buildChoiceHardRules({ phase1: true })}`;
     </section>`;
   }
 
-  function renderWorldEngineEvents(model) {
-    const inbox = model.storyteller?.inbox;
-    if (!inbox?.available) return `<section class="world-engine-empty"><span class="world-engine-empty-mark">静</span><h2>暂无待处理事件</h2><p>世界引擎会在安全节点记录可选择的学园动向。</p></section>`;
+  function renderWorldEngineEventBudget(audit) {
+    const item = (label, value) => `<div><span>${label}</span><strong>${Number(value?.used) || 0}/${Number(value?.total) || 0}</strong></div>`;
+    return `<section class="world-engine-event-budget">
+      <div class="world-engine-section-head"><span>今日事件预算</span><strong>Attach ${Number(audit?.channels?.attach) || 0} · Invite ${Number(audit?.channels?.invite) || 0}</strong></div>
+      <div class="world-engine-event-budget-grid">
+        ${item("轻微", audit?.budget?.minor)}
+        ${item("中等", audit?.budget?.moderate)}
+        ${item("重大", audit?.budget?.major)}
+      </div>
+    </section>`;
+  }
+
+  function renderWorldEngineEventInbox(inbox) {
+    if (!inbox?.available) {
+      return `<section class="world-engine-event-inbox is-empty"><div class="world-engine-section-head"><span>事件收件箱</span><strong>无待处理 Invite</strong></div></section>`;
+    }
     return `<section class="world-engine-event-inbox">
       <div class="world-engine-section-head"><span>事件收件箱</span><strong>${escapePhoneText(inbox.statusLabel)}</strong></div>
       <h2>${escapePhoneText(inbox.archetypeLabel)}</h2>
@@ -17180,6 +17193,38 @@ ${buildChoiceHardRules({ phase1: true })}`;
         <button type="button" data-storyteller-event-action="ignore">忽略</button>
       </div>
     </section>`;
+  }
+
+  function renderWorldEngineAttachAudit(audit) {
+    const events = Array.isArray(audit?.attachEvents) ? audit.attachEvents : [];
+    if (!events.length) {
+      return `<section class="world-engine-attach-empty">
+        <div class="world-engine-section-head"><span>今日 Attach 事件</span><strong>0</strong></div>
+        <p>${escapePhoneText(audit?.emptyReason || "今天尚未生成 Attach 事件。")}</p>
+      </section>`;
+    }
+    return `<section class="world-engine-attach-audit">
+      <div class="world-engine-section-head"><span>今日 Attach 事件</span><strong>${events.length}</strong></div>
+      <div class="world-engine-attach-list">${events.map((row) => `
+        <article class="world-engine-attach-row">
+          <div class="world-engine-attach-meta"><time>${escapePhoneText(row.timeLabel)}</time><strong>${escapePhoneText(row.statusLabel)}</strong></div>
+          <h2>${escapePhoneText(row.skeletonLabel)}</h2>
+          <p>${escapePhoneText(row.sourceLabel)} · ${escapePhoneText(row.locationLabel)} · ${escapePhoneText(row.categoryLabel)} · ${escapePhoneText(row.severityLabel)}</p>
+          <p>${(row.actorLabels || []).map((item) => escapePhoneText(item)).join(" / ") || "无指定角色"} · ${escapePhoneText(row.styleLabel)}</p>
+        </article>`).join("")}</div>
+    </section>`;
+  }
+
+  function renderWorldEngineEvents(model) {
+    const audit = model.storyteller?.eventAudit || {
+      budget: { minor: {}, moderate: {}, major: {} },
+      channels: { attach: 0, invite: 0 },
+      attachEvents: [],
+      emptyReason: "当前计划尚未建立。"
+    };
+    return renderWorldEngineEventBudget(audit)
+      + renderWorldEngineEventInbox(model.storyteller?.inbox)
+      + renderWorldEngineAttachAudit(audit);
   }
 
   function transitionStorytellerInboxAction(action, options) {

@@ -40,6 +40,100 @@ test("Storyteller phone view exposes only bounded current plan summaries", () =>
   assert.doesNotMatch(JSON.stringify(model), /scope-secret|seed-secret|job-secret|PROMPT SECRET|secret-full-id/);
 });
 
+test("event audit merges current and recent candidates with budget and channel counts", () => {
+  const api = loadApi();
+  const source = {
+    plan: {
+      planId: "plan-SECRET",
+      dayKey: "live+2",
+      saveScope: "scope-SECRET",
+      status: "committed",
+      pacing: "normal",
+      categoryWeights: {},
+      severityBudget: { minor: 4, moderate: 3, major: 0 },
+      diversity: {}
+    },
+    pendingCandidate: {
+      incidentId: "incident:attach-a-SECRET", planId: "plan-SECRET", saveScope: "scope-SECRET", dayKey: "live+2",
+      sourceTurnId: "turn-a-SECRET", status: "attached", channel: "attach", category: "task", severity: "minor",
+      archetypeId: "unfinished_detail", locationId: "producer_classroom", actorIds: ["idol:藤田琴音"],
+      modifierIds: ["small_oversight"], styleId: "heroic", prompt: "PROMPT SECRET"
+    },
+    recentCandidates: [
+      {
+        incidentId: "incident:attach-a-SECRET", planId: "plan-SECRET", saveScope: "scope-SECRET", dayKey: "live+2",
+        sourceTurnId: "turn-a-SECRET", status: "resolved", channel: "attach", category: "task", severity: "minor",
+        archetypeId: "unfinished_detail", locationId: "producer_classroom", actorIds: ["idol:藤田琴音"],
+        modifierIds: ["small_oversight"], styleId: "heroic"
+      },
+      {
+        incidentId: "incident:attach-b-SECRET", planId: "plan-SECRET", saveScope: "scope-SECRET", dayKey: "live+2",
+        sourceTurnId: "turn-b-SECRET", status: "expired", channel: "attach", category: "environment", severity: "moderate",
+        archetypeId: "weather_shift", locationId: "courtyard", actorIds: ["idol:月村手毬"],
+        modifierIds: ["changing_light"], styleId: "romance"
+      },
+      {
+        incidentId: "incident:invite-c-SECRET", planId: "plan-SECRET", saveScope: "scope-SECRET", dayKey: "live+2",
+        sourceTurnId: "notify-c-SECRET", status: "resolved", channel: "invite", category: "visitor", severity: "minor",
+        archetypeId: "peer_invitation", locationId: "courtyard", actorIds: ["idol:秦谷美铃"]
+      },
+      {
+        incidentId: "incident:old-day", planId: "old-plan", saveScope: "scope-SECRET", dayKey: "live+1",
+        sourceTurnId: "old-turn", status: "resolved", channel: "attach", category: "task", severity: "major"
+      }
+    ],
+    observations: [
+      { sourceKind: "resolved_candidate", saveScope: "scope-SECRET", dayKey: "live+2", turnId: "turn-a-SECRET", timeMinutes: 600, actionId: "training", locationId: "producer_classroom" },
+      { sourceKind: "resolved_candidate", saveScope: "scope-SECRET", dayKey: "live+2", turnId: "turn-b-SECRET", timeMinutes: 660, actionId: "map_location", locationId: "courtyard" }
+    ]
+  };
+  const model = api.buildViewModel(source, {
+    currentDayKey: "live+2",
+    currentSaveScope: "scope-SECRET",
+    resolveActorLabel: (id) => id.startsWith("idol:") ? id.slice(5) : ""
+  });
+  const audit = JSON.parse(JSON.stringify(model.eventAudit));
+
+  assert.deepEqual(audit.budget, {
+    minor: { used: 2, total: 4 },
+    moderate: { used: 1, total: 3 },
+    major: { used: 0, total: 0 }
+  });
+  assert.deepEqual(audit.channels, { attach: 2, invite: 1 });
+  assert.equal(audit.attachEvents.length, 2);
+  assert.deepEqual(audit.attachEvents.map((row) => row.timeLabel), ["11:00", "10:00"]);
+  assert.deepEqual(audit.attachEvents.map((row) => row.statusLabel), ["已过期", "叙事已完成"]);
+  assert.match(audit.attachEvents[0].skeletonLabel, /天气变化|现场光线变化/);
+  assert.deepEqual(audit.attachEvents[1].actorLabels, ["藤田琴音"]);
+  assert.doesNotMatch(JSON.stringify(audit), /SECRET|prompt|saveScope|requestId|leaseId|definitionId|incidentId|sourceTurnId|planId/);
+});
+
+test("event audit maps live attach states and public empty reasons", () => {
+  const api = loadApi();
+  const base = {
+    plan: {
+      planId: "plan-a", dayKey: "live+2", saveScope: "chat-a", status: "committed", pacing: "normal",
+      categoryWeights: {}, severityBudget: { minor: 4, moderate: 3, major: 0 }, diversity: {}
+    }
+  };
+  const candidate = {
+    incidentId: "incident-a", planId: "plan-a", saveScope: "chat-a", dayKey: "live+2", sourceTurnId: "turn-a",
+    channel: "attach", category: "task", severity: "minor", archetypeId: "unfinished_detail",
+    locationId: "producer_classroom", actorIds: [], modifierIds: [], styleId: "heroic"
+  };
+  const options = { currentDayKey: "live+2", currentSaveScope: "chat-a" };
+  assert.equal(api.buildViewModel({ ...base, pendingCandidate: { ...candidate, status: "pending" } }, options).eventAudit.attachEvents[0].statusLabel, "待附着");
+  assert.equal(api.buildViewModel({ ...base, pendingCandidate: { ...candidate, status: "attached" } }, options).eventAudit.attachEvents[0].statusLabel, "已附着到 Prompt");
+
+  const empty = api.buildViewModel({
+    ...base,
+    lastCandidateReason: "no_eligible_candidate",
+    lastSelectionDiagnostic: { rejectionCounts: { legality: 0, cooldown: 3, diversity: 0, fingerprint: 0 } }
+  }, options).eventAudit;
+  assert.equal(empty.attachEvents.length, 0);
+  assert.match(empty.emptyReason, /冷却/);
+});
+
 test("Storyteller phone view hides stale scope or day plans", () => {
   const api = loadApi();
   const storyteller = { plan: { planId: "p", dayKey: "live+1", saveScope: "chat-a", status: "committed" }, lastPlanError: "retry later" };

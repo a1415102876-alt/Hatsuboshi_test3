@@ -21,6 +21,23 @@
     resolved: "已完成",
     expired: "已过期"
   };
+  const AUDIT_STATUS_LABELS = {
+    pending: "待附着",
+    attached: "已附着到 Prompt",
+    resolved: "叙事已完成",
+    expired: "已过期"
+  };
+  const AUDIT_STATUS_RANK = { pending: 1, attached: 2, expired: 3, resolved: 4 };
+  const ACTION_LABELS = {
+    lesson: "上课",
+    training: "训练",
+    rest: "休息",
+    outing: "外出",
+    companion: "陪伴",
+    interaction: "互动",
+    freechat: "自由交流",
+    map_location: "地图探索"
+  };
   const SEVERITY_LABELS = { minor: "轻微", moderate: "中等", major: "重大" };
   const STYLE_LABELS = { heroic: "王道故事", romance: "恋爱故事", kaibunsho: "怪文书" };
   const OPERATOR_LABELS = {
@@ -113,6 +130,16 @@
       selection: null,
       lastObservation: null,
       inbox: { available: false },
+      eventAudit: {
+        budget: {
+          minor: { used: 0, total: 0 },
+          moderate: { used: 0, total: 0 },
+          major: { used: 0, total: 0 }
+        },
+        channels: { attach: 0, invite: 0 },
+        attachEvents: [],
+        emptyReason: "当前计划尚未建立。"
+      },
       badges: { worldEngine: false, sns: false }
     };
   }
@@ -215,6 +242,100 @@
     const id = bounded(value, 120);
     if (id === "producer") return "制作人";
     return id.startsWith("idol:") ? bounded(id.slice(5), 60) : "";
+  }
+
+  function formatAuditTime(value) {
+    const minutes = Number(value);
+    if (!Number.isInteger(minutes) || minutes < 0) return "--:--";
+    const clock = minutes % (24 * 60);
+    return `${String(Math.floor(clock / 60)).padStart(2, "0")}:${String(clock % 60).padStart(2, "0")}`;
+  }
+
+  function publicEmptyReason(source, candidateCount) {
+    if (candidateCount > 0) return "今日已生成 Invite，尚未生成 Attach。";
+    const rejections = source.lastSelectionDiagnostic?.rejectionCounts || {};
+    if (budget(rejections.cooldown, 100) > 0) return "最近没有生成 Attach：候选仍在冷却中。";
+    if (budget(rejections.fingerprint, 100) > 0) return "最近没有生成 Attach：候选触发了重复限制。";
+    if (budget(rejections.diversity, 100) > 0) return "最近没有生成 Attach：角色、地点或类别多样性不足。";
+    if (budget(rejections.legality, 100) > 0) return "最近没有生成 Attach：当前行动没有合法候选。";
+    const reasons = {
+      current_plan_unavailable: "当前计划尚未建立。",
+      no_eligible_candidate: "最近一次行动没有合法的 Attach 候选。",
+      candidate_unresolved: "已有事件正在处理中。",
+      storyteller_module_unavailable: "Storyteller 模块当前不可用。"
+    };
+    return reasons[bounded(source.lastCandidateReason, 120)] || "今天尚未生成 Attach 事件。";
+  }
+
+  function buildEventAudit(source, plan, currentDayKey, currentSaveScope, options = {}) {
+    const matches = (candidate) => Boolean(
+      candidate
+      && bounded(candidate.dayKey, 120) === currentDayKey
+      && bounded(candidate.saveScope, 160) === currentSaveScope
+      && bounded(candidate.planId, 160) === bounded(plan.planId, 160)
+    );
+    const candidates = [];
+    if (matches(source.pendingCandidate)) candidates.push(source.pendingCandidate);
+    if (Array.isArray(source.recentCandidates)) candidates.push(...source.recentCandidates.filter(matches));
+    const deduped = new Map();
+    candidates.forEach((candidate, index) => {
+      const key = bounded(candidate.incidentId, 160) || `${bounded(candidate.sourceTurnId, 160)}|${index}`;
+      const existing = deduped.get(key);
+      const rank = AUDIT_STATUS_RANK[candidate.status] || 0;
+      if (!existing || rank >= (AUDIT_STATUS_RANK[existing.status] || 0)) deduped.set(key, candidate);
+    });
+    const current = [...deduped.values()];
+    const used = { minor: 0, moderate: 0, major: 0 };
+    const channels = { attach: 0, invite: 0 };
+    current.forEach((candidate) => {
+      if (candidate.severity in used) used[candidate.severity] += 1;
+      if (candidate.channel in channels) channels[candidate.channel] += 1;
+    });
+    const observations = Array.isArray(source.observations) ? source.observations : [];
+    const resolveActorLabel = typeof options.resolveActorLabel === "function"
+      ? options.resolveActorLabel
+      : displayActor;
+    const attachEvents = current.filter((candidate) => (
+      candidate.channel === "attach" && AUDIT_STATUS_LABELS[candidate.status]
+    )).map((candidate, index) => {
+      const observation = [...observations].reverse().find((item) => (
+        item
+        && bounded(item.saveScope, 160) === currentSaveScope
+        && bounded(item.dayKey, 120) === currentDayKey
+        && bounded(item.turnId, 160) === bounded(candidate.sourceTurnId, 160)
+      ));
+      const modifierLabels = (candidate.modifierIds || []).map((id) => MODIFIER_LABELS[id]).filter(Boolean).slice(0, 2);
+      const archetypeLabel = ARCHETYPE_LABELS[candidate.archetypeId] || "学园事件";
+      const timeMinutes = Number.isInteger(Number(observation?.timeMinutes)) ? Number(observation.timeMinutes) : -1;
+      const actorLabels = [...new Set([...(candidate.actorIds || []), ...(candidate.targetIds || [])]
+        .map((id) => bounded(resolveActorLabel(id), 60) || displayActor(id))
+        .filter(Boolean))].slice(0, 4);
+      return {
+        timeMinutes,
+        order: index,
+        timeLabel: formatAuditTime(timeMinutes),
+        sourceLabel: ACTION_LABELS[observation?.actionId] || candidateSourceLabel(candidate, options.activeTurn),
+        locationLabel: LOCATION_LABELS[observation?.locationId] || LOCATION_LABELS[candidate.locationId] || "当前位置",
+        categoryLabel: CATEGORY_LABELS[candidate.category] || "未分类",
+        severityLabel: SEVERITY_LABELS[candidate.severity] || "未记录",
+        skeletonLabel: modifierLabels.length ? `${archetypeLabel} · ${modifierLabels.join(" · ")}` : archetypeLabel,
+        actorLabels,
+        styleLabel: STYLE_LABELS[candidate.styleId] || "未指定文风",
+        statusLabel: AUDIT_STATUS_LABELS[candidate.status]
+      };
+    }).sort((left, right) => right.timeMinutes - left.timeMinutes || right.order - left.order)
+      .slice(0, 24)
+      .map(({ timeMinutes, order, ...row }) => row);
+    return {
+      budget: {
+        minor: { used: budget(used.minor, 24), total: budget(plan.severityBudget?.minor, 12) },
+        moderate: { used: budget(used.moderate, 24), total: budget(plan.severityBudget?.moderate, 12) },
+        major: { used: budget(used.major, 24), total: budget(plan.severityBudget?.major, 1) }
+      },
+      channels,
+      attachEvents,
+      emptyReason: attachEvents.length ? "" : publicEmptyReason(source, current.length)
+    };
   }
 
   function buildInboxView(source, currentDayKey, currentSaveScope, worldMinute) {
@@ -328,8 +449,8 @@
       pacingLabel: PACING_LABELS[plan.pacing] || PACING_LABELS.normal,
       categories,
       severityBudget: {
-        minor: budget(plan.severityBudget?.minor, 6),
-        moderate: budget(plan.severityBudget?.moderate, 3),
+        minor: budget(plan.severityBudget?.minor, 12),
+        moderate: budget(plan.severityBudget?.moderate, 12),
         major: budget(plan.severityBudget?.major, 1)
       },
       noveltySummary: diversity.preferUnusedCategories === false
@@ -342,6 +463,7 @@
       selection: buildSelectionView(source.lastSelectionDiagnostic),
       lastObservation: buildLastObservationView(source, currentSaveScope),
       inbox,
+      eventAudit: buildEventAudit(source, plan, currentDayKey, currentSaveScope, options),
       badges: { worldEngine: badgeVisible, sns: badgeVisible }
     };
   }
