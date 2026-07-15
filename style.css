@@ -5973,6 +5973,8 @@ body.is-free-mode-active {
   --affinity-theme: #ff7bb0;
   position: relative;
   width: min(560px, 100%);
+  max-width: 100%;
+  box-sizing: border-box;
   height: min(900px, calc(var(--hatsu-viewport-height, 100dvh) - 24px));
   border-radius: 26px;
   overflow: hidden;
@@ -6065,6 +6067,9 @@ body.is-free-mode-active {
   z-index: 2;
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
   -webkit-overflow-scrolling: touch;
   padding: 46% 16px 22px;
   display: flex;
@@ -6074,8 +6079,110 @@ body.is-free-mode-active {
 
 .affinity-identity {
   display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.affinity-identity-copy {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   flex-direction: column;
   gap: 4px;
+}
+
+.affinity-idol-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+}
+
+.affinity-idol-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.84);
+  color: #2c3550;
+  box-shadow: 0 8px 18px rgba(28, 34, 60, 0.14);
+  cursor: pointer;
+}
+
+.affinity-idol-page-btn:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.affinity-idol-page-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.affinity-idol-counter {
+  min-width: 52px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: #2c3550;
+  font-variant-numeric: tabular-nums;
+}
+
+.affinity-responsibility-controls {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.affinity-responsible-badge,
+.affinity-set-responsible-btn {
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.affinity-responsible-badge {
+  display: inline-flex;
+  align-items: center;
+  background: color-mix(in srgb, var(--affinity-theme) 22%, white);
+  color: #2c3550;
+}
+
+.affinity-responsible-badge[hidden] {
+  display: none;
+}
+
+.affinity-set-responsible-btn {
+  border: 1px solid color-mix(in srgb, var(--affinity-theme) 54%, white);
+  background: rgba(255, 255, 255, 0.88);
+  color: #2c3550;
+  cursor: pointer;
+}
+
+.affinity-set-responsible-btn:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
 }
 
 .affinity-idol-name {
@@ -6105,6 +6212,8 @@ body.is-free-mode-active {
   color: #2c3550;
   font-size: 11px;
   font-weight: 700;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .affinity-card {
@@ -8976,6 +9085,26 @@ body.is-free-mode-active {
 .mini-phone-statusbar.is-sns .mini-phone-battery,
 .mini-phone-statusbar.is-sns .mini-phone-battery::after {
   background: var(--sns-x-text);
+}
+
+@media (max-width: 480px) {
+  .affinity-body {
+    padding-inline: 12px;
+  }
+
+  .affinity-identity {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .affinity-idol-name {
+    overflow-wrap: anywhere;
+  }
+
+  .affinity-responsibility-controls,
+  .affinity-set-responsible-btn {
+    width: 100%;
+  }
 }
 
 .phone-app-notification-dot {

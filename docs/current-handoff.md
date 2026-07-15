@@ -416,3 +416,50 @@ First Live / Recovery / ownership 组合：98 / 98 pass
 ```
 
 6 项失败与既有基线一致，没有新增失败。真实 SillyTavern 中仍需手工确认远程 Live 视频能够播放、跳过和在 CDN 加载失败时正常进入演后剧情。
+
+## 16. 2026-07-15 沙盒多担当与当前负责偶像
+
+沙盒模式现在区分两种状态：
+
+- `state.sandbox.assignedIdols`：已完成“担当确认”的正式担当名单，可复数。
+- `state.sandbox.responsibleIdol`：当前负责偶像，只能是正式担当之一。
+- `state.sandbox.idolProfiles`：按偶像名保存的独立育成档案。
+- `state.idol`：兼容层，始终镜像当前负责偶像，供既有行动、Prompt 和设施代码继续读取。
+
+每名担当独立保存 Vo/Da/Vi、成长率、阈值、上限、SP、体力、压力、信赖兼容字段、First Live、沙盒 First Live 挑战状态，以及主线任务和基线。钱包、知名度、背包、世界时间、校园次数、关系网、世界引擎和每日委托仍是制作人全局状态。
+
+第二担当流程：
+
+1. 开始物色时只更新 `scoutTargetIdol`，不覆盖当前负责偶像，也不重置校园日期与数值。
+2. 候选完成“担当确认”标签后才加入 `assignedIdols`。
+3. 新担当取得独立初始档案和自己的任务视图，并自动成为当前负责偶像。
+4. 旧担当档案在切换前保存，之后可以从担当页切换回来。
+
+担当页新增左右翻页、稳定页码、“当前负责”标记和“设为当前负责”按钮。翻页只改变页面正在查看的偶像，不修改 `state.idol`。其他人物列表排除所有正式担当，关系网为每名正式担当显示制作人连线，并区分“担当”和“当前负责”。
+
+手动切换免费且不推进时间，但以下状态会阻止切换：主模型请求占用、Harness 行动生成或待恢复、活动剧情/VN、待结算行动、连续地图探索、Live Theater 播放、沙盒 First Live 生成或待恢复。
+
+委托在首次接取时写入 `ownerIdol`，之后切换担当不会转移归属。委托列表、详情和课题面板都会显示负责偶像；非归属担当不能重新设为目标、在对应地点触发或结算该委托，切换回归属担当后可继续。
+
+旧存档会从已有 `assignedIdols`、`producedIdols` 和已完成的物色任务保守恢复名单。若旧版本曾经在选择第二担当时覆盖了第一担当的精确数值，已丢失的数值无法逆向重建；迁移会为该担当使用配置预设，同时保留仍存在的按名字关系数据和可确认任务状态。
+
+新增专项测试：
+
+- `tests/idol-roster.test.mjs`
+- `tests/multi-idol-integration.test.mjs`
+- `tests/multi-idol-ui.test.mjs`
+- `tests/tasks-sandbox.test.mjs` 增加任务档案和委托归属覆盖
+
+最终验证：
+
+```text
+node --check app.js
+node --check sandbox/idol-roster.js
+node --check tasks/sandbox-tasks.js
+多担当 / 自由模式 / First Live / Harness / 立绘 / 世界引擎组合：422 / 422 pass
+全量：716 tests / 710 pass / 6 fail
+```
+
+全量 6 项失败与修改前基线一致，没有新增失败。使用同源测试存档和本机 Chrome 检查了 1200px 桌面与 390px iframe 手机布局；担当页箭头、页码、当前负责标记和标签均完整可见，无横向溢出或重叠。临时视觉夹具已删除，截图未加入仓库。
+
+真实 SillyTavern 中仍需手工确认：桌面与手机宽度下担当翻页和负责按钮不重叠；第二担当确认后的自动切换、委托归属提示和 Live/Recovery 忙碌锁符合实际操作顺序。

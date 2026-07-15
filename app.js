@@ -3200,6 +3200,7 @@
   }
 
   function saveState(reason = "state.save") {
+    globalThis.HatsuIdolRoster?.saveResponsibleProfile?.(state);
     state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
     state.harness.persistenceRevision += 1;
     const willMirrorToHost = isSillyTavernHost() && hostStateReady && Boolean(activeHostSaveScope);
@@ -3615,6 +3616,52 @@
     return idolAliases[name] || name;
   }
 
+  function createFreshSandboxIdolProfile(idolName, taskStateOverride = null) {
+    const canonical = canonicalIdolName(idolName);
+    const preset = presetFor(canonical);
+    const taskState = taskStateOverride || globalThis.HatsuTasks?.createConfirmedIdolTaskState?.(canonical)
+      || { main: {}, baseline: null };
+    return {
+      schemaVersion: 1,
+      idol: canonical,
+      Vo: preset.Vo,
+      Da: preset.Da,
+      Vi: preset.Vi,
+      growth: clone(preset.growth),
+      threshold: clone(preset.threshold),
+      cap: clone(preset.cap),
+      sp: { Vo: false, Da: false, Vi: false },
+      stamina: 100,
+      stress: 0,
+      trust: 0,
+      liveReady: false,
+      affinity: { openingComplete: false, unlocked: [], pending: [], viewed: [], bondUnlockDay: {} },
+      firstLive: { completed: false, success: false, result: null },
+      firstLiveChallenge: defaultSandboxFirstLiveChallenge(),
+      taskMain: clone(taskState.main),
+      taskBaseline: clone(taskState.baseline)
+    };
+  }
+
+  function getConfirmedSandboxIdols() {
+    const packs = globalThis.HatsuTasks?.SANDBOX_IDOL_QUEST_PACKS || {};
+    const confirmed = new Set(Array.isArray(state.sandbox?.producedIdols) ? state.sandbox.producedIdols : []);
+    Object.entries(packs).forEach(([idolName, pack]) => {
+      if (state.tasks?.main?.[pack.scoutId]?.status === "completed") confirmed.add(idolName);
+    });
+    return [...confirmed].map(canonicalIdolName).filter(Boolean);
+  }
+
+  function normalizeSandboxIdolRoster() {
+    if (state.launchMode !== "sandbox" || !globalThis.HatsuIdolRoster) return [];
+    globalThis.HatsuIdolRoster.saveResponsibleProfile?.(state);
+    return globalThis.HatsuIdolRoster.normalizeRosterState(state, {
+      validIdols: globalThis.HatsuTasks?.SANDBOX_SELECTABLE_IDOLS || Object.keys(idols),
+      confirmedIdols: getConfirmedSandboxIdols(),
+      createProfile: createFreshSandboxIdolProfile
+    });
+  }
+
   function ensureStateShape(options = {}) {
     state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
     state.appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
@@ -3875,6 +3922,26 @@
     if (globalThis.HatsuTasks) {
       globalThis.HatsuTasks.ensureTasksShape(state);
     }
+    normalizeSandboxIdolRoster();
+  }
+
+  function finalizeConfirmedSandboxScouts(completedQuestIds) {
+    if (state.launchMode !== "sandbox" || !globalThis.HatsuIdolRoster) return [];
+    const completed = new Set(Array.isArray(completedQuestIds) ? completedQuestIds : []);
+    const packs = globalThis.HatsuTasks?.SANDBOX_IDOL_QUEST_PACKS || {};
+    const added = [];
+    Object.entries(packs).forEach(([idolName, pack]) => {
+      if (!completed.has(pack.scoutId)) return;
+      const assigned = globalThis.HatsuIdolRoster.getAssignedIdols(state);
+      if (assigned.includes(idolName)) return;
+      const confirmedTaskState = globalThis.HatsuTasks?.createConfirmedIdolTaskState?.(idolName);
+      const result = globalThis.HatsuIdolRoster.confirmAssignedIdol(state, idolName, {
+        createProfile: (name) => createFreshSandboxIdolProfile(name, confirmedTaskState)
+      });
+      if (result?.ok) added.push(idolName);
+    });
+    if (added.includes(state.sandbox?.scoutTargetIdol)) state.sandbox.scoutTargetIdol = null;
+    return added;
   }
 
   function notifyQuestCompletions(questIds) {
@@ -4511,6 +4578,7 @@
     const flagResult = globalThis.HatsuTasks.applyQuestFlagsFromReply(state, source);
     const numericCompleted = globalThis.HatsuTasks.evaluateNumericMainQuests(state);
     const merged = [...new Set([...tagCompleted, ...flagResult.completions || [], ...numericCompleted])];
+    finalizeConfirmedSandboxScouts(merged);
     if (flagResult.notices?.length) {
       flagResult.notices.forEach((notice) => showToast("课题进度", notice, "info"));
     }
@@ -5702,7 +5770,10 @@
   function startSideQuestJourney(slotIndex) {
     const result = globalThis.HatsuTasks?.setActiveSideQuest(state, slotIndex);
     if (!result?.ok) {
-      showToast("无法设为目标", "该委托已完成或尚未刷新。", "warn");
+      const message = result?.reason === "owner_mismatch"
+        ? `该委托由 ${result.ownerIdol} 负责，请先切换回对应担当。`
+        : "该委托已完成或尚未刷新。";
+      showToast("无法设为目标", message, "warn");
       return;
     }
     saveState();
@@ -5753,7 +5824,8 @@
             ? "当前目标"
             : "待前往";
         const locationLabel = slot.locationName ? `地点 · ${slot.locationName}` : "地点 · 待确认";
-        button.innerHTML = `<strong>${slot.title}</strong><span class="side-quest-slot-tag">${tagLabel} · ${locationLabel}</span><span class="side-quest-slot-status">${statusLabel}</span><span class="side-quest-slot-desc">${slot.desc}</span>`;
+        const ownerLabel = slot.ownerIdol ? `负责 · ${slot.ownerIdol}` : "负责 · 接取时绑定";
+        button.innerHTML = `<strong>${slot.title}</strong><span class="side-quest-slot-tag">${tagLabel} · ${locationLabel} · ${ownerLabel}</span><span class="side-quest-slot-status">${statusLabel}</span><span class="side-quest-slot-desc">${slot.desc}</span>`;
         button.addEventListener("click", () => openSideQuestTierPanel(index));
         slotList.appendChild(button);
       });
@@ -5788,14 +5860,19 @@
     tierPanel.hidden = false;
     if (titleEl) titleEl.textContent = slot.title;
     const locationLabel = slot.locationName ? `完成地点：${slot.locationName}` : "完成地点：待确认";
-    if (descEl) descEl.textContent = `${pool.getTagLabel(slot.tag)} · ${locationLabel} · ${slot.desc}`;
+    const ownerLabel = slot.ownerIdol ? `负责：${slot.ownerIdol}` : "接取后绑定当前负责偶像";
+    if (descEl) descEl.textContent = `${pool.getTagLabel(slot.tag)} · ${locationLabel} · ${ownerLabel} · ${slot.desc}`;
 
     buttonsEl.innerHTML = "";
     const active = state.tasks?.side?.activeSlotIndex === slotIndex;
+    const ownerMismatch = Boolean(slot.ownerIdol && slot.ownerIdol !== state.sandbox?.responsibleIdol);
     const targetButton = document.createElement("button");
     targetButton.type = "button";
     targetButton.className = "side-quest-tier-button";
-    targetButton.innerHTML = `<strong>${active ? "已设为当前目标" : "设为当前目标"}</strong><span>之后从地图前往 ${slot.locationName || "委托地点"} 触发该商业委托。</span><span class="side-quest-tier-reward">抵达后进入委托现场</span>`;
+    targetButton.disabled = ownerMismatch;
+    targetButton.innerHTML = ownerMismatch
+      ? `<strong>需切换负责偶像</strong><span>该委托由 ${slot.ownerIdol} 负责。</span><span class="side-quest-tier-reward">切换后可继续前往委托现场</span>`
+      : `<strong>${active ? "已设为当前目标" : "设为当前目标"}</strong><span>之后从地图前往 ${slot.locationName || "委托地点"} 触发该商业委托。</span><span class="side-quest-tier-reward">抵达后进入委托现场</span>`;
     targetButton.addEventListener("click", () => startSideQuestJourney(slotIndex));
     buttonsEl.appendChild(targetButton);
   }
@@ -5804,7 +5881,10 @@
     const pool = getSideQuestPoolApi();
     const result = globalThis.HatsuTasks?.applySideQuestTier(state, slotIndex, tier);
     if (!result?.ok) {
-      showToast("无法结算", "该委托已完成或档位无效。", "warn");
+      const message = result?.reason === "owner_mismatch"
+        ? `该委托由 ${result.ownerIdol} 负责，请先切换回对应担当。`
+        : "该委托已完成或档位无效。";
+      showToast("无法结算", message, "warn");
       return;
     }
     saveState();
@@ -6098,7 +6178,8 @@
         const title = document.createElement("strong");
         title.textContent = slot.title || `委托 ${index + 1}`;
         const meta = document.createElement("span");
-        meta.textContent = `${tagLabel} · ${statusLabel} · ${slot.locationName ? `地点：${slot.locationName}` : "地点：待确认"}`;
+        const ownerLabel = slot.ownerIdol ? `负责：${slot.ownerIdol}` : "负责：接取时绑定";
+        meta.textContent = `${tagLabel} · ${statusLabel} · ${ownerLabel} · ${slot.locationName ? `地点：${slot.locationName}` : "地点：待确认"}`;
         const desc = document.createElement("span");
         desc.textContent = slot.desc || "";
         item.append(title, meta, desc);
@@ -6528,6 +6609,54 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   let activeAffinityTab = "current";
+  let viewedAffinityIdolName = "";
+
+  function getAssignedAffinityIdols() {
+    const assigned = globalThis.HatsuIdolRoster?.getAssignedIdols?.(state) || [];
+    const validAssigned = assigned.map(canonicalIdolName).filter((name) => idols[name]);
+    if (validAssigned.length) return [...new Set(validAssigned)];
+    const current = getCurrentAffinityIdolName();
+    return current ? [current] : [];
+  }
+
+  function getViewedAffinityIdolName() {
+    const assignedIdols = getAssignedAffinityIdols();
+    if (assignedIdols.includes(viewedAffinityIdolName)) return viewedAffinityIdolName;
+    const responsible = canonicalIdolName(state.sandbox?.responsibleIdol || state.idol || "");
+    viewedAffinityIdolName = assignedIdols.includes(responsible) ? responsible : assignedIdols[0] || "";
+    return viewedAffinityIdolName;
+  }
+
+  function cycleViewedAffinityIdol(direction) {
+    const assignedIdols = getAssignedAffinityIdols();
+    if (assignedIdols.length < 2) return false;
+    const currentIndex = Math.max(0, assignedIdols.indexOf(getViewedAffinityIdolName()));
+    const offset = Number(direction) < 0 ? -1 : 1;
+    viewedAffinityIdolName = assignedIdols[(currentIndex + offset + assignedIdols.length) % assignedIdols.length];
+    renderAffinityOverlay();
+    return true;
+  }
+
+  function renderAffinityRosterControls(idolName, assignedIdols = getAssignedAffinityIdols()) {
+    const responsible = canonicalIdolName(state.sandbox?.responsibleIdol || state.idol || "");
+    const isResponsible = idolName === responsible;
+    const currentIndex = Math.max(0, assignedIdols.indexOf(idolName));
+    const counter = document.getElementById("affinityIdolCounter");
+    if (counter) counter.textContent = `${assignedIdols.length ? currentIndex + 1 : 0} / ${assignedIdols.length}`;
+    ["affinityPrevIdolBtn", "affinityNextIdolBtn"].forEach((id) => {
+      const button = document.getElementById(id);
+      if (button) button.disabled = assignedIdols.length < 2;
+    });
+    const badge = document.getElementById("affinityResponsibleBadge");
+    if (badge) badge.hidden = !isResponsible;
+    const switchButton = document.getElementById("affinitySetResponsibleBtn");
+    if (switchButton) {
+      const blockReason = getResponsibleIdolSwitchBlockReason();
+      switchButton.hidden = isResponsible || assignedIdols.length < 2;
+      switchButton.disabled = Boolean(blockReason);
+      switchButton.title = blockReason;
+    }
+  }
 
   function buildAffinityStatusRows(idolName, score, threshold) {
     const node = affinityNodes[threshold] || {};
@@ -6558,9 +6687,9 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   function buildSecondaryRelationshipRows() {
     ensureFreeModeRelationships();
     if (typeof ensureFreeModeNpcRelationships === "function") ensureFreeModeNpcRelationships();
-    const current = getCurrentAffinityIdolName();
+    const assignedIdols = new Set(getAssignedAffinityIdols());
     const idolRows = Object.keys(idols)
-      .filter((idolName) => idolName !== current)
+      .filter((idolName) => !assignedIdols.has(idolName))
       .map((idolName) => {
         const relationship = getFreeModeRelationship(idolName, { create: false });
         const score = clampFreeModeRelationshipScore(relationship?.好感度 || 0);
@@ -6591,16 +6720,18 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   function buildRelationshipNetworkRows() {
-    const current = getCurrentAffinityIdolName();
+    const responsible = canonicalIdolName(state.sandbox?.responsibleIdol || state.idol || "");
+    const assignedIdols = getAssignedAffinityIdols();
     const rows = [];
     buildSecondaryRelationshipRows()
-      .filter((row) => row.score > 0 || row.name === current || row.type === "npc")
+      .filter((row) => row.score > 0 || row.type === "npc")
       .forEach((row) => {
         rows.push({ source: "制作人", target: row.name, label: `${getRelationshipLevelLabel(row.score)} ${row.score}/100`, type: row.type });
       });
-    if (current) {
-      rows.unshift({ source: "制作人", target: current, label: `担当 · ${getFreeModeRelationshipScore(current)}/100`, type: "producer" });
-    }
+    assignedIdols.forEach((idolName) => {
+      const role = idolName === responsible ? "当前负责" : "担当";
+      rows.unshift({ source: "制作人", target: idolName, label: `${role} · ${getFreeModeRelationshipScore(idolName)}/100`, type: "producer" });
+    });
     const staticEdges = [
       ["月村手毬", "秦谷美铃", "SyngUp 旧友"],
       ["花海咲季", "花海佑芽", "姐妹与竞争"],
@@ -6665,8 +6796,9 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     if (network) network.hidden = activeAffinityTab !== "network";
   }
   function renderAffinityOverlay() {
-    const idolName = getCurrentAffinityIdolName();
+    const idolName = getViewedAffinityIdolName();
     if (!idolName) return;
+    const assignedIdols = getAssignedAffinityIdols();
     const idol = idols[idolName] || {};
     const score = clampFreeModeRelationshipScore(getFreeModeRelationshipScore(idolName));
     const threshold = getAffinityStageThreshold(score);
@@ -6687,7 +6819,8 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const romajiEl = document.getElementById("affinityIdolRomaji");
     if (romajiEl) romajiEl.textContent = idolRomajiNames[idolName] || "";
     const tagEl = document.getElementById("affinityIdolTag");
-    if (tagEl) tagEl.textContent = idol.tag ? `担当 · ${idol.tag}` : "担当偶像";
+    if (tagEl) tagEl.innerHTML = idol.tag ? `担当 · ${idol.tag}` : "担当偶像";
+    renderAffinityRosterControls(idolName, assignedIdols);
 
     const hearts = document.getElementById("affinityHearts");
     if (hearts) {
@@ -6744,6 +6877,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       showToast("尚未开放", "确定担当偶像后可查看好感度档案。", "warn");
       return;
     }
+    viewedAffinityIdolName = canonicalIdolName(state.sandbox?.responsibleIdol || state.idol || "");
     setElementHidden("affinityOverlay", false);
     renderAffinityOverlay();
   }
@@ -10526,6 +10660,44 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     return Boolean(overlay && !overlay.hidden);
   }
 
+  function getResponsibleIdolSwitchBlockReason() {
+    if (getPrimaryModelChannelOwner()) return "AI 正在生成内容，请等待当前请求结束。";
+    const turnStatus = String(state.harness?.activeTurn?.status || "");
+    if (["prepared", "settled", "generating", "recovery_required"].includes(turnStatus)) {
+      return turnStatus === "recovery_required"
+        ? "当前行动叙事待恢复，请先恢复或放弃该行动。"
+        : "当前行动尚未结束，暂时不能切换负责偶像。";
+    }
+    if (state.activeStoryNode) return "当前剧情尚未结束，暂时不能切换负责偶像。";
+    if (state.pendingActionContext || isMapLocationExploreActive()) {
+      return "当前探索或行动尚未结算，暂时不能切换负责偶像。";
+    }
+    if (isLiveTheaterActive()) return "Live 正在播放，暂时不能切换负责偶像。";
+    const challengeStatus = String(state.sandbox?.firstLiveChallenge?.status || "");
+    if (["generating", "recovery_required"].includes(challengeStatus)) {
+      return "First Live 叙事尚未结束，暂时不能切换负责偶像。";
+    }
+    return "";
+  }
+
+  function switchResponsibleIdolFromUi(idolName) {
+    const canonical = canonicalIdolName(idolName);
+    const blockedReason = getResponsibleIdolSwitchBlockReason();
+    if (blockedReason) {
+      showToast("暂时无法切换", blockedReason, "warn");
+      return false;
+    }
+    const result = globalThis.HatsuIdolRoster?.switchResponsibleIdol?.(state, canonical);
+    if (!result?.ok) {
+      showToast("无法切换", "该偶像尚未正式加入担当名单。", "warn");
+      return false;
+    }
+    saveState("sandbox.responsible_idol_switched");
+    render();
+    showToast("当前负责偶像", `已切换为 ${canonical}。`, "gold");
+    return true;
+  }
+
   function flushDeferredLivePostReply() {
     if (!deferredLivePostReply) return false;
     const payload = deferredLivePostReply;
@@ -10932,6 +11104,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     const scoutId = globalThis.HatsuTasks?.getScoutQuestId?.(state);
     const completed = globalThis.HatsuTasks?.applyQuestCompletionsFromReply?.(state, source) || [];
     if (!scoutId || !completed.includes(scoutId)) return false;
+    if (typeof finalizeConfirmedSandboxScouts === "function") finalizeConfirmedSandboxScouts(completed);
     if (segmentStory) {
       const signStory = String(segmentStory || "").trim();
       state.pendingActionContext.actionContext = {
@@ -11286,10 +11459,16 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   function startSandboxInviteStory(idolName, options = {}) {
     const { resume = false } = options;
     const canonical = canonicalIdolName(idolName);
-    applyIdolPreset(canonical, true);
+    const assignedIdols = globalThis.HatsuIdolRoster?.getAssignedIdols?.(state) || [];
+    const additionalScout = assignedIdols.length > 0 && !assignedIdols.includes(canonical);
+    if (!additionalScout) applyIdolPreset(canonical, true);
     globalThis.HatsuTasks?.activateScoutQuestForIdol?.(state, canonical);
-    state.sandbox = { ...(state.sandbox || {}), inviteComplete: false, scoutTargetIdol: canonical };
-    state.activeStoryNode = { type: "sandboxInvite", ready: true, idol: canonical };
+    state.sandbox = {
+      ...(state.sandbox || {}),
+      inviteComplete: additionalScout ? Boolean(state.sandbox?.inviteComplete) : false,
+      scoutTargetIdol: canonical
+    };
+    state.activeStoryNode = { type: "sandboxInvite", ready: true, idol: canonical, additionalScout };
     const spawnLocationId = getSandboxScoutLocation(canonical);
     const spawnLocationName = spawnLocationId ? getWorldMapLocation(spawnLocationId)?.name : "指定地点";
     state.lastEventTitle = "沙盒模式 · 出发邀请";
@@ -20492,7 +20671,14 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       return;
     }
     if (state.activeStoryNode?.type === "sandboxInvite") {
+      const additionalScout = Boolean(state.activeStoryNode.additionalScout);
       state.activeStoryNode = null;
+      if (additionalScout) {
+        saveState();
+        render();
+        setElementHidden("eventOverlay", true);
+        return;
+      }
       state.sandbox = { ...(state.sandbox || {}), inviteComplete: true };
       const scoutQuestCompleted = globalThis.HatsuTasks?.onScoutInviteComplete(state) || [];
       if (scoutQuestCompleted.length) saveState();
@@ -23010,6 +23196,12 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
   });
   document.getElementById("freeModePhoneBtn")?.addEventListener("click", openPhoneOverlay);
   document.getElementById("freeModeAffinityBtn")?.addEventListener("click", openAffinityOverlay);
+  document.getElementById("affinityPrevIdolBtn")?.addEventListener("click", () => cycleViewedAffinityIdol(-1));
+  document.getElementById("affinityNextIdolBtn")?.addEventListener("click", () => cycleViewedAffinityIdol(1));
+  document.getElementById("affinitySetResponsibleBtn")?.addEventListener("click", () => {
+    const idolName = getViewedAffinityIdolName();
+    if (idolName && switchResponsibleIdolFromUi(idolName)) renderAffinityOverlay();
+  });
   document.getElementById("affinityTabCurrent")?.addEventListener("click", () => setAffinityTab("current"));
   document.getElementById("affinityTabSecondary")?.addEventListener("click", () => setAffinityTab("secondary"));
   document.getElementById("affinityTabNetwork")?.addEventListener("click", () => setAffinityTab("network"));

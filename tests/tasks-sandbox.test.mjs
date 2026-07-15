@@ -384,6 +384,31 @@ test("side quest target can be set and clears after settlement", () => {
   assert.equal(state.tasks.side.activeSlotIndex, null);
 });
 
+test("accepted commissions freeze owner and reject another responsible idol", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseSandboxState();
+  state.freeMode = { postLiveDay: 1, clockMinutes: 480 };
+  state.sandbox = { responsibleIdol: "月村手毬" };
+  finishScoutFlow(HatsuTasks, state);
+  HatsuTasks.syncSideQuestDay(state);
+
+  const accepted = HatsuTasks.setActiveSideQuest(state, 0);
+  assert.equal(accepted.ok, true);
+  assert.equal(accepted.slot.ownerIdol, "月村手毬");
+  state.idol = "藤田琴音";
+  state.sandbox.responsibleIdol = "藤田琴音";
+  const walletBefore = { ...state.tasks.wallet };
+
+  assert.equal(HatsuTasks.getActiveSideQuestAtLocation(state, accepted.slot.locationId), null);
+  const blocked = HatsuTasks.applySideQuestTier(state, 0, "pass");
+  assert.equal(blocked.ok, false);
+  assert.equal(blocked.reason, "owner_mismatch");
+  assert.equal(state.tasks.wallet.money, walletBefore.money);
+  assert.equal(state.tasks.wallet.fame, walletBefore.fame);
+  assert.equal(state.tasks.side.slots[0].status, "open");
+  assert.equal(state.tasks.side.slots[0].ownerIdol, "月村手毬");
+});
+
 test("side quests refresh when postLiveDay changes", () => {
   const HatsuTasks = loadHatsuTasks();
   const state = baseSandboxState();
@@ -798,4 +823,16 @@ test("second idol unlock appears after full mainline completion", () => {
   assert.equal(begin.ok, true);
   assert.equal(state.tasks.main.scout_temari.status, "active");
   assert.equal(state.sandbox.scoutTargetIdol, "月村手毬");
+});
+
+test("confirmed idol task state activates only that idol pack", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const taskState = HatsuTasks.createConfirmedIdolTaskState("葛城莉莉娅");
+
+  assert.equal(taskState.main.scout_lilja.status, "completed");
+  assert.equal(taskState.main.lilja_main_01.status, "active");
+  assert.equal(taskState.main.lilja_main_02.status, "active");
+  assert.equal(taskState.main.temari_main_01.status, "locked");
+  assert.equal(taskState.main.relationship_20.status, "active");
+  assert.equal(taskState.main.first_live_success.status, "active");
 });

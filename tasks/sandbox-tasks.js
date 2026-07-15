@@ -298,6 +298,23 @@
     return SANDBOX_SELECTABLE_IDOLS.filter((idol) => !produced.has(idol));
   }
 
+  function createConfirmedIdolTaskState(idolName) {
+    const pack = SANDBOX_IDOL_QUEST_PACKS[String(idolName || "").trim()];
+    const main = defaultTasksState().main;
+    Object.keys(MAIN_QUEST_META).forEach((id) => {
+      if (!main[id]) main[id] = defaultMainQuest(id, "locked");
+      main[id].status = "locked";
+    });
+    if (!pack) return { main, baseline: null };
+    main[pack.scoutId].status = "completed";
+    Object.keys(MAIN_QUEST_META).forEach((id) => {
+      if (isScoutQuestId(id)) return;
+      if (isIdolPersonalQuestId(id) && !pack.personalIds.includes(id)) return;
+      main[id].status = "active";
+    });
+    return { main, baseline: null };
+  }
+
   function syncScoutQuestSelection(state) {
     if (!isSandboxTasksActive(state)) return;
     ensureTasksShape(state);
@@ -315,7 +332,7 @@
     const status = quest?.status || "locked";
     if (isScoutQuestId(id)) {
       const idol = getIdolByScoutQuestId(id);
-      if (status === "completed") return true;
+      if (status === "completed") return state.idol === idol;
       return state.sandbox?.scoutTargetIdol === idol && status === "active";
     }
     if (isIdolPersonalQuestId(id)) {
@@ -1286,10 +1303,12 @@ ${hiroLine}
     return [];
   }
 
-  function onScoutQuestCompleted(state) {
+  function onScoutQuestCompleted(state, idolName = state.idol) {
     if (!isSandboxTasksActive(state)) return;
-    if (!state.tasks.baseline) captureBaseline(state);
-    activatePersonalQuests(state);
+    if (String(idolName || "") === String(state.idol || "")) {
+      if (!state.tasks.baseline) captureBaseline(state);
+      activatePersonalQuests(state);
+    }
     syncSandboxMacroPhase(state);
   }
 
@@ -1331,7 +1350,7 @@ ${hiroLine}
       if (completeMainQuest(state, id)) {
         completed.push(id);
         const scoutId = getScoutQuestId(state);
-        if (scoutId && id === scoutId) onScoutQuestCompleted(state);
+        if (scoutId && id === scoutId) onScoutQuestCompleted(state, getIdolByScoutQuestId(id));
       }
     });
     return completed;
@@ -1696,6 +1715,11 @@ ${hiroLine}
     if (!slot) return { ok: false, reason: "missing_slot" };
     if (slot.status === "done" || slot.loading) return { ok: false, reason: "slot_unavailable" };
     normalizeSideQuestLocations(state);
+    const responsibleIdol = String(state.sandbox?.responsibleIdol || state.idol || "").trim();
+    if (slot.ownerIdol && slot.ownerIdol !== responsibleIdol) {
+      return { ok: false, reason: "owner_mismatch", ownerIdol: slot.ownerIdol };
+    }
+    if (!slot.ownerIdol) slot.ownerIdol = responsibleIdol;
     state.tasks.side.activeSlotIndex = index;
     return { ok: true, slotIndex: index, slot: { ...state.tasks.side.slots[index] } };
   }
@@ -1717,6 +1741,8 @@ ${hiroLine}
   function getActiveSideQuestAtLocation(state, locationId) {
     const active = getActiveSideQuest(state);
     if (!active) return null;
+    const responsibleIdol = String(state.sandbox?.responsibleIdol || state.idol || "").trim();
+    if (active.ownerIdol && active.ownerIdol !== responsibleIdol) return null;
     return active.locationId === String(locationId || "") ? active : null;
   }
 
@@ -1742,6 +1768,10 @@ ${hiroLine}
     const slot = state.tasks.side.slots[index];
     if (!slot) return { ok: false, reason: "missing_slot" };
     if (slot.status === "done") return { ok: false, reason: "slot_done" };
+    const responsibleIdol = String(state.sandbox?.responsibleIdol || state.idol || "").trim();
+    if (slot.ownerIdol && slot.ownerIdol !== responsibleIdol) {
+      return { ok: false, reason: "owner_mismatch", ownerIdol: slot.ownerIdol };
+    }
     const reward = { ...pool.SIDE_TIER_REWARDS[tier] };
     applySideQuestReward(state, reward);
     slot.status = "done";
@@ -1950,6 +1980,7 @@ ${hiroLine}
     activateScoutQuest,
     activateScoutQuestForIdol,
     beginSecondIdolScout,
+    createConfirmedIdolTaskState,
     getSecondIdolCandidates,
     isIdolMainlineComplete,
     shouldShowMainQuestInPanel,
