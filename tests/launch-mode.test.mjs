@@ -20,6 +20,7 @@ assert.match(appJs, /const SANDBOX_SELECTABLE_IDOLS = \["\u6708\u6751\u624b\u6be
 assert.match(appJs, /isSandboxScoutActive/);
 assert.match(appJs, /getSandboxScoutTargetAtLocation/);
 assert.match(appJs, /macro_phase = "scout"/);
+assert.match(appJs, /syncSandboxMacroPhase/);
 assert.match(appJs, /SANDBOX_INVITE_STORY/);
 assert.match(appJs, /function startSandboxInviteStory\(/);
 assert.match(appJs, /inviteComplete/);

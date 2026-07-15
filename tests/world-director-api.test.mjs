@@ -67,6 +67,38 @@ function validOutput(overrides = {}) {
   };
 }
 
+function styledJob(overrides = {}) {
+  return job({
+    styleMode: "styled",
+    styleMix: { heroic: 60, romance: 40, kaibunsho: 0 },
+    styleMixRevision: 3,
+    ...overrides
+  });
+}
+
+function styledOutput(overrides = {}) {
+  const output = validOutput();
+  return {
+    ...output,
+    dailyDirection: {
+      ...output.dailyDirection,
+      styleMixRevision: 3,
+      styleThreads: {
+        heroic: {
+          status: "active", weight: 60, focusPressureIds: [],
+          dramaticQuestion: "她能否找到新的训练方法？", narrativeGoals: ["检验当前方法的极限"], dormantReason: ""
+        },
+        romance: {
+          status: "dormant", weight: 40, focusPressureIds: [],
+          dramaticQuestion: "", narrativeGoals: [], dormantReason: "当前没有合法关系素材"
+        },
+        kaibunsho: null
+      }
+    },
+    ...overrides
+  };
+}
+
 function helpers() {
   return {
     knownActorIds: ["idol:a", "idol:b", "producer"],
@@ -93,6 +125,56 @@ test("director input is bounded and excludes private application state", () => {
   for (const secret of ["SECRET PROMPT", "FULL STORY", "SECRET KEY", "SECRET QUEST", "harness", "apiKey"]) {
     assert.equal(serialized.includes(secret), false);
   }
+});
+
+test("Director prompt exposes the complete output contract", () => {
+  const api = loadModules().directorApi;
+  const input = normalize(api.buildDirectorInput(baseState(), job(), helpers()));
+  const prompt = api.buildDirectorPrompt(input);
+
+  for (const field of [
+    "dayKey", "tone", "summary", "focusActorIds", "focusPressureIds", "narrativeGoals", "avoid",
+    "action", "pressureId", "type", "theme", "actorId", "targetIds", "scopeKey", "sourceRefs",
+    "sourceSummary", "stage", "intensity", "direction", "visibility", "dramaticNeed",
+    "escalationConditions", "reliefConditions"
+  ]) {
+    assert.match(prompt, new RegExp(`\\b${field}\\b`), `missing output field ${field}`);
+  }
+
+  for (const enumValue of [
+    "upsert", "transition", "relieve", "suspend", "transform", "dissipate",
+    "relationship", "goal", "identity", "social", "schedule",
+    "neglect", "trust", "competition", "overwork", "public_rumor", "schedule_conflict",
+    "unresolved_promise", "goal_block", "other",
+    "latent", "emerging", "active", "expressed", "resolved",
+    "negative", "slightly_negative", "mixed", "slightly_positive", "positive",
+    "private", "implicit", "visible", "public"
+  ]) {
+    assert.match(prompt, new RegExp(`\\b${enumValue}\\b`), `missing enum value ${enumValue}`);
+  }
+
+  assert.match(prompt, /knownCharacters/);
+  assert.match(prompt, /chronicleDigests/);
+  assert.match(prompt, /activePressures/);
+  assert.match(prompt, /structured/);
+  assert.match(prompt, /summary_only/);
+  assert.match(prompt, /8/);
+  assert.equal(prompt.includes("SECRET PROMPT"), false);
+  assert.equal(prompt.includes("SECRET KEY"), false);
+});
+
+test("styled Director input and prompt freeze the player mix and separate threads", () => {
+  const api = loadModules().directorApi;
+  const input = normalize(api.buildDirectorInput(baseState(), styledJob(), helpers()));
+  assert.equal(input.styleMode, "styled");
+  assert.equal(input.styleMixRevision, 3);
+  assert.deepEqual(input.styleMix, { heroic: 60, romance: 40, kaibunsho: 0 });
+  const prompt = api.buildDirectorPrompt(input);
+  for (const field of ["styleMixRevision", "styleThreads", "heroic", "romance", "dramaticQuestion", "dormantReason"]) {
+    assert.match(prompt, new RegExp(field));
+  }
+  assert.match(prompt, /60/);
+  assert.match(prompt, /40/);
 });
 
 test("director parser accepts only the marked JSON output", () => {
@@ -125,6 +207,45 @@ test("director validation rejects stale revisions unknown references and arbitra
   for (const output of cases) assert.equal(api.prepareDirectorPatch(output, state, job(), helpers()).ok, false);
 });
 
+test("styled Director validation is atomic and rejects thread contract drift", () => {
+  const api = loadModules().directorApi;
+  const state = baseState();
+  assert.equal(api.prepareDirectorPatch(styledOutput(), state, styledJob(), helpers()).ok, true);
+  const cases = [
+    styledOutput({ dailyDirection: { ...styledOutput().dailyDirection, styleMixRevision: 2 } }),
+    styledOutput({ dailyDirection: {
+      ...styledOutput().dailyDirection,
+      styleThreads: { ...styledOutput().dailyDirection.styleThreads, heroic: { ...styledOutput().dailyDirection.styleThreads.heroic, weight: 55 } }
+    } }),
+    styledOutput({ dailyDirection: {
+      ...styledOutput().dailyDirection,
+      styleThreads: { ...styledOutput().dailyDirection.styleThreads, heroic: { ...styledOutput().dailyDirection.styleThreads.heroic, focusPressureIds: ["unknown-pressure"] } }
+    } }),
+    styledOutput({ dailyDirection: {
+      ...styledOutput().dailyDirection,
+      styleThreads: { ...styledOutput().dailyDirection.styleThreads, romance: null }
+    } }),
+    styledOutput({ dailyDirection: {
+      ...styledOutput().dailyDirection,
+      styleThreads: { ...styledOutput().dailyDirection.styleThreads, heroic: { ...styledOutput().dailyDirection.styleThreads.heroic, dramaticQuestion: "" } }
+    } }),
+    styledOutput({ dailyDirection: {
+      ...styledOutput().dailyDirection,
+      styleThreads: { ...styledOutput().dailyDirection.styleThreads, romance: { ...styledOutput().dailyDirection.styleThreads.romance, narrativeGoals: ["不应存在"] } }
+    } }),
+    styledOutput({ dailyDirection: {
+      ...styledOutput().dailyDirection,
+      styleThreads: { ...styledOutput().dailyDirection.styleThreads, kaibunsho: { status: "dormant" } }
+    } })
+  ];
+  for (const output of cases) {
+    const before = JSON.stringify(state);
+    assert.equal(api.prepareDirectorPatch(output, state, styledJob(), helpers()).ok, false);
+    assert.equal(JSON.stringify(state), before);
+  }
+  assert.equal(api.prepareDirectorPatch(validOutput(), state, styledJob(), helpers()).ok, false);
+});
+
 test("one summary-only digest cannot create a pressure but structured or two summaries can", () => {
   const api = loadModules().directorApi;
   const state = baseState();
@@ -140,7 +261,7 @@ test("one summary-only digest cannot create a pressure but structured or two sum
   assert.equal(api.prepareDirectorPatch(twoSummaries, state, job({ baseChronicleRevision: 3 }), helpers()).ok, true);
 });
 
-test("existing pressure updates require new evidence and bounded intensity changes", () => {
+test("existing pressure updates treat reused evidence as no-op and bound real changes", () => {
   const modules = loadModules();
   const api = modules.directorApi;
   const state = baseState();
@@ -150,7 +271,11 @@ test("existing pressure updates require new evidence and bounded intensity chang
     id: "pressure-1", signature, ...proposal, sourceRefs: ["d1"], stage: "latent", intensity: 35,
     status: "active", locked: false, updatedAtRevision: 0
   }];
-  assert.equal(api.prepareDirectorPatch(validOutput(), state, job(), helpers()).ok, false);
+  const noNewEvidence = api.prepareDirectorPatch(validOutput(), state, job(), helpers());
+  assert.equal(noNewEvidence.ok, true);
+  assert.equal(noNewEvidence.patch.pressures[0].intensity, 35);
+  assert.deepEqual(normalize(noNewEvidence.patch.pressures[0].sourceRefs), ["d1"]);
+  assert.equal(noNewEvidence.patch.dailyDirection.dayKey, "day-2");
   const tooLarge = validOutput({ pressureOperations: [{ ...proposal, pressureId: "pressure-1", sourceRefs: ["d2"], intensity: 70 }] });
   assert.equal(api.prepareDirectorPatch(tooLarge, state, job(), helpers()).ok, false);
   const valid = validOutput({ pressureOperations: [{ ...proposal, pressureId: "pressure-1", sourceRefs: ["d2"], intensity: 50, stage: "emerging" }] });

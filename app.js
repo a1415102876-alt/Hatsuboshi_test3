@@ -9,6 +9,7 @@
   const trainingEventChance = 55;
   const PRIMARY_MODEL_CHANNEL_TIMEOUT_MS = 5 * 60 * 1000;
   const SECONDARY_MODEL_CHANNEL_TIMEOUT_MS = 5 * 60 * 1000;
+  const DIRECTOR_MODEL_CHANNEL_TIMEOUT_MS = 210 * 1000;
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -690,6 +691,7 @@
   const WORLD_MAP_LOCATIONS = [
     { id: "school_entrance", name: "学园正门", shortLabel: "正门", description: "初星学园的入口。新生、访客与偶像们每天经过这里。", x: 52.8, y: 96.8, image: "./assets/MAP/School_Entrance.png" },
     { id: "club_room", name: "部室栋", shortLabel: "部室", description: "各社团与活动部室所在的楼栋；学生会办公室也在这里，公务与会议常在此进行。", x: 17.8, y: 39.6, image: "" },
+    { id: "campus_stage", name: "校内舞台", shortLabel: "舞台", description: "位于讲堂上方的校内演出场地，可在晚间举办 First Live。", x: 50.8, y: 22, image: "./assets/MAP/OutStage.png" },
     { id: "auditorium", name: "讲堂", shortLabel: "讲堂", description: "拥有圆顶的大型讲堂，学园重要集会与发表会在此举行。", x: 50.8, y: 33, image: "./assets/MAP/MeetingRoom.png" },
     { id: "outstage", name: "野外舞台", shortLabel: "野外", description: "学园右上角的公开舞台，适合排练、试演与小型演出。", x: 80.3, y: 13.7, image: "./assets/MAP/OutStage.png" },
     { id: "playground", name: "运动场", shortLabel: "操场", description: "带跑道与足球场的运动区，体能训练与户外练习的主要场地。", x: 26.3, y: 52.3, image: "./assets/MAP/PlayGround.png" },
@@ -699,6 +701,7 @@
     { id: "special_education", name: "特别教育栋", shortLabel: "特教", description: "集各种教育资源于一体，支撑学生从日常训练走向舞台表现的专业教学空间。", x: 90, y: 55, image: "./assets/MAP/SpecialEducation_Detailed.png" },
     { id: "producer_classroom", name: "制作人科教室", shortLabel: "P科", description: "培育担当偶像的专属教室，也是日常育成的主舞台。", x: 84.5, y: 93.9, image: "./assets/MAP/Producer_Classroom_Detailed.png" },
     { id: "courtyard", name: "中庭", shortLabel: "中庭", description: "氛围宁静祥和，是放松身心的好地方。", x: 81.8, y: 86.6, image: "./assets/scenes/courtyard.png" },
+    { id: "student_dormitory", name: "学生宿舍", shortLabel: "宿舍", description: "偶像科学生居住的宿舍，可在这里休息两小时恢复体力。", x: 87.2, y: 76, image: "" },
     { id: "dining_hall", name: "食堂", shortLabel: "食堂", description: "学园内的用餐区，午餐、点心与偶像们的日常闲聊常在这里发生。", x: 87.2, y: 86.4, image: "./assets/MAP/Dining.png" },
     { id: "student_store", name: "小卖部", shortLabel: "小卖", description: "贩卖零食、文具与小物件的校内商店，适合短暂停留与偶遇。", x: 92.8, y: 85.6, image: "./assets/MAP/Student Store.png" }
   ];
@@ -714,6 +717,9 @@
   const HYBRID_FACILITY_LESSON_LOCATIONS = ["idol_classroom", "producer_classroom"];
   const HYBRID_FACILITY_TRAINING_LOCATIONS = ["gymnasium", "special_education"];
   const HYBRID_FACILITY_ACTION_MINUTES = 60;
+  const STUDENT_DORMITORY_REST_MINUTES = 120;
+  const FIRST_LIVE_MINUTES = 19 * 60;
+  const FIRST_LIVE_ACTION_MINUTES = 180;
   const SANDBOX_SELECTABLE_IDOLS = ["月村手毬", "藤田琴音", "花海咲季", "秦谷美铃", "筱泽广", "葛城莉莉娅"];
   const SANDBOX_ASARI_OPENING_STORY = `【初星正文开始】
 <story>
@@ -781,6 +787,14 @@
       name: "初星圈",
       subtitle: "学园动态",
       theme: "linear-gradient(135deg, #ff6b8a, #f9c584)",
+      iconText: "星",
+      installed: true
+    },
+    {
+      id: "world-engine",
+      name: "初星世界引擎",
+      subtitle: "世界档案",
+      theme: "linear-gradient(135deg, #167c80, #22324a)",
       iconText: "星",
       installed: true
     }
@@ -2307,7 +2321,8 @@
       inviteComplete: false,
       scoutTargetIdol: null,
       producedIdols: [],
-      secondIdolUnlocked: false
+      secondIdolUnlocked: false,
+      firstLiveChallenge: defaultSandboxFirstLiveChallenge()
     },
     idol: null,
     day: 1,
@@ -2349,6 +2364,21 @@
         school_events: [],
         broadcast: { today: null, history: [], pendingRequestId: "", autoFullScript: false },
         buzz: { items: [], buzzDayKey: "", hotTopic: "" },
+        storyteller: {
+          schemaVersion: 2,
+          styleConfig: globalThis.HatsuWorldStorytellerStyles?.defaultStyleConfig?.("live+1") || null,
+          styleStreak: globalThis.HatsuWorldStorytellerStyles?.defaultStyleStreak?.() || null,
+          observations: [],
+          recentFingerprints: [],
+          lastObservedDayKey: "",
+          plan: null,
+          pendingCandidate: null,
+          recentCandidates: [],
+          receipts: [],
+          lastPlanError: "",
+          lastCandidateReason: "",
+          lastSelectionDiagnostic: null
+        },
         director: globalThis.HatsuWorld?.directorState?.defaultDirectorState?.() || null
       }
     },
@@ -2751,18 +2781,19 @@
     lastMessage: "尚未发起次 API 请求"
   };
 
-  function pushSecondaryDebug(entry = {}) {
+  function pushSecondaryDebug(entry) {
+    entry = entry && typeof entry === "object" ? entry : {};
+    const requestId = String(entry.requestId || "");
     const record = {
       at: Date.now(),
       phase: entry.phase || "",
       kind: entry.kind || "",
-      requestId: entry.requestId || "",
+      requestSuffix: requestId.slice(-6),
       transport: entry.transport || "",
       promptLength: entry.promptLength,
       ok: entry.ok,
       error: entry.error || "",
       textLength: entry.textLength,
-      preview: entry.preview || "",
       parseOk: entry.parseOk
     };
     secondaryApiDebug.events.unshift(record);
@@ -3607,6 +3638,7 @@
       ? state.sandbox.producedIdols.map((name) => canonicalIdolName(name)).filter(Boolean)
       : [];
     state.sandbox.secondIdolUnlocked = Boolean(state.sandbox.secondIdolUnlocked);
+    state.sandbox.firstLiveChallenge = normalizeSandboxFirstLiveChallenge(state.sandbox.firstLiveChallenge);
     if (state.idol && !state.launchMode) {
       state.launchMode = state.gameMode === "hybrid" ? "sandbox" : "produce";
     }
@@ -3651,7 +3683,7 @@
     if (state.freeMode.eveningJournal && typeof state.freeMode.eveningJournal !== "object") {
       state.freeMode.eveningJournal = null;
     }
-    if (!["lesson", "training"].includes(state.freeMode.facilityKind)) {
+    if (!["lesson", "training", "rest", "first_live"].includes(state.freeMode.facilityKind)) {
       state.freeMode.facilityKind = null;
       state.freeMode.facilityLocationId = null;
     }
@@ -3714,6 +3746,54 @@
     if (!Array.isArray(state.freeMode.world.buzz.items)) {
       state.freeMode.world.buzz.items = [];
     }
+    const storyteller = state.freeMode.world.storyteller && typeof state.freeMode.world.storyteller === "object"
+      ? state.freeMode.world.storyteller
+      : {};
+    const styleApi = globalThis.HatsuWorldStorytellerStyles;
+    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
+    const observationApi = globalThis.HatsuWorldStorytellerObservations;
+    const currentStyleDayKey = getWorldFeedDayKey(state);
+    const nextStyleDayKey = styleApi?.getNextDayKey?.(currentStyleDayKey) || "";
+    state.freeMode.world.storyteller = {
+      schemaVersion: 2,
+      styleConfig: styleApi?.normalizeStyleConfig
+        ? styleApi.normalizeStyleConfig(storyteller.styleConfig, {
+          currentDayKey: currentStyleDayKey,
+          nextDayKey: nextStyleDayKey,
+          existingSave: !storyteller.styleConfig
+        })
+        : null,
+      styleStreak: styleApi?.normalizeStyleStreak
+        ? styleApi.normalizeStyleStreak(storyteller.styleStreak)
+        : null,
+      observations: Array.isArray(storyteller.observations) && observationApi?.normalizeStorytellerObservation
+        ? storyteller.observations
+          .map((observation) => observationApi.normalizeStorytellerObservation(observation))
+          .slice(-24)
+        : [],
+      recentFingerprints: Array.isArray(storyteller.recentFingerprints) ? storyteller.recentFingerprints.slice(-24) : [],
+      lastObservedDayKey: String(storyteller.lastObservedDayKey || "").slice(0, 120),
+      plan: storyteller.plan && globalThis.HatsuWorldStorytellerPlan?.normalizeStorytellerPlan
+        ? globalThis.HatsuWorldStorytellerPlan.normalizeStorytellerPlan(storyteller.plan)
+        : null,
+      pendingCandidate: storyteller.pendingCandidate && incidentApi?.normalizeIncidentCandidate
+        ? incidentApi.normalizeIncidentCandidate(storyteller.pendingCandidate)
+        : null,
+      recentCandidates: Array.isArray(storyteller.recentCandidates) && incidentApi?.normalizeIncidentCandidate
+        ? storyteller.recentCandidates
+          .map((candidate) => incidentApi.normalizeIncidentCandidate(candidate))
+          .filter(Boolean)
+          .slice(-24)
+        : [],
+      receipts: Array.isArray(storyteller.receipts)
+        ? storyteller.receipts.filter((receipt) => receipt && typeof receipt === "object").slice(-40)
+        : [],
+      lastPlanError: String(storyteller.lastPlanError || "").slice(0, 120),
+      lastCandidateReason: String(storyteller.lastCandidateReason || "").slice(0, 120),
+      lastSelectionDiagnostic: incidentApi?.normalizeSelectionDiagnostic
+        ? incidentApi.normalizeSelectionDiagnostic(storyteller.lastSelectionDiagnostic)
+        : null
+    };
     if (!state.freeMode.world.dailyGen || typeof state.freeMode.world.dailyGen !== "object") {
       state.freeMode.world.dailyGen = { dayKey: "", status: "idle", source: "", pendingRequestId: "" };
     } else {
@@ -3796,6 +3876,615 @@
       appendEveningJournalTask("课题完成", label);
       showToast("任务", label, "gold");
     });
+  }
+
+  function recordStorytellerObservation(observation = {}, saveScope = "") {
+    const api = globalThis.HatsuWorldStorytellerObservations;
+    if (!api?.recordStorytellerObservation) {
+      return { recorded: false, reason: "storyteller_module_unavailable" };
+    }
+    const activeSaveScope = String(activeHostSaveScope || activeStorageKey || "");
+    return api.recordStorytellerObservation(state, observation, saveScope, { activeSaveScope });
+  }
+
+  function recordAcceptedFinalStorytellerObservation(requestId, candidateSettlement) {
+    candidateSettlement = candidateSettlement && typeof candidateSettlement === "object" ? candidateSettlement : {};
+    const turn = state.harness?.activeTurn;
+    const supportedTurn = Boolean(
+      turn
+      && turn.status === "completed"
+      && turn.requestId === requestId
+      && (
+        turn.kind === "produce_action"
+        || (turn.kind === "map_explore" && turn.action === "map_location")
+        || (turn.kind === "storyteller_event" && candidateSettlement?.resolved)
+      )
+      && isHarnessTurnInActiveScope(turn, getHarnessRecoveryContext())
+    );
+    if (!supportedTurn) return { recorded: false, reason: "turn_not_eligible" };
+    const saveScope = String(activeHostSaveScope || activeStorageKey || "");
+    const candidate = candidateSettlement?.resolved ? candidateSettlement.candidate : null;
+    const participantIds = candidate
+      ? [...(candidate.actorIds || []), ...(candidate.targetIds || [])]
+      : ["producer", ...(state.idol ? [`idol:${state.idol}`] : [])];
+    const locationId = String(candidate?.locationId || turn.locationId || state.freeMode?.activeLocationId || "").slice(0, 120);
+    const result = recordStorytellerObservation({
+      sourceKind: candidate ? "resolved_candidate" : "ambient_turn",
+      requestId,
+      turnId: turn.turnId || "",
+      dayKey: getWorldFeedDayKey(),
+      timeMinutes: Number(state.freeMode?.clockMinutes),
+      category: candidate?.category || "",
+      severity: candidate?.severity || "",
+      archetypeId: candidate?.archetypeId || "",
+      actionId: String(turn.action || "narrative_reply").slice(0, 100),
+      locationId,
+      participantIds,
+      fingerprint: candidate?.fingerprint || "",
+      pressureCount: Array.isArray(candidate?.pressureIds) ? candidate.pressureIds.length : 0,
+      styleId: candidate?.styleId || "",
+      operatorIds: Array.isArray(candidate?.operatorIds) ? candidate.operatorIds : []
+    }, saveScope);
+    if (result?.recorded && candidate?.styleId) {
+      const styles = globalThis.HatsuWorldStorytellerStyles;
+      const storyteller = state.freeMode?.world?.storyteller;
+      if (storyteller && styles?.recordCommittedStyle) {
+        storyteller.styleStreak = styles.recordCommittedStyle(storyteller.styleStreak, candidate.styleId);
+      }
+    }
+    return result;
+  }
+
+  function ensureStorytellerPlanForCheckpoint(trigger, options = {}) {
+    options = options && typeof options === "object" ? options : {};
+    if (!new Set(["day_change", "manual"]).has(trigger)) {
+      return { committed: false, reason: "invalid_trigger", plan: null };
+    }
+    const planApi = globalThis.HatsuWorldStorytellerPlan;
+    const observationApi = globalThis.HatsuWorldStorytellerObservations;
+    const storyteller = state.freeMode?.world?.storyteller;
+    if (!planApi || !observationApi || !storyteller) {
+      return { committed: false, reason: "storyteller_module_unavailable", plan: null };
+    }
+    const saveScope = getSecondaryChannelSaveScope();
+    const dayKey = getWorldFeedDayKey();
+    if (!saveScope || !dayKey) return { committed: false, reason: "scope_or_day_missing", plan: null };
+    if (trigger === "manual" && !options.confirmed) {
+      return { committed: false, reason: "manual_confirmation_required", plan: storyteller.plan || null };
+    }
+    if (trigger === "manual" && (getPrimaryModelChannelOwner() || getSecondaryModelChannelOwner())) {
+      return { committed: false, reason: "model_channel_busy", plan: storyteller.plan || null };
+    }
+    if (trigger === "day_change" && planApi.isCurrentStorytellerPlan(storyteller.plan, dayKey, saveScope)) {
+      return { committed: false, reason: "current_plan_exists", plan: storyteller.plan };
+    }
+
+    try {
+      const stats = observationApi.buildRecentStorytellerStats(state, { limit: 12 });
+      const generatedByJobId = String(options.generatedByJobId || "").slice(0, 160);
+      const seed = trigger === "manual" && generatedByJobId
+        ? `${dayKey}|${saveScope}|${generatedByJobId}`
+        : `${dayKey}|${saveScope}`;
+      const plan = planApi.buildStorytellerPlan({
+        dayKey,
+        saveScope,
+        seed,
+        generatedByJobId,
+        stats,
+        recentFingerprints: storyteller.recentFingerprints,
+        styleMix: storyteller.styleConfig?.activeMix,
+        styleMixRevision: storyteller.styleConfig?.styleMixRevision
+      });
+      if (!planApi.isCurrentStorytellerPlan(plan, dayKey, saveScope)) {
+        throw new Error("plan_not_current");
+      }
+      storyteller.plan = plan;
+      storyteller.lastPlanError = "";
+      saveState("storyteller.plan_committed");
+      return { committed: true, reason: "committed", plan };
+    } catch (error) {
+      storyteller.lastPlanError = String(error?.message || "plan_build_failed").slice(0, 120);
+      saveState("storyteller.plan_failed");
+      return { committed: false, reason: storyteller.lastPlanError, plan: storyteller.plan || null };
+    }
+  }
+
+  function activateStorytellerStyleMixForDay(dayKey) {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const api = globalThis.HatsuWorldStorytellerStyles;
+    if (!storyteller || !api?.activatePendingMix) return { activated: false };
+    const result = api.activatePendingMix(storyteller.styleConfig, dayKey);
+    storyteller.styleConfig = result.config;
+    return result;
+  }
+
+  function buildStorytellerIncidentContext(action, attribute, options = {}) {
+    options = options && typeof options === "object" ? options : {};
+    const storyteller = state.freeMode?.world?.storyteller;
+    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
+    const saveScope = String(options.saveScope || getSecondaryChannelSaveScope() || "").slice(0, 240);
+    const dayKey = String(options.dayKey || getWorldFeedDayKey() || "").slice(0, 120);
+    const sourceTurnId = String(options.turnId || state.harness?.activeTurn?.turnId || "").slice(0, 160);
+    const fallbackLocation = action === "lesson"
+      ? "producer_classroom"
+      : action === "training"
+        ? "special_education"
+        : "courtyard";
+    const locationId = String(
+      options.locationId
+      || state.freeMode?.facilityLocationId
+      || state.freeMode?.activeLocationId
+      || fallbackLocation
+    ).slice(0, 120);
+    const assignedName = canonicalIdolName(state.idol || "");
+    let presentNames = Array.isArray(options.presentActorIds) ? options.presentActorIds : [];
+    if (!presentNames.length && typeof getIdolsPresentAtLocation === "function") {
+      presentNames = getIdolsPresentAtLocation(locationId).map((name) => `idol:${canonicalIdolName(name)}`);
+    }
+    const presentActorIds = [...new Set(presentNames.map((value) => {
+      const text = String(value || "").trim();
+      if (!text) return "";
+      return text.startsWith("idol:") ? `idol:${canonicalIdolName(text.slice(5))}` : `idol:${canonicalIdolName(text)}`;
+    }).filter(Boolean))].sort().slice(0, 8);
+    const director = state.freeMode?.world?.director || {};
+    const pressureSource = Array.isArray(director.pressures)
+      ? director.pressures
+      : Array.isArray(director.dramaPressures)
+        ? director.dramaPressures
+        : [];
+    const pressureFacts = incidentApi?.normalizeStorytellerPressureFacts
+      ? incidentApi.normalizeStorytellerPressureFacts(pressureSource)
+      : [];
+    const direction = director.dailyDirection;
+    const styleThreads = direction
+      && direction.dayKey === dayKey
+      && Number(direction.styleMixRevision) === Number(storyteller?.plan?.styleMixRevision)
+      ? direction.styleThreads
+      : null;
+    return {
+      plan: storyteller?.plan || null,
+      styleThreads,
+      styleStreak: globalThis.HatsuWorldStorytellerStyles?.normalizeStyleStreak
+        ? globalThis.HatsuWorldStorytellerStyles.normalizeStyleStreak(storyteller?.styleStreak)
+        : null,
+      saveScope,
+      dayKey,
+      dayOrdinal: Math.max(0, Number(state.freeMode?.postLiveDay || state.day || 0)),
+      sourceTurnId,
+      action: String(action || "").slice(0, 60),
+      attribute: ["Vo", "Da", "Vi"].includes(attribute) ? attribute : "",
+      mapStepKind: ["arrival", "explore_choice", "custom_choice"].includes(options.mapStepKind)
+        ? options.mapStepKind
+        : "",
+      locationId,
+      assignedActorId: assignedName ? `idol:${assignedName}` : "",
+      presentActorIds,
+      pressureFacts,
+      recentFingerprints: Array.isArray(storyteller?.recentFingerprints)
+        ? storyteller.recentFingerprints.slice(-24)
+        : [],
+      recentCandidates: Array.isArray(storyteller?.recentCandidates)
+        ? storyteller.recentCandidates.slice(-24)
+        : []
+    };
+  }
+
+  function prepareStorytellerCandidateForOrdinaryTurn(action, attribute, options = {}) {
+    options = options && typeof options === "object" ? options : {};
+    const mapAction = action === "map_location"
+      && ["arrival", "explore_choice", "custom_choice"].includes(options.mapStepKind);
+    if (!isHarnessOrdinaryAction(action) && !mapAction) return { candidate: null, reason: "action_not_supported" };
+    const turnId = String(options.turnId || state.harness?.activeTurn?.turnId || "").slice(0, 160);
+    if (!turnId) return { candidate: null, reason: "turn_id_required" };
+    const storyteller = state.freeMode?.world?.storyteller;
+    const api = globalThis.HatsuWorldStorytellerIncidents;
+    if (!storyteller || !api?.selectIncidentCandidate || !api?.normalizeIncidentCandidate) {
+      return { candidate: null, reason: "storyteller_module_unavailable" };
+    }
+    const context = buildStorytellerIncidentContext(action, attribute, { ...options, turnId });
+    const plan = context.plan;
+    if (
+      !plan
+      || plan.status !== "committed"
+      || String(plan.saveScope || "") !== context.saveScope
+      || String(plan.dayKey || "") !== context.dayKey
+      || !String(plan.planId || "")
+    ) {
+      return { candidate: null, reason: "current_plan_unavailable" };
+    }
+    const existing = api.normalizeIncidentCandidate(storyteller.pendingCandidate);
+    if (
+      existing
+      && ["pending", "attached"].includes(existing.status)
+      && existing.sourceTurnId === turnId
+      && existing.saveScope === context.saveScope
+      && existing.dayKey === context.dayKey
+      && existing.planId === plan.planId
+    ) {
+      return { candidate: existing, reason: "existing_candidate" };
+    }
+    const selected = api.selectIncidentCandidate(context);
+    storyteller.lastSelectionDiagnostic = api.normalizeSelectionDiagnostic
+      ? api.normalizeSelectionDiagnostic(selected.diagnostic)
+      : selected.diagnostic || null;
+    if (!selected.candidate) {
+      storyteller.lastCandidateReason = String(selected.reason || "no_eligible_candidate").slice(0, 120);
+      return selected;
+    }
+    if (selected.nextStyleStreak) storyteller.styleStreak = selected.nextStyleStreak;
+    storyteller.pendingCandidate = api.normalizeIncidentCandidate(selected.candidate);
+    storyteller.lastCandidateReason = "selected";
+    return { ...selected, candidate: storyteller.pendingCandidate };
+  }
+
+  function scanStorytellerNotificationAtCheckpoint(trigger, options = {}) {
+    const allowedTriggers = new Set(["time_advance", "map_complete", "open_sns", "open_world_engine"]);
+    if (!allowedTriggers.has(trigger)) return { notified: false, reason: "unsupported_trigger", candidate: null };
+    const storyteller = state.freeMode?.world?.storyteller;
+    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
+    const notificationApi = globalThis.HatsuWorldStorytellerNotifications;
+    if (!storyteller || !incidentApi?.selectIncidentCandidate || !notificationApi?.transitionNotification) {
+      return { notified: false, reason: "storyteller_module_unavailable", candidate: null };
+    }
+    if (state.harness?.activeTurn?.kind === "storyteller_event" && state.harness.activeTurn.status === "recovery_required") {
+      return { notified: false, reason: "event_recovery_pending", candidate: null };
+    }
+    const scanGate = notificationApi.canScanNotification(storyteller.pendingCandidate);
+    if (!scanGate?.ok) return { notified: false, reason: scanGate?.reason || "candidate_unresolved", candidate: null };
+    const saveScope = String(getSecondaryChannelSaveScope() || activeHostSaveScope || activeStorageKey || "").slice(0, 240);
+    const dayKey = String(getWorldFeedDayKey() || "").slice(0, 120);
+    const plan = storyteller.plan;
+    if (!saveScope || !dayKey || !plan || plan.status !== "committed" || plan.saveScope !== saveScope || plan.dayKey !== dayKey) {
+      return { notified: false, reason: "current_plan_unavailable", candidate: null };
+    }
+    const worldMinute = notificationApi.buildStorytellerWorldMinute({
+      dayOrdinal: Number(state.freeMode?.postLiveDay || state.day || 0),
+      clockMinutes: Number(state.freeMode?.clockMinutes || 0)
+    });
+    const locationId = String(options.locationId || state.freeMode?.activeLocationId || state.freeMode?.facilityLocationId || "courtyard").slice(0, 120);
+    const sourceTurnId = `notify:${dayKey}:${worldMinute}:${locationId || "none"}`;
+    const context = buildStorytellerIncidentContext("notification", "", { ...options, turnId: sourceTurnId, saveScope, dayKey, locationId });
+    const selected = incidentApi.selectIncidentCandidate({
+      ...context,
+      requiredChannel: "invite",
+      allowMajorConfirmation: true
+    });
+    storyteller.lastSelectionDiagnostic = incidentApi.normalizeSelectionDiagnostic?.(selected.diagnostic) || null;
+    if (!selected.candidate) {
+      storyteller.lastCandidateReason = String(selected.reason || "no_eligible_notification").slice(0, 120);
+      return { notified: false, reason: storyteller.lastCandidateReason, candidate: null };
+    }
+    if (selected.nextStyleStreak) storyteller.styleStreak = selected.nextStyleStreak;
+    const transition = notificationApi.transitionNotification(selected.candidate, "notify", {
+      saveScope, dayKey, planId: plan.planId, sourceTurnId, worldMinute, reason: trigger
+    });
+    if (!transition.ok) return { notified: false, reason: transition.reason, candidate: null };
+    storyteller.pendingCandidate = incidentApi.normalizeIncidentCandidate(transition.candidate);
+    storyteller.lastCandidateReason = "notified";
+    storyteller.receipts = [...(Array.isArray(storyteller.receipts) ? storyteller.receipts : []), {
+      event: "notified", reason: trigger, dayKey, saveScope, createdAt: Date.now()
+    }].slice(-40);
+    saveState("storyteller.notification_notified");
+    return { notified: true, reason: "notified", candidate: storyteller.pendingCandidate };
+  }
+
+  function attachStorytellerCandidateToOrdinaryTurn(action, attribute, actionContext = {}, options = {}) {
+    options = options && typeof options === "object" ? options : {};
+    const unchanged = { candidate: null, reference: null, actionContext };
+    if (!isHarnessOrdinaryAction(action) || options.willGenerateNarrative === false) return unchanged;
+    const prepared = prepareStorytellerCandidateForOrdinaryTurn(action, attribute, options);
+    const candidate = prepared.candidate;
+    const api = globalThis.HatsuWorldStorytellerIncidents;
+    if (!candidate || candidate.status !== "pending" || candidate.channel !== "attach" || candidate.requiresConfirmation) {
+      return unchanged;
+    }
+    const ownership = {
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      planId: candidate.planId,
+      sourceTurnId: candidate.sourceTurnId
+    };
+    const transition = api?.transitionIncidentCandidate?.(candidate, "attached", ownership);
+    if (!transition?.ok) return unchanged;
+    state.freeMode.world.storyteller.pendingCandidate = transition.candidate;
+    state.freeMode.world.storyteller.lastCandidateReason = "attached";
+    const reference = {
+      incidentId: transition.candidate.incidentId,
+      planId: transition.candidate.planId,
+      saveScope: transition.candidate.saveScope,
+      dayKey: transition.candidate.dayKey,
+      sourceTurnId: transition.candidate.sourceTurnId
+    };
+    return {
+      candidate: transition.candidate,
+      reference,
+      actionContext: { ...actionContext, storytellerCandidate: transition.candidate }
+    };
+  }
+
+  function attachStorytellerCandidateToMapTurn(options = {}) {
+    options = options && typeof options === "object" ? options : {};
+    const unchanged = { candidate: null, reference: null };
+    const turn = state.harness?.activeTurn;
+    if (
+      !turn
+      || turn.kind !== "map_explore"
+      || turn.status !== "prepared"
+      || turn.turnId !== String(options.turnId || "")
+    ) return unchanged;
+    const prepared = prepareStorytellerCandidateForOrdinaryTurn("map_location", null, {
+      ...options,
+      turnId: turn.turnId,
+      mapStepKind: turn.stepKind,
+      locationId: turn.locationId
+    });
+    const candidate = prepared.candidate;
+    const api = globalThis.HatsuWorldStorytellerIncidents;
+    if (!candidate || candidate.status !== "pending" || candidate.channel !== "attach" || candidate.requiresConfirmation) {
+      return unchanged;
+    }
+    const transition = api?.transitionIncidentCandidate?.(candidate, "attached", {
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      planId: candidate.planId,
+      sourceTurnId: candidate.sourceTurnId
+    });
+    if (!transition?.ok) return unchanged;
+    state.freeMode.world.storyteller.pendingCandidate = transition.candidate;
+    state.freeMode.world.storyteller.lastCandidateReason = "attached";
+    return {
+      candidate: transition.candidate,
+      reference: {
+        incidentId: transition.candidate.incidentId,
+        planId: transition.candidate.planId,
+        saveScope: transition.candidate.saveScope,
+        dayKey: transition.candidate.dayKey,
+        sourceTurnId: transition.candidate.sourceTurnId
+      }
+    };
+  }
+
+  function settleStorytellerCandidateForReply(requestId, accepted, retry, isFinal) {
+    if (!accepted || retry || !isFinal || !requestId) {
+      return { resolved: false, reason: "reply_not_accepted_final" };
+    }
+    const turn = state.harness?.activeTurn;
+    const completedNarrativeTurn = Boolean(
+      turn
+      && turn.status === "completed"
+      && turn.requestId === requestId
+      && (
+        turn.kind === "produce_action"
+        || (turn.kind === "map_explore" && turn.action === "map_location")
+      )
+    );
+    if (!completedNarrativeTurn) {
+      return { resolved: false, reason: "turn_request_mismatch" };
+    }
+    const storyteller = state.freeMode?.world?.storyteller;
+    const api = globalThis.HatsuWorldStorytellerIncidents;
+    const candidate = api?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    const reference = turn.storytellerCandidateRef;
+    const activeScope = String(activeHostSaveScope || activeStorageKey || "");
+    if (!storyteller || !candidate || !reference || !activeScope) {
+      return { resolved: false, reason: "candidate_unavailable" };
+    }
+    const exactReference = candidate.incidentId === String(reference.incidentId || "")
+      && candidate.planId === String(reference.planId || "")
+      && candidate.saveScope === String(reference.saveScope || "")
+      && candidate.dayKey === String(reference.dayKey || "")
+      && candidate.sourceTurnId === String(reference.sourceTurnId || "")
+      && candidate.sourceTurnId === String(turn.turnId || "")
+      && candidate.saveScope === activeScope;
+    if (!exactReference) return { resolved: false, reason: "candidate_reference_mismatch" };
+    const transition = api.transitionIncidentCandidate(candidate, "resolved", {
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      planId: candidate.planId,
+      sourceTurnId: candidate.sourceTurnId
+    });
+    if (!transition.ok) return { resolved: false, reason: transition.reason };
+    storyteller.recentCandidates = [
+      ...(Array.isArray(storyteller.recentCandidates)
+        ? storyteller.recentCandidates.filter((item) => item?.incidentId !== candidate.incidentId)
+        : []),
+      transition.candidate
+    ].slice(-24);
+    storyteller.recentFingerprints = [...new Set([
+      ...(Array.isArray(storyteller.recentFingerprints) ? storyteller.recentFingerprints : []),
+      transition.candidate.fingerprint
+    ].filter(Boolean))].slice(-24);
+    storyteller.receipts = [
+      ...(Array.isArray(storyteller.receipts) ? storyteller.receipts : []),
+      {
+        incidentId: transition.candidate.incidentId,
+        planId: transition.candidate.planId,
+        event: "resolved",
+        reason: "accepted_final",
+        dayKey: transition.candidate.dayKey,
+        saveScope: transition.candidate.saveScope,
+        sourceTurnId: transition.candidate.sourceTurnId,
+        createdAt: Date.now()
+      }
+    ].slice(-40);
+    storyteller.pendingCandidate = null;
+    storyteller.lastCandidateReason = "resolved";
+    return { resolved: true, reason: "resolved", candidate: transition.candidate };
+  }
+
+  function settleStorytellerEventForReply(requestId, accepted, retry, isFinal) {
+    if (!accepted || retry || !isFinal || !requestId) {
+      return { resolved: false, reason: "reply_not_accepted_final" };
+    }
+    const turn = state.harness?.activeTurn;
+    const activeScope = String(activeHostSaveScope || activeStorageKey || "");
+    if (
+      !turn
+      || turn.kind !== "storyteller_event"
+      || turn.status !== "generating"
+      || turn.requestId !== requestId
+      || turn.sessionEpoch !== runtimeSessionEpoch
+      || !activeScope
+      || turn.saveScope !== activeScope
+      || !isHarnessTurnInActiveScope(turn, getHarnessRecoveryContext())
+      || !isPrimaryModelLeaseCurrent(requestId, activeInboundPrimaryChannelLeaseId)
+    ) return { resolved: false, reason: "turn_request_mismatch" };
+    const storyteller = state.freeMode?.world?.storyteller;
+    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
+    const notificationApi = globalThis.HatsuWorldStorytellerNotifications;
+    const candidate = incidentApi?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    const reference = turn.storytellerCandidateRef;
+    if (!storyteller || !candidate || !reference || candidate.status !== "invited") {
+      return { resolved: false, reason: "candidate_unavailable" };
+    }
+    const exactReference = candidate.incidentId === String(turn.incidentId || "")
+      && candidate.incidentId === String(reference.incidentId || "")
+      && candidate.planId === String(reference.planId || "")
+      && candidate.saveScope === String(reference.saveScope || "")
+      && candidate.dayKey === String(reference.dayKey || "")
+      && candidate.sourceTurnId === String(reference.sourceTurnId || "")
+      && candidate.saveScope === activeScope;
+    if (!exactReference) return { resolved: false, reason: "candidate_reference_mismatch" };
+    const transition = notificationApi?.transitionNotification?.(candidate, "resolve", {
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      planId: candidate.planId,
+      sourceTurnId: candidate.sourceTurnId
+    });
+    if (!transition?.ok) return { resolved: false, reason: transition?.reason || "invalid_transition" };
+    state.harness.activeTurn = {
+      ...turn,
+      status: "completed",
+      completedAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    storyteller.recentCandidates = [
+      ...(Array.isArray(storyteller.recentCandidates)
+        ? storyteller.recentCandidates.filter((item) => item?.incidentId !== candidate.incidentId)
+        : []),
+      transition.candidate
+    ].slice(-24);
+    storyteller.recentFingerprints = [...new Set([
+      ...(Array.isArray(storyteller.recentFingerprints) ? storyteller.recentFingerprints : []),
+      transition.candidate.fingerprint
+    ].filter(Boolean))].slice(-24);
+    storyteller.receipts = [
+      ...(Array.isArray(storyteller.receipts) ? storyteller.receipts : []),
+      {
+        incidentId: transition.candidate.incidentId,
+        planId: transition.candidate.planId,
+        event: "resolved",
+        reason: "accepted_final",
+        dayKey: transition.candidate.dayKey,
+        saveScope: transition.candidate.saveScope,
+        sourceTurnId: transition.candidate.sourceTurnId,
+        createdAt: Date.now()
+      }
+    ].slice(-40);
+    storyteller.pendingCandidate = null;
+    storyteller.lastCandidateReason = "resolved";
+    recordHarnessTrace("turn.completed", { turnId: turn.turnId || "", requestId, action: "storyteller_event" });
+    debugHarnessEvent("turn.completed", { turnId: turn.turnId || "", requestId, action: "storyteller_event" });
+    return { resolved: true, reason: "resolved", candidate: transition.candidate };
+  }
+
+  function expireStorytellerCandidateForTurn(turn, reason = "narrative_abandoned") {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const api = globalThis.HatsuWorldStorytellerIncidents;
+    const candidate = api?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    const reference = turn?.storytellerCandidateRef;
+    const activeScope = String(activeHostSaveScope || activeStorageKey || "");
+    if (!storyteller || !candidate || !reference || !activeScope) {
+      return { expired: false, reason: "candidate_unavailable" };
+    }
+    const exactReference = candidate.incidentId === String(reference.incidentId || "")
+      && candidate.planId === String(reference.planId || "")
+      && candidate.saveScope === String(reference.saveScope || "")
+      && candidate.dayKey === String(reference.dayKey || "")
+      && candidate.sourceTurnId === String(reference.sourceTurnId || "")
+      && candidate.sourceTurnId === String(turn.turnId || "")
+      && candidate.saveScope === activeScope;
+    if (!exactReference) return { expired: false, reason: "candidate_reference_mismatch" };
+    const transition = api.transitionIncidentCandidate(candidate, "expired", {
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      planId: candidate.planId,
+      sourceTurnId: candidate.sourceTurnId
+    });
+    if (!transition.ok) return { expired: false, reason: transition.reason };
+    const boundedReason = String(reason || "narrative_abandoned").slice(0, 120);
+    storyteller.recentCandidates = [
+      ...(Array.isArray(storyteller.recentCandidates)
+        ? storyteller.recentCandidates.filter((item) => item?.incidentId !== candidate.incidentId)
+        : []),
+      transition.candidate
+    ].slice(-24);
+    storyteller.receipts = [
+      ...(Array.isArray(storyteller.receipts) ? storyteller.receipts : []),
+      {
+        incidentId: transition.candidate.incidentId,
+        planId: transition.candidate.planId,
+        event: "expired",
+        reason: boundedReason,
+        dayKey: transition.candidate.dayKey,
+        saveScope: transition.candidate.saveScope,
+        sourceTurnId: transition.candidate.sourceTurnId,
+        createdAt: Date.now()
+      }
+    ].slice(-40);
+    storyteller.pendingCandidate = null;
+    storyteller.lastCandidateReason = boundedReason;
+    return { expired: true, reason: "expired", candidate: transition.candidate };
+  }
+
+  function abandonStorytellerEventCandidateForTurn(turn, reason = "narrative_abandoned") {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
+    const notificationApi = globalThis.HatsuWorldStorytellerNotifications;
+    const candidate = incidentApi?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    const reference = turn?.storytellerCandidateRef;
+    const activeScope = String(activeHostSaveScope || activeStorageKey || "");
+    if (!storyteller || !candidate || !reference || turn?.kind !== "storyteller_event" || candidate.status !== "invited" || !activeScope) {
+      return { abandoned: false, reason: "candidate_unavailable" };
+    }
+    const exactReference = candidate.incidentId === String(turn.incidentId || "")
+      && candidate.incidentId === String(reference.incidentId || "")
+      && candidate.planId === String(reference.planId || "")
+      && candidate.saveScope === String(reference.saveScope || "")
+      && candidate.dayKey === String(reference.dayKey || "")
+      && candidate.sourceTurnId === String(reference.sourceTurnId || "")
+      && candidate.saveScope === activeScope;
+    if (!exactReference) return { abandoned: false, reason: "candidate_reference_mismatch" };
+    const transition = notificationApi?.transitionNotification?.(candidate, "abandon", {
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      planId: candidate.planId,
+      sourceTurnId: candidate.sourceTurnId
+    });
+    if (!transition?.ok) return { abandoned: false, reason: transition?.reason || "invalid_transition" };
+    const boundedReason = String(reason || "narrative_abandoned").slice(0, 120);
+    storyteller.recentCandidates = [
+      ...(Array.isArray(storyteller.recentCandidates)
+        ? storyteller.recentCandidates.filter((item) => item?.incidentId !== candidate.incidentId)
+        : []),
+      transition.candidate
+    ].slice(-24);
+    storyteller.receipts = [
+      ...(Array.isArray(storyteller.receipts) ? storyteller.receipts : []),
+      {
+        incidentId: transition.candidate.incidentId,
+        planId: transition.candidate.planId,
+        event: "abandoned",
+        reason: boundedReason,
+        dayKey: transition.candidate.dayKey,
+        saveScope: transition.candidate.saveScope,
+        sourceTurnId: transition.candidate.sourceTurnId,
+        createdAt: Date.now()
+      }
+    ].slice(-40);
+    storyteller.pendingCandidate = null;
+    storyteller.lastCandidateReason = boundedReason;
+    return { abandoned: true, reason: "abandoned", candidate: transition.candidate };
   }
 
   function processSandboxQuestFromReply(source, isFinal = true) {
@@ -3882,7 +4571,6 @@
   }
 
   function getSecondaryApiConfig() {
-    ensureStateShape();
     const api = state.tasks?.secondaryApi || {};
     return {
       enabled: Boolean(api.enabled),
@@ -3961,9 +4649,12 @@
 
   function scheduleSecondaryModelChannelTimeout(owner) {
     if (secondaryChannelTimeoutId) clearTimeout(secondaryChannelTimeoutId);
+    const timeoutMs = owner?.kind === "director"
+      ? DIRECTOR_MODEL_CHANNEL_TIMEOUT_MS
+      : SECONDARY_MODEL_CHANNEL_TIMEOUT_MS;
     secondaryChannelTimeoutId = window.setTimeout(() => {
       handleSecondaryAiReply({ ...owner, text: "", ok: false, error: "timeout" });
-    }, SECONDARY_MODEL_CHANNEL_TIMEOUT_MS);
+    }, timeoutMs);
   }
 
   function acquireSecondaryModelChannel(intent, meta = {}) {
@@ -4016,6 +4707,64 @@
     return state.freeMode.world.director;
   }
 
+  function reconcileWorldDirectorAttempt(reason = "owner_missing") {
+    const director = getWorldDirectorState();
+    const job = director?.activeJob;
+    const saveScope = getSecondaryChannelSaveScope();
+    if (
+      !job
+      || !["generating", "validating"].includes(job.status)
+      || !saveScope
+    ) return false;
+    const owner = getSecondaryModelChannelOwner();
+    const ownerApi = globalThis.HatsuWorld?.secondaryChannelOwner;
+    const exactOwner = ownerApi?.isSecondaryOwnerMatch?.(owner, {
+      jobId: job.jobId,
+      requestId: job.requestId,
+      saveScope: job.saveScope,
+      kind: "director"
+    });
+    if (exactOwner) {
+      const ownerAge = Math.max(0, Date.now() - Number(owner?.acquiredAt || 0));
+      if (ownerAge < DIRECTOR_MODEL_CHANNEL_TIMEOUT_MS) return false;
+      handleSecondaryAiReply({ ...owner, text: "", ok: false, error: "timeout" });
+      return true;
+    }
+    director.activeJob = {
+      ...job,
+      requestId: "",
+      status: "retryable_failed",
+      reason: job.saveScope === saveScope
+        ? String(reason || "owner_missing").slice(0, 120)
+        : "scope_changed",
+      startedAt: 0
+    };
+    director.dirty = true;
+    saveState("director.owner_missing");
+    renderSecondaryApiDebug();
+    return true;
+  }
+
+  function recoverStaleWorldDirectorAttempt() {
+    const director = getWorldDirectorState();
+    const job = director?.activeJob;
+    const owner = getSecondaryModelChannelOwner();
+    const ownerApi = globalThis.HatsuWorld?.secondaryChannelOwner;
+    const exactOwner = job && ownerApi?.isSecondaryOwnerMatch?.(owner, {
+      jobId: job.jobId,
+      requestId: job.requestId,
+      saveScope: job.saveScope,
+      kind: "director"
+    });
+    const age = exactOwner ? Math.max(0, Date.now() - Number(owner.acquiredAt || 0)) : 0;
+    if (!exactOwner || age < DIRECTOR_MODEL_CHANNEL_TIMEOUT_MS) return false;
+    if (!window.confirm("结束这次已经超时的世界推演？已结算的时间、数值和世界记录不会回滚。")) return false;
+    handleSecondaryAiReply({ ...owner, text: "", ok: false, error: "timeout" });
+    renderWorldEnginePhoneApp();
+    updateWorldEngineApiSettingsUI();
+    return true;
+  }
+
   function getWorldDirectorHelpers() {
     const idolNames = Object.keys(idols);
     const knownCharacters = idolNames.map((name) => ({
@@ -4057,6 +4806,12 @@
     const dayKey = String(options.dayKey || getWorldFeedDayKey());
     const saveScope = getSecondaryChannelSaveScope();
     if (!dayKey || !saveScope) return null;
+    const styleConfig = state.freeMode?.world?.storyteller?.styleConfig;
+    const styleMode = styleConfig?.legacyUntilDayChange === false ? "styled" : "legacy";
+    const styleMix = styleMode === "styled"
+      ? clone(styleConfig.activeMix || { heroic: 60, romance: 40, kaibunsho: 0 })
+      : null;
+    const styleMixRevision = styleMode === "styled" ? Number(styleConfig.styleMixRevision) || 0 : null;
     if (trigger === "day_change" && director.dailyDirection?.dayKey === dayKey) return null;
     const active = director.activeJob;
     if (
@@ -4066,6 +4821,9 @@
       && active.saveScope === saveScope
       && active.baseDirectorRevision === director.directorRevision
       && active.baseChronicleRevision === director.chronicleRevision
+      && active.styleMode === styleMode
+      && JSON.stringify(active.styleMix) === JSON.stringify(styleMix)
+      && active.styleMixRevision === styleMixRevision
       && ["prepared", "retryable_failed", "generating", "validating"].includes(active.status)
     ) return { ...active };
     const job = {
@@ -4076,6 +4834,9 @@
       dayKey,
       baseDirectorRevision: director.directorRevision,
       baseChronicleRevision: director.chronicleRevision,
+      styleMode,
+      styleMix,
+      styleMixRevision,
       status: "prepared",
       reason: "",
       attempts: 0,
@@ -4114,6 +4875,8 @@
     const dispatch = acquireSecondaryEntryDispatch("director", requestId, {
       jobId: job.jobId,
       trigger: job.trigger,
+      runtimeStateRef: state,
+      runtimeDirectorRef: director,
       dayKey: job.dayKey,
       baseDirectorRevision: job.baseDirectorRevision,
       baseChronicleRevision: job.baseChronicleRevision
@@ -4172,6 +4935,7 @@
     director.dirty = true;
     saveState("director.retryable_failed");
     renderSecondaryApiDebug();
+    renderWorldEnginePhoneApp();
     return false;
   }
 
@@ -4182,6 +4946,39 @@
     }
     return maybeRequestWorldDirector({ reason: reason || "director_owner_released" });
   }
+
+  function describeWorldDirectorIdentityMismatch(job, owner, context = {}) {
+    if (!job) return "director_job_mismatch:missing_job";
+    const knownStatuses = new Set(["prepared", "generating", "validating", "committed", "retryable_failed"]);
+    const statusValue = String(job.status || "");
+    const status = knownStatuses.has(statusValue) ? statusValue : "unknown";
+    const attemptsValue = Number(job.attempts);
+    const attempts = Number.isInteger(attemptsValue) && attemptsValue >= 0
+      ? Math.min(attemptsValue, 999)
+      : 0;
+    let field = "unknown";
+    if (job.jobId !== owner?.jobId) {
+      field = "job_id";
+    } else if (job.requestId !== owner?.requestId) {
+      field = "request_id";
+    } else if (job.saveScope !== owner?.saveScope) {
+      field = "save_scope";
+    }
+    let source = "";
+    if (context.acquiredState && context.currentState && context.acquiredState !== context.currentState) {
+      source = "state_replaced";
+    } else if (
+      context.acquiredDirector
+      && context.currentDirector
+      && context.acquiredDirector !== context.currentDirector
+    ) {
+      source = "director_replaced";
+    } else if (context.acquiredDirector && context.currentDirector) {
+      source = "active_job_replaced";
+    }
+    return `director_job_mismatch:${field}:${status}:${attempts}${source ? `:${source}` : ""}`;
+  }
+
   function handleWorldDirectorReply(payload, owner) {
     const director = getWorldDirectorState();
     const job = director?.activeJob;
@@ -4199,9 +4996,16 @@
       || job.requestId !== owner.requestId
       || job.saveScope !== owner.saveScope
     ) {
-      releaseSecondaryModelChannel(owner.jobId, owner.requestId, owner.saveScope, "director_job_mismatch");
+      const mismatchReason = describeWorldDirectorIdentityMismatch(job, owner, {
+        acquiredState: secondaryChannelMeta?.runtimeStateRef,
+        currentState: state,
+        acquiredDirector: secondaryChannelMeta?.runtimeDirectorRef,
+        currentDirector: director
+      });
+      releaseSecondaryModelChannel(owner.jobId, owner.requestId, owner.saveScope, mismatchReason);
+      reconcileWorldDirectorAttempt("director_job_mismatch");
       renderSecondaryApiDebug();
-      resumeWorldDirectorAfterRelease("director_job_mismatch");
+      renderWorldEnginePhoneApp();
       return false;
     }
     if (!director.enabled) return finishWorldDirectorAttempt(owner, { ok: false, reason: "feature_disabled" });
@@ -4225,6 +5029,7 @@
     releaseSecondaryModelChannel(owner.jobId, owner.requestId, owner.saveScope, "completed");
     saveState("director.committed");
     renderSecondaryApiDebug();
+    renderWorldEnginePhoneApp();
     return true;
   }
 
@@ -4244,9 +5049,25 @@
     }
     if (!window.confirm("重新计算今天的叙事方向？这不会重算数值、时间或随机结果。")) return false;
     if (!prepareWorldDirectorJob("manual")) return false;
+    const preparedJob = getWorldDirectorState()?.activeJob;
+    ensureStorytellerPlanForCheckpoint("manual", {
+      confirmed: true,
+      generatedByJobId: preparedJob?.jobId || ""
+    });
+    renderWorldEnginePhoneApp();
     return maybeRequestWorldDirector({ reason: "manual" });
   }
-  function maybeRequestDailyWorldGeneration() {
+
+  function maybeFollowWorldDirectorAfterPublicWorld(meta, reason) {
+    if (meta?.suppressDirectorFollowup) return false;
+    if (typeof ensureStorytellerPlanForCheckpoint === "function") {
+      ensureStorytellerPlanForCheckpoint("day_change");
+    }
+    return maybeRequestWorldDirector({ reason });
+  }
+
+  function maybeRequestDailyWorldGeneration(options) {
+    options = options && typeof options === "object" ? options : {};
     if (!shouldUseSecondaryWorldGen()) return;
     const worldGen = globalThis.HatsuWorld?.worldGen;
     if (!worldGen) return;
@@ -4259,7 +5080,11 @@
     const prompt = worldGen.buildDailyWorldPrompt(state, { dayKey, dayLabel: formatWorldFeedDayLabel(), includeSideQuests }, helpers);
     if (!prompt) return;
     const requestId = createSecondaryRequestId("world");
-    const dispatch = acquireSecondaryEntryDispatch("world", requestId, { dayKey, includeSideQuests });
+    const dispatch = acquireSecondaryEntryDispatch("world", requestId, {
+      dayKey,
+      includeSideQuests,
+      suppressDirectorFollowup: Boolean(options.suppressDirectorFollowup)
+    });
     if (!dispatch.ok) return;
     worldGen.markDailyWorldGenLoading(state, requestId, dayKey);
     saveState();
@@ -4269,7 +5094,9 @@
     if (!requestHostSecondaryPromptSend(prompt, dispatch.owner)) {
       releaseSecondaryModelChannel(dispatch.owner.jobId, dispatch.owner.requestId, dispatch.owner.saveScope, "send_failed");
       fallbackDailyWorldToStatic("次 API 未配置完整，已回退静态池。");
-      maybeRequestWorldDirector({ reason: "public_world_send_failed" });
+      maybeFollowWorldDirectorAfterPublicWorld({
+        suppressDirectorFollowup: Boolean(options.suppressDirectorFollowup)
+      }, "public_world_send_failed");
     }
   }
   function syncDailyWorldGeneration() {
@@ -4324,7 +5151,7 @@
       writeSecondaryApiKeyStorage(String(patch.apiKey || "").trim());
     }
     saveState();
-    updateSideQuestApiPanelUI();
+    updateWorldEngineApiSettingsUI();
   }
 
   function createSecondaryRequestId(kind) {
@@ -4359,6 +5186,7 @@
     const apiConfig = getSecondaryApiConfig();
     if (owner?.kind === "world") apiConfig.maxTokens = Math.max(apiConfig.maxTokens, 2200);
     const allowDisabled = Boolean(options.allowDisabled);
+    if (owner?.kind === "director") apiConfig.maxTokens = Math.max(apiConfig.maxTokens, 3200);
     if ((!apiConfig.enabled && !allowDisabled) || !apiConfig.baseUrl || !apiConfig.model) return false;
     const promptText = String(prompt || "").trim();
     if (!promptText || !isCurrentSecondaryReply(owner)) return false;
@@ -4411,17 +5239,35 @@
     }
   }
   function handleSecondaryAiReply(payload) {
-    if (!isCurrentSecondaryReply(payload)) return;
+    if (!isCurrentSecondaryReply(payload)) {
+      pushSecondaryDebug({
+        phase: "reject",
+        kind: String(payload?.kind || "?"),
+        requestId: String(payload?.requestId || ""),
+        error: "secondary_owner_mismatch",
+        textLength: String(payload?.text || "").length
+      });
+      return;
+    }
     const owner = { ...secondaryChannelOwner };
     const meta = { kind: owner.kind, ...(secondaryChannelMeta || {}) };
     const text = String(payload?.text || "");
     const ok = Boolean(payload?.ok) && Boolean(text);
     if (meta.kind === "director") {
+      pushSecondaryDebug({
+        phase: "reply",
+        kind: "director",
+        requestId: owner.requestId,
+        ok,
+        error: ok ? "" : String(payload?.error || "empty_response"),
+        textLength: text.length,
+        parseOk: null
+      });
       handleWorldDirectorReply(payload, owner);
       return;
     }
     releaseSecondaryModelChannel(owner.jobId, owner.requestId, owner.saveScope, ok ? "completed" : String(payload?.error || "failed"));
-    const debugEvent = pushSecondaryDebug({ phase: "reply", kind: meta.kind || "?", requestId: owner.requestId, ok, error: ok ? "" : String(payload?.error || "empty_response"), textLength: text.length, preview: text.slice(0, 600), parseOk: null });
+    const debugEvent = pushSecondaryDebug({ phase: "reply", kind: meta.kind || "?", requestId: owner.requestId, ok, error: ok ? "" : String(payload?.error || "empty_response"), textLength: text.length, parseOk: null });
     if (meta.kind === "test") {
       if (debugEvent) debugEvent.parseOk = ok;
       secondaryApiDebug.lastMessage = ok
@@ -4436,7 +5282,7 @@
       if (debugEvent) debugEvent.parseOk = false;
       if (meta.kind === "world") {
         fallbackDailyWorldToStatic(payload?.error ? `次 API 失败：${payload.error}` : "次 API 无有效回复");
-        maybeRequestWorldDirector({ reason: "public_world_failed" });
+        maybeFollowWorldDirectorAfterPublicWorld(meta, "public_world_failed");
       } else if (meta.kind === "daily") {
         fallbackSideQuestToStatic(payload?.error ? `次 API 失败：${payload.error}` : "次 API 无有效回复");
       } else if (meta.kind === "tier" && Number.isFinite(Number(meta.slotIndex))) {
@@ -4462,7 +5308,7 @@
       if (!parsed || !worldGen?.applyDailyWorldGeneration(state, parsed, helpers, dayKey)) {
         if (debugEvent) debugEvent.parseOk = false;
         fallbackDailyWorldToStatic("次 API 返回格式无效，已回退静态池。");
-        maybeRequestWorldDirector({ reason: "public_world_parse_failed" });
+        maybeFollowWorldDirectorAfterPublicWorld(meta, "public_world_parse_failed");
         return;
       }
       if (debugEvent) debugEvent.parseOk = true;
@@ -4483,7 +5329,7 @@
       const parts = ["广播主题", "初星圈"];
       if (meta.includeSideQuests && !sideQuestFellBack) parts.push("委托系统");
       showToast("每日世界层已生成", `次 API 已生成${parts.join("、")}${sideQuestFellBack ? "；委托回退静态池" : ""}。`, "info");
-      maybeRequestWorldDirector({ reason: "public_world_completed" });
+      maybeFollowWorldDirectorAfterPublicWorld(meta, "public_world_completed");
       return;
     }
 
@@ -4523,12 +5369,13 @@
     }
   }
 
-  function updateSideQuestApiPanelUI() {
-    const enabled = document.getElementById("sideQuestApiEnabled");
-    const baseUrl = document.getElementById("sideQuestApiBaseUrl");
-    const model = document.getElementById("sideQuestApiModel");
-    const key = document.getElementById("sideQuestApiKey");
-    const status = document.getElementById("sideQuestApiStatus");
+  function updateWorldEngineApiSettingsUI() {
+    const enabled = document.getElementById("worldEngineApiEnabled");
+    const baseUrl = document.getElementById("worldEngineApiBaseUrl");
+    const model = document.getElementById("worldEngineApiModel");
+    const key = document.getElementById("worldEngineApiKey");
+    const status = document.getElementById("worldEngineApiStatus");
+    const staleRecovery = document.getElementById("worldEngineStaleRecoveryBtn");
     const cfg = getSecondaryApiConfig();
     if (enabled) enabled.checked = cfg.enabled;
     if (baseUrl) baseUrl.value = cfg.baseUrl;
@@ -4544,7 +5391,76 @@
         ? `次 API 已启用 · 世界层：${worldSource}（${worldStatus}） · 委托系统：${source}（${genStatus}）${cfg.apiKey ? " · Key 已保存" : " · 未保存 Key"}`
         : "未启用次 API 时将使用静态工作池。";
     }
+    if (staleRecovery) {
+      const owner = getSecondaryModelChannelOwner();
+      const job = getWorldDirectorState()?.activeJob;
+      const exactOwner = globalThis.HatsuWorld?.secondaryChannelOwner?.isSecondaryOwnerMatch?.(owner, {
+        jobId: job?.jobId,
+        requestId: job?.requestId,
+        saveScope: job?.saveScope,
+        kind: "director"
+      });
+      const age = exactOwner ? Math.max(0, Date.now() - Number(owner.acquiredAt || 0)) : 0;
+      staleRecovery.hidden = !exactOwner || age < DIRECTOR_MODEL_CHANNEL_TIMEOUT_MS;
+    }
+    updateWorldEngineStyleSettingsUI();
     renderSecondaryApiDebug();
+  }
+
+  function updateWorldEngineStyleSettingsUI() {
+    const storyteller = state.freeMode?.world?.storyteller || {};
+    const config = storyteller.styleConfig || {};
+    const active = config.activeMix || { heroic: 60, romance: 40, kaibunsho: 0 };
+    const pending = config.pendingMix || active;
+    const heroic = document.getElementById("worldEngineHeroicWeight");
+    const romance = document.getElementById("worldEngineRomanceWeight");
+    const status = document.getElementById("worldEngineStyleStatus");
+    if (heroic) heroic.value = String(Number.isFinite(Number(pending.heroic)) ? Number(pending.heroic) : 60);
+    if (romance) romance.value = String(Number.isFinite(Number(pending.romance)) ? Number(pending.romance) : 40);
+    if (status) {
+      const activeLabel = `${Number(active.heroic) || 0}/${Number(active.romance) || 0}`;
+      const pendingLabel = `${Number(pending.heroic) || 0}/${Number(pending.romance) || 0}`;
+      const activation = String(config.pendingActivationDayKey || "").trim();
+      status.textContent = activation
+        ? `今日 ${activeLabel} · 次日 ${pendingLabel}（${activation} 生效）`
+        : `今日 ${activeLabel} · 尚未设置次日比例`;
+    }
+  }
+
+  function syncWorldEngineStyleInputs(source = "heroic") {
+    const heroic = document.getElementById("worldEngineHeroicWeight");
+    const romance = document.getElementById("worldEngineRomanceWeight");
+    if (!heroic || !romance) return;
+    if (source === "romance") {
+      const romanceValue = Math.max(0, Math.min(100, Math.round(Number(romance.value) / 5) * 5));
+      romance.value = String(romanceValue);
+      heroic.value = String(100 - romanceValue);
+      return;
+    }
+    const heroicValue = Math.max(0, Math.min(100, Math.round(Number(heroic.value) / 5) * 5));
+    heroic.value = String(heroicValue);
+    romance.value = String(100 - heroicValue);
+  }
+
+  function saveWorldEngineStyleMix() {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const api = globalThis.HatsuWorldStorytellerStyles;
+    if (!storyteller || !api?.setPendingMix) return false;
+    syncWorldEngineStyleInputs();
+    const heroic = Math.max(0, Math.min(100, Math.round(Number(document.getElementById("worldEngineHeroicWeight")?.value || 60) / 5) * 5));
+    const mix = { heroic, romance: 100 - heroic, kaibunsho: 0 };
+    const currentDayKey = getWorldFeedDayKey();
+    const nextDayKey = api.getNextDayKey?.(currentDayKey) || "";
+    if (!nextDayKey) {
+      showToast("无法保存", "当前游戏日无法确定次日生效时间。", "warn");
+      return false;
+    }
+    storyteller.styleConfig = api.setPendingMix(storyteller.styleConfig, mix, nextDayKey);
+    saveState("storyteller.style_pending");
+    updateWorldEngineStyleSettingsUI();
+    renderWorldEnginePhoneApp();
+    showToast("叙事比例已保存", `次日将使用王道 ${heroic}% / 恋爱 ${100 - heroic}% 。`, "info");
+    return true;
   }
 
   function formatSecondaryDebugTime(ts) {
@@ -4557,11 +5473,16 @@
   }
 
   function renderSecondaryApiDebug() {
-    const summaryEl = document.getElementById("sideQuestApiDebugSummary");
-    const logEl = document.getElementById("sideQuestApiDebugLog");
+    const summaryEl = document.getElementById("worldEngineApiDebugSummary");
+    const logEl = document.getElementById("worldEngineApiDebugLog");
     if (summaryEl) {
       const pending = secondaryChannelOwner
-        ? `（在途：${secondaryChannelOwner?.kind || "?"}）`
+        ? (() => {
+            const ageSeconds = Math.max(0, Math.floor((Date.now() - Number(secondaryChannelOwner.acquiredAt || 0)) / 1000));
+            const scopeLabel = secondaryChannelOwner.saveScope === getSecondaryChannelSaveScope() ? "scope 匹配" : "scope 不匹配";
+            const requestSuffix = String(secondaryChannelOwner.requestId || "").slice(-6) || "--";
+            return `（在途：${secondaryChannelOwner.kind || "?"} · ${ageSeconds}秒 · ${scopeLabel} · #${requestSuffix}）`;
+          })()
         : "（无在途请求）";
       summaryEl.textContent = `${secondaryApiDebug.lastMessage} ${pending}`;
     }
@@ -4576,11 +5497,19 @@
       if (event.phase === "send") {
         return `[${time}] ▶ 发送 ${event.kind}｜通道 ${event.transport || "?"}｜prompt ${event.promptLength ?? "?"} 字`;
       }
+      if (event.phase === "acquire") {
+        return `[${time}] ◆ 取得通道 ${event.kind}｜请求 …${event.requestSuffix || "?"}`;
+      }
+      if (event.phase === "release") {
+        return `[${time}] ■ 释放通道｜${event.error || "completed"}｜请求 …${event.requestSuffix || "?"}`;
+      }
+      if (event.phase === "reject") {
+        return `[${time}] × 拒绝 ${event.kind}｜${event.error || "unknown"}｜请求 …${event.requestSuffix || "?"}`;
+      }
       const okLabel = event.ok ? "有效回复" : "无有效回复";
       const parseLabel = event.parseOk === true ? "解析成功" : event.parseOk === false ? "解析失败" : "未解析";
       const head = `[${time}] ◀ 回复 ${event.kind}｜${okLabel}｜${parseLabel}｜文本 ${event.textLength ?? 0} 字${event.error ? `｜错误 ${event.error}` : ""}`;
-      const preview = event.preview ? `\n    ${String(event.preview).replace(/\s*\n\s*/g, " ⏎ ").slice(0, 600)}` : "";
-      return head + preview;
+      return head;
     }).join("\n\n");
   }
 
@@ -4604,7 +5533,7 @@
       globalThis.HatsuTasks.queueSideQuestRefresh(state);
       saveState();
       renderSideQuestOverlay();
-      maybeRequestDailyWorldGeneration();
+      maybeRequestDailyWorldGeneration({ suppressDirectorFollowup: true });
     } else {
       globalThis.HatsuTasks.queueSideQuestRefresh(state);
       saveState();
@@ -4630,12 +5559,12 @@
       showToast("测试未发出", "接口地址或模型缺失，请检查配置。", "warn");
     }
   }
-  function saveSideQuestApiPanel() {
+  function saveWorldEngineApiSettings() {
     saveSecondaryApiSettings({
-      enabled: document.getElementById("sideQuestApiEnabled")?.checked,
-      baseUrl: document.getElementById("sideQuestApiBaseUrl")?.value,
-      model: document.getElementById("sideQuestApiModel")?.value,
-      apiKey: document.getElementById("sideQuestApiKey")?.value
+      enabled: document.getElementById("worldEngineApiEnabled")?.checked,
+      baseUrl: document.getElementById("worldEngineApiBaseUrl")?.value,
+      model: document.getElementById("worldEngineApiModel")?.value,
+      apiKey: document.getElementById("worldEngineApiKey")?.value
     });
     showToast("次 API 配置已保存", isSecondaryApiConfigured() ? "已尝试用次 API 重新生成本日世界层内容。" : "未启用或未填完整接口信息。", "info");
     if (isSecondaryApiConfigured() && isPhoneWorldFeedUnlocked()) {
@@ -4724,8 +5653,6 @@
     if (sideQuestOverlaySlotIndex === null || !slots[sideQuestOverlaySlotIndex]) {
       sideQuestOverlaySlotIndex = null;
       if (tierPanel) tierPanel.hidden = true;
-      const apiPanel = document.getElementById("sideQuestApiPanel");
-      if (apiPanel) apiPanel.hidden = false;
       slotList.hidden = false;
       slotList.innerHTML = "";
       slots.forEach((slot, index) => {
@@ -4773,8 +5700,6 @@
     sideQuestOverlaySlotIndex = slotIndex;
     if (slotList) slotList.hidden = true;
     tierPanel.hidden = false;
-    const apiPanel = document.getElementById("sideQuestApiPanel");
-    if (apiPanel) apiPanel.hidden = true;
     if (titleEl) titleEl.textContent = slot.title;
     const locationLabel = slot.locationName ? `完成地点：${slot.locationName}` : "完成地点：待确认";
     if (descEl) descEl.textContent = `${pool.getTagLabel(slot.tag)} · ${locationLabel} · ${slot.desc}`;
@@ -4819,7 +5744,6 @@
     globalThis.HatsuTasks?.syncSideQuestDay(state);
     sideQuestOverlaySlotIndex = null;
     setElementHidden("sideQuestOverlay", false);
-    updateSideQuestApiPanelUI();
     renderSideQuestOverlay();
     maybeRequestSideQuestGeneration();
   }
@@ -5755,6 +6679,297 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     return Math.max(min, Math.min(max, value));
   }
 
+  function defaultSandboxFirstLiveChallenge() {
+    return {
+      schemaVersion: 1,
+      status: "available",
+      attemptCount: 0,
+      lastAttemptDay: null,
+      nextAvailableDay: null,
+      activeAttempt: null,
+      history: []
+    };
+  }
+
+  function normalizeSandboxFirstLiveChallenge(value) {
+    const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const base = defaultSandboxFirstLiveChallenge();
+    const status = ["available", "generating", "recovery_required", "cooldown", "completed"].includes(source.status)
+      ? source.status
+      : "available";
+    const history = Array.isArray(source.history)
+      ? source.history.filter((item) => item && typeof item === "object" && item.attemptId && Number.isFinite(Number(item.attemptDay))).slice(-12)
+      : [];
+    return {
+      ...base,
+      status,
+      attemptCount: Math.max(0, Math.min(999, Math.floor(Number(source.attemptCount) || 0))),
+      lastAttemptDay: Number.isFinite(Number(source.lastAttemptDay)) ? Math.max(1, Math.floor(Number(source.lastAttemptDay))) : null,
+      nextAvailableDay: Number.isFinite(Number(source.nextAvailableDay)) ? Math.max(1, Math.floor(Number(source.nextAvailableDay))) : null,
+      activeAttempt: source.activeAttempt && typeof source.activeAttempt === "object" ? source.activeAttempt : null,
+      history
+    };
+  }
+
+  function getSandboxFirstLiveContributionRate(value) {
+    const score = Number(value);
+    if (!Number.isFinite(score) || score < 400) return 0;
+    if (score < 500) return 0.5;
+    if (score < 600) return 0.8;
+    return 1;
+  }
+
+  function calculateSandboxFirstLiveSuccessRate(stats = {}) {
+    const rates = ["Vo", "Da", "Vi"].map((key) => getSandboxFirstLiveContributionRate(stats[key]));
+    return Number((rates.reduce((sum, rate) => sum + rate, 0) / rates.length).toFixed(4));
+  }
+
+  function buildSandboxFirstLiveSettlement(stats = {}, roll = 0) {
+    const snapshot = {
+      Vo: Number(stats.Vo) || 0,
+      Da: Number(stats.Da) || 0,
+      Vi: Number(stats.Vi) || 0
+    };
+    const contributionRates = {
+      Vo: getSandboxFirstLiveContributionRate(snapshot.Vo),
+      Da: getSandboxFirstLiveContributionRate(snapshot.Da),
+      Vi: getSandboxFirstLiveContributionRate(snapshot.Vi)
+    };
+    const successRate = calculateSandboxFirstLiveSuccessRate(snapshot);
+    const frozenRoll = Number.isFinite(Number(roll)) ? Number(roll) : 0;
+    return {
+      snapshot,
+      contributionRates,
+      successRate,
+      roll: frozenRoll,
+      success: frozenRoll < successRate
+    };
+  }
+
+  function prepareSandboxFirstLiveAttempt(options = {}) {
+    options = options && typeof options === "object" ? options : {};
+    if (!options.confirmed) return { ok: false, reason: "confirmation_required" };
+    if (!isSandboxLaunch() || !isFreeModeActive() || state.freeMode?.facilityKind !== "first_live") {
+      return { ok: false, reason: "facility_inactive" };
+    }
+    if (!state.idol) return { ok: false, reason: "idol_missing" };
+    if (isHarnessTurnBlocking(state.harness?.activeTurn, runtimeSessionEpoch)) {
+      return { ok: false, reason: "turn_blocked" };
+    }
+    ensureFreeModeTimeDefaults();
+    const currentDay = Number(state.freeMode.postLiveDay) || 1;
+    const clockMinutes = Number(state.freeMode.clockMinutes) || 0;
+    if (clockMinutes < FIRST_LIVE_MINUTES) return { ok: false, reason: "too_early" };
+    const challenge = normalizeSandboxFirstLiveChallenge(state.sandbox?.firstLiveChallenge);
+    if (challenge.status === "completed") return { ok: false, reason: "completed" };
+    if (challenge.status === "cooldown" && currentDay < Number(challenge.nextAvailableDay || 0)) {
+      return { ok: false, reason: "cooldown" };
+    }
+    if (!["available", "cooldown"].includes(challenge.status)) {
+      return { ok: false, reason: "attempt_in_progress" };
+    }
+
+    const requestId = createRequestId();
+    const turnId = createHarnessId("sandbox-first-live-turn");
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "sandbox_first_live",
+      turnId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "sandbox_first_live" });
+      return { ok: false, reason: "channel_occupied", blockingOwner: acquired.blockingOwner };
+    }
+
+    const settlement = buildSandboxFirstLiveSettlement({
+      Vo: state.Vo,
+      Da: state.Da,
+      Vi: state.Vi
+    }, Math.random());
+    const attemptId = createHarnessId("sandbox-first-live-attempt");
+    const nextAvailableDay = settlement.success ? null : currentDay + 2;
+    const activeAttempt = {
+      schemaVersion: 1,
+      attemptId,
+      turnId,
+      requestId,
+      requestIds: [requestId],
+      status: "settled",
+      attemptDay: currentDay,
+      settledAtClock: clockMinutes,
+      nextAvailableDay,
+      ...settlement
+    };
+
+    state.sandbox.firstLiveChallenge = {
+      ...challenge,
+      status: "generating",
+      attemptCount: challenge.attemptCount + 1,
+      lastAttemptDay: currentDay,
+      nextAvailableDay,
+      activeAttempt,
+      history: [...challenge.history, {
+        attemptId,
+        attemptDay: currentDay,
+        success: settlement.success,
+        successRate: settlement.successRate,
+        roll: settlement.roll
+      }].slice(-12)
+    };
+    const timeResult = advanceFreeModeTime(FIRST_LIVE_ACTION_MINUTES);
+    state.firstLive = {
+      ...(state.firstLive || {}),
+      completed: true,
+      success: settlement.success,
+      result: {
+        type: "sandbox_first_live",
+        ...settlement,
+        attemptId,
+        attemptDay: currentDay
+      }
+    };
+    state.log.unshift({
+      day: currentDay,
+      round: "First Live",
+      phase: "学园混合",
+      action: "校内舞台 · First Live",
+      result: `${settlement.success ? "挑战成功" : "挑战失败"} · 成功率 ${(settlement.successRate * 100).toFixed(1)}% · roll ${settlement.roll.toFixed(4)} · +${FIRST_LIVE_ACTION_MINUTES}分`,
+      rawAction: "sandbox_first_live"
+    });
+    state.log = state.log.slice(0, 24);
+    exitHybridFacility();
+    processSandboxQuestAfterSettlement();
+    saveState();
+    render();
+    showToast("First Live 判定完成", settlement.success ? "校内舞台挑战成功，正在准备演出叙事。" : `挑战失败，${nextAvailableDay} 日后可重新挑战。`, settlement.success ? "gold" : "warn");
+    return { ok: true, owner: acquired.owner, attempt: activeAttempt, timeResult };
+  }
+
+  function confirmSandboxFirstLiveAttempt() {
+    const confirmed = typeof window.confirm === "function"
+      ? window.confirm("校内舞台 First Live 将消耗 3 小时，并只进行一次成功率判定。确认开始吗？")
+      : true;
+    if (!confirmed) return false;
+    const result = prepareSandboxFirstLiveAttempt({ confirmed: true });
+    if (!result.ok && result.reason !== "channel_occupied") {
+      const messages = {
+        too_early: "校内舞台需要在 19:00 后才能举办 First Live。",
+        cooldown: "本次挑战失败后仍在冷却中。",
+        completed: "校内舞台 First Live 已完成。",
+        attempt_in_progress: "上一场 First Live 仍在处理。"
+      };
+      showToast("无法开始 First Live", messages[result.reason] || "当前无法开始 First Live。", "warn");
+    }
+    if (result.ok) return startSandboxFirstLiveNarrative();
+    return false;
+  }
+
+  function buildSandboxFirstLivePrompt(attempt) {
+    const snapshot = attempt?.snapshot || {};
+    const result = attempt || {};
+    return `[初星沙盒 First Live：校内舞台叙事请求]
+
+这是一次已经由前端完成确定性结算的 First Live。AI 只负责把冻结结果写成两段连续叙事，不得重新判定成功率、修改属性、时间、冷却或任务。
+担当偶像：${state.idol}
+学园第 ${attempt.attemptDay || state.freeMode?.postLiveDay || 1} 天
+冻结属性：Vo ${snapshot.Vo} / Da ${snapshot.Da} / Vi ${snapshot.Vi}
+各项贡献率：Vo ${result.contributionRates?.Vo ?? 0} / Da ${result.contributionRates?.Da ?? 0} / Vi ${result.contributionRates?.Vi ?? 0}
+前端成功率：${((Number(result.successRate) || 0) * 100).toFixed(1)}%
+前端 roll：${Number(result.roll).toFixed(4)}
+前端判定：${result.success ? "成功" : "失败"}
+
+输出契约（必须完整输出两个区块；不要输出 JSON、选项或系统说明）：
+【live_pre开始】写登台前后台、候场、偶像与制作人的准备和觉悟，停在即将登台。
+【live_pre结束】
+【live_post开始】写演出结束后回到后台的反应、最高项/最低项带来的复盘，以及成功或失败后的情绪变化。
+【live_post结束】
+正文必须承认前端判定结果。不能描写未发生的数值变化，也不能替玩家创造决定。`;
+  }
+
+  function extractSandboxFirstLiveNarrative(source) {
+    const text = String(source || "");
+    const readBlock = (name) => {
+      const pattern = new RegExp(`(?:【${name}开始】|<${name}>)\\s*([\\s\\S]*?)\\s*(?:【${name}结束】|</${name}>)`, "i");
+      return String(text.match(pattern)?.[1] || "").trim();
+    };
+    const pre = readBlock("live_pre");
+    const post = readBlock("live_post");
+    if (!pre || !post || pre.replace(/\\s/g, "").length < 12 || post.replace(/\\s/g, "").length < 12) return null;
+    return { pre, post };
+  }
+
+  function startSandboxFirstLiveNarrative() {
+    const challenge = state.sandbox?.firstLiveChallenge;
+    const attempt = challenge?.activeAttempt;
+    const owner = getPrimaryModelChannelOwner();
+    if (!attempt || !owner || owner.ownerKind !== "sandbox_first_live" || owner.requestId !== attempt.requestId) {
+      showToast("First Live 无法生成", "当前挑战记录或模型通道已失效。", "warn");
+      return false;
+    }
+    const promptCapture = captureHarnessGenerationPrompt(buildSandboxFirstLivePrompt(attempt));
+    if (promptCapture.generationPromptStatus !== "captured") {
+      state.sandbox.firstLiveChallenge.status = "recovery_required";
+      attempt.status = "recovery_required";
+      releasePrimaryModelChannel(attempt.requestId, owner.channelLeaseId, "prompt_capture_failed");
+      saveState();
+      render();
+      return false;
+    }
+    const now = Date.now();
+    state.harness.activeTurn = {
+      turnId: attempt.turnId,
+      kind: "sandbox_first_live",
+      status: "generating",
+      action: "sandbox_first_live",
+      requestId: attempt.requestId,
+      requestIds: [attempt.requestId],
+      saveScope: String(activeHostSaveScope || activeStorageKey || ""),
+      storageKey: String(activeStorageKey || ""),
+      sessionEpoch: runtimeSessionEpoch,
+      generationPrompt: promptCapture.generationPrompt,
+      generationPromptLength: promptCapture.generationPromptLength,
+      generationPromptStatus: promptCapture.generationPromptStatus,
+      recoveryAttemptCount: 0,
+      snapshot: attempt.snapshot,
+      firstLiveAttemptId: attempt.attemptId,
+      createdAt: now,
+      updatedAt: now
+    };
+    attempt.generationPrompt = promptCapture.generationPrompt;
+    attempt.generationPromptLength = promptCapture.generationPromptLength;
+    attempt.generationPromptStatus = promptCapture.generationPromptStatus;
+    attempt.status = "generating";
+    pendingAiRequestId = attempt.requestId;
+    state.pendingAiRequestId = attempt.requestId;
+    state.activeStoryNode = { type: "sandboxFirstLive", ready: false };
+    state.lastPrompt = promptCapture.generationPrompt;
+    state.lastStory = "校内舞台演出前后叙事正在生成……";
+    saveState();
+    render();
+    openEventOverlay("校内舞台 · First Live", "前端判定已完成，正在等待双阶段演出叙事。", buildAiWaitingStory("正在等待 live_pre 与 live_post 两个叙事区块。"));
+    if (!requestHostPromptSend(promptCapture.generationPrompt, attempt.requestId, {
+      channelLeaseId: owner.channelLeaseId,
+      ownerKind: "sandbox_first_live",
+      generationMode: "sandbox_first_live",
+      turnId: attempt.turnId
+    })) {
+      pendingAiRequestId = "";
+      state.pendingAiRequestId = "";
+      state.harness.activeTurn.status = "recovery_required";
+      state.harness.activeTurn.requestId = "";
+      state.sandbox.firstLiveChallenge.status = "recovery_required";
+      attempt.status = "recovery_required";
+      releasePrimaryModelChannel(attempt.requestId, owner.channelLeaseId, "send_failed");
+      saveState();
+      render();
+      openHarnessRecoveryOverlay(state.harness.activeTurn);
+      return false;
+    }
+    return true;
+  }
+
   function sample(list) {
     return list[Math.floor(Math.random() * list.length)];
   }
@@ -5849,7 +7064,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     if (shouldUseSecondaryWorldGen()) {
       globalThis.HatsuWorld?.dailyTick?.refreshWorldPresence?.(state, helpers);
       syncDailyWorldGeneration();
-      return;
+      return "secondary";
     }
     const ticker = globalThis.HatsuWorld?.dailyTick?.runFreeModeDailyTick;
     if (typeof ticker === "function") {
@@ -5858,6 +7073,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       rollFreeModePresenceLegacy(true);
     }
     globalThis.HatsuWorld?.worldGen?.markDailyWorldGenReady?.(state, "static", getWorldFeedDayKey());
+    return "static";
   }
 
   function daysLeft() {
@@ -6327,12 +7543,20 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const hybridFacility = isHybridFacilityActive();
     if (hybridFacility) {
       const kind = state.freeMode.facilityKind;
-      if ((kind === "lesson" && action !== "lesson") || (kind === "training" && action !== "training")) {
-        showToast("当前设施", kind === "lesson" ? "此处只能上课。" : "此处只能训练。", "warn");
+      if (kind === "first_live") {
+        showToast("First Live", "请使用专用 First Live 流程确认后开始。", "info");
+        return;
+      }
+      if ((kind === "lesson" && action !== "lesson") || (kind === "training" && action !== "training") || (kind === "rest" && action !== "rest")) {
+        showToast("当前设施", kind === "lesson" ? "此处只能上课。" : kind === "training" ? "此处只能训练。" : "此处只能休息。", "warn");
         return;
       }
       if (["lesson", "training"].includes(action) && isSandboxCampusExhausted()) {
         showSandboxCampusLimitToast();
+        return;
+      }
+      if (kind === "rest" && Number(state.stamina || 0) >= 100) {
+        showToast("体力已满", "当前不需要休息，时间不会推进。", "info");
         return;
       }
       if (!hasEnoughStaminaForAction(action)) {
@@ -6534,8 +7758,14 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const locationText = action === "outing" && actionContext.destination ? `外出地点：${actionContext.destination}` : "";
     const resultSummary = [locationText, resultText, eventText].filter(Boolean).join("，");
     const requestId = ordinaryPrimaryDispatch?.requestId || createRequestId();
+    const willGenerateOrdinaryNarrative = isHarnessOrdinaryAction(action)
+      && !(["lesson", "training"].includes(action) && isSkipLessonTrainingAiStoryEnabled());
+    const storytellerAttachment = attachStorytellerCandidateToOrdinaryTurn(action, attribute, actionContext, {
+      turnId: state.harness?.activeTurn?.turnId || "",
+      willGenerateNarrative: willGenerateOrdinaryNarrative
+    });
     const story = buildPendingStory(actionName, resultSummary, randomEvent, actionContext);
-    const prompt = buildPrompt(action, attribute, resultText, randomEvent, actionContext);
+    const prompt = buildPrompt(action, attribute, resultText, randomEvent, storytellerAttachment.actionContext);
     const harnessPromptCapture = isHarnessOrdinaryAction(action)
       ? captureHarnessGenerationPrompt(prompt)
       : null;
@@ -6546,7 +7776,8 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     refreshAffinityUnlocks();
     let hybridTimeResult = null;
     if (hybridFacility) {
-      hybridTimeResult = advanceFreeModeTime(HYBRID_FACILITY_ACTION_MINUTES);
+      const hybridFacilityMinutes = getHybridFacilityActionMinutes(state.freeMode.facilityKind);
+      hybridTimeResult = advanceFreeModeTime(hybridFacilityMinutes);
       if (["lesson", "training"].includes(action) && globalThis.HatsuTasks?.isSandboxTasksActive(state)) {
         globalThis.HatsuTasks.recordCampusAction(state, {
           kind: action,
@@ -6565,7 +7796,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
         round: formatFreeModeClock(),
         phase: "学园混合",
         action: actionName,
-        result: `${resultSummary} · +${HYBRID_FACILITY_ACTION_MINUTES}分 · ${formatFreeModeClock()}`,
+        result: `${resultSummary} · +${hybridFacilityMinutes}分 · ${formatFreeModeClock()}`,
         rawAction: action,
         rawAttribute: attribute
       });
@@ -6584,6 +7815,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       }
       markHarnessProduceTurn("settled", {
         settledPersistenceRevision: state.harness.persistenceRevision + 1,
+        storytellerCandidateRef: storytellerAttachment.reference,
         ...harnessPromptCapture
       });
     }
@@ -6709,7 +7941,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const channelLeaseId = String(expectedChannelLeaseId || owner?.channelLeaseId || "");
     if (!owner || !isPrimaryModelLeaseCurrent(requestId, channelLeaseId)) return false;
 
-    if (["ordinary_action", "ordinary_recovery"].includes(owner.ownerKind)) {
+    if (["ordinary_action", "ordinary_recovery", "map_explore", "map_recovery", "storyteller_event", "storyteller_event_recovery", "sandbox_first_live", "sandbox_first_live_recovery"].includes(owner.ownerKind)) {
       if (returnHarnessRecoveryAttemptToPending(requestId, reason)) {
         pendingAiRequestId = "";
         state.pendingAiRequestId = "";
@@ -6806,6 +8038,12 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       ordinary_action: "上一项育成行动仍在生成剧情",
       opening: "担当开场剧情正在生成",
       ordinary_recovery: "上一项行动正在恢复叙事",
+      map_explore: "地图探索正在生成场景",
+      map_recovery: "地图探索正在恢复叙事",
+      storyteller_event: "初星世界事件正在生成",
+      storyteller_event_recovery: "初星世界事件正在恢复叙事",
+      sandbox_first_live: "校内舞台 First Live 正在生成",
+      sandbox_first_live_recovery: "校内舞台 First Live 正在恢复叙事",
       phone_chat: "手机私聊正在等待回复",
       broadcast: "广播完整稿正在生成",
       free_chat: "担当闲聊正在等待回复",
@@ -6924,6 +8162,10 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     return ["lesson", "training", "rest"].includes(action);
   }
 
+  function isSandboxFirstLiveHarnessTurn(turn) {
+    return Boolean(turn && turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live");
+  }
+
   function isHarnessTurnInActiveScope(turn, context = {}) {
     if (!turn || typeof turn !== "object" || Array.isArray(turn)) return false;
     if (context.isHost) {
@@ -6936,12 +8178,25 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     return Boolean(turnStorageKey && activeKey && turnStorageKey === activeKey);
   }
 
-  function getHarnessRecoveryDisposition(turn, context = {}) {
-    if (!turn || turn.kind !== "produce_action" || !isHarnessOrdinaryAction(turn.action)) return "none";
+  function getHarnessRecoveryDisposition(turn, context) {
+    context = context && typeof context === "object" ? context : {};
+    const recoverable = Boolean(
+      turn
+      && (
+        (turn.kind === "produce_action" && isHarnessOrdinaryAction(turn.action))
+        || (turn.kind === "map_explore" && turn.action === "map_location")
+        || turn.kind === "storyteller_event"
+        || (turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live")
+      )
+    );
+    if (!recoverable) return "none";
     if (!isHarnessTurnInActiveScope(turn, context)) return "none";
     if (turn.status === "recovery_required") return "pending";
     if (turn.sessionEpoch === context.runtimeSessionEpoch) return "none";
-    return ["settled", "generating"].includes(turn.status) ? "transition" : "none";
+    const interruptedStatuses = ["storyteller_event", "sandbox_first_live"].includes(turn.kind)
+      ? ["prepared", "generating"]
+      : ["settled", "generating"];
+    return interruptedStatuses.includes(turn.status) ? "transition" : "none";
   }
 
   function getHarnessRecoveryContext() {
@@ -6968,6 +8223,12 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       recoveryRequiredAt: now,
       updatedAt: now
     };
+    if (turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live" && state.sandbox?.firstLiveChallenge) {
+      state.sandbox.firstLiveChallenge.status = "recovery_required";
+      if (state.sandbox.firstLiveChallenge.activeAttempt) {
+        state.sandbox.firstLiveChallenge.activeAttempt.status = "recovery_required";
+      }
+    }
     recordHarnessTrace("turn.recovery_required", {
       turnId: turn.turnId || "",
       requestId: turn.requestId || "",
@@ -6986,15 +8247,29 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   function openHarnessRecoveryOverlay(turn) {
-    const actionNames = { lesson: "上课", training: "训练", rest: "休息" };
-    const actionName = actionNames[turn?.action] || "普通行动";
+    const actionNames = { lesson: "上课", training: "训练", rest: "休息", sandbox_first_live: "校内舞台 First Live" };
+    const actionName = turn?.kind === "map_explore"
+      ? String(turn.locationName || "地图探索")
+        : turn?.kind === "storyteller_event"
+          ? "初星世界事件"
+          : turn?.kind === "sandbox_first_live"
+            ? "校内舞台 First Live"
+          : actionNames[turn?.action] || "普通行动";
     const title = document.getElementById("harnessRecoveryTitle");
     const summary = document.getElementById("harnessRecoverySummary");
     const promptNote = document.getElementById("harnessRecoveryPromptNote");
     const retryButton = document.getElementById("harnessRecoveryRetryBtn");
     const abandonButton = document.getElementById("harnessRecoveryAbandonBtn");
     if (title) title.textContent = `${actionName}叙事尚未确认`;
-    if (summary) summary.textContent = "本次行动的数值、随机结果和时间已经结算，不会回滚或再次结算。";
+    if (summary) {
+      summary.textContent = turn?.kind === "map_explore"
+        ? "本次地图移动或探索的时间、地点和日志已经结算，不会回滚或再次结算。"
+        : turn?.kind === "storyteller_event"
+          ? "这项世界事件没有执行数值、时间、资源或任务结算；恢复只会补写事件叙事。"
+          : turn?.kind === "sandbox_first_live"
+            ? "First Live 的属性判定、随机结果、冷却和 3 小时时间已经结算；恢复只会补写 live_pre/live_post。"
+          : "本次行动的数值、随机结果和时间已经结算，不会回滚或再次结算。";
+    }
     if (promptNote) {
       promptNote.textContent = resolveHarnessRecoveryPrompt(turn)
         ? "已保留原始行动提示词。重新生成只会补写叙事，不会再次结算本次行动。"
@@ -7027,7 +8302,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const turn = state.harness?.activeTurn;
     if (
       !turn
-      || turn.kind !== "produce_action"
+      || !["produce_action", "map_explore", "storyteller_event", "sandbox_first_live"].includes(turn.kind)
       || turn.status !== "generating"
       || turn.sessionEpoch !== runtimeSessionEpoch
       || !requestId
@@ -7060,9 +8335,14 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const context = getHarnessRecoveryContext();
     if (
       !turn
-      || turn.kind !== "produce_action"
+      || !["produce_action", "map_explore", "storyteller_event", "sandbox_first_live"].includes(turn.kind)
       || turn.status !== "recovery_required"
-      || !isHarnessOrdinaryAction(turn.action)
+      || !(
+        (turn.kind === "produce_action" && isHarnessOrdinaryAction(turn.action))
+        || (turn.kind === "map_explore" && turn.action === "map_location")
+        || turn.kind === "storyteller_event"
+        || (turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live")
+      )
       || !isHarnessTurnInActiveScope(turn, context)
     ) {
       showToast("无法恢复叙事", "当前恢复记录不属于这个存档，未发送任何请求。", "warn");
@@ -7080,15 +8360,22 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
 
     const previousRequestId = String(turn.requestId || "");
     const requestId = createRequestId();
+    const recoveryOwnerKind = turn.kind === "map_explore"
+      ? "map_recovery"
+      : turn.kind === "storyteller_event"
+        ? "storyteller_event_recovery"
+        : turn.kind === "sandbox_first_live"
+          ? "sandbox_first_live_recovery"
+        : "ordinary_recovery";
     const acquired = tryAcquirePrimaryModelChannel({
       requestId,
-      ownerKind: "ordinary_recovery",
+      ownerKind: recoveryOwnerKind,
       turnId: turn.turnId,
       saveScope: turn.saveScope,
       sessionEpoch: runtimeSessionEpoch
     });
     if (!acquired.ok) {
-      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "ordinary_recovery" });
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: recoveryOwnerKind });
       return false;
     }
     const now = Date.now();
@@ -7102,6 +8389,12 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       recoveryStartedAt: now,
       updatedAt: now
     };
+    if (turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live" && state.sandbox?.firstLiveChallenge) {
+      state.sandbox.firstLiveChallenge.status = "generating";
+      if (state.sandbox.firstLiveChallenge.activeAttempt) {
+        state.sandbox.firstLiveChallenge.activeAttempt.status = "generating";
+      }
+    }
     pendingAiRequestId = requestId;
     state.pendingAiRequestId = requestId;
     state.lastPrompt = prompt;
@@ -7116,7 +8409,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
 
     if (!requestHostPromptSend(prompt, requestId, {
       channelLeaseId: acquired.owner.channelLeaseId,
-      ownerKind: "ordinary_recovery",
+      ownerKind: recoveryOwnerKind,
       generationMode: "shujuku_same_layer",
       turnId: turn.turnId
     })) {
@@ -7131,12 +8424,20 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     }
 
     closeHarnessRecoveryOverlay();
-    const actionNames = { lesson: "上课", training: "训练", rest: "休息" };
-    const actionName = actionNames[turn.action] || "普通行动";
+    const actionNames = { lesson: "上课", training: "训练", rest: "休息", sandbox_first_live: "校内舞台 First Live" };
+    const actionName = turn.kind === "map_explore"
+      ? String(turn.locationName || "地图探索")
+      : turn.kind === "storyteller_event"
+        ? "初星世界事件"
+        : actionNames[turn.action] || "普通行动";
     openEventOverlay(
       actionName,
       "已重新发送原始行动提示词，等待 AI 回复",
-      "本次仅恢复叙事，不会重复结算数值、随机事件、时间或日志。"
+      turn.kind === "storyteller_event"
+        ? "本次只会重新生成事件叙事，不会执行数值、时间、资源、任务或日志结算。"
+        : turn.kind === "sandbox_first_live"
+          ? "本次只会重新生成 live_pre/live_post，不会再次判定、推进时间或写入任务。"
+        : "本次仅恢复叙事，不会重复结算数值、随机事件、时间或日志。"
     );
     return true;
   }
@@ -7146,9 +8447,14 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const context = getHarnessRecoveryContext();
     if (
       !turn
-      || turn.kind !== "produce_action"
+      || !["produce_action", "map_explore", "storyteller_event", "sandbox_first_live"].includes(turn.kind)
       || turn.status !== "recovery_required"
-      || !isHarnessOrdinaryAction(turn.action)
+      || !(
+        (turn.kind === "produce_action" && isHarnessOrdinaryAction(turn.action))
+        || (turn.kind === "map_explore" && turn.action === "map_location")
+        || turn.kind === "storyteller_event"
+        || (turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live")
+      )
       || !isHarnessTurnInActiveScope(turn, context)
     ) {
       showToast("无法放弃恢复", "当前恢复记录不属于这个存档，未修改任何状态。", "warn");
@@ -7159,6 +8465,18 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     );
     if (!confirmed) return false;
 
+    if (turn.kind === "storyteller_event" && typeof abandonStorytellerEventCandidateForTurn === "function") {
+      abandonStorytellerEventCandidateForTurn(turn, "narrative_abandoned");
+    } else if (typeof expireStorytellerCandidateForTurn === "function") {
+      expireStorytellerCandidateForTurn(turn, "narrative_abandoned");
+    }
+    if (turn.kind === "sandbox_first_live") {
+      const attempt = state.sandbox?.firstLiveChallenge?.activeAttempt;
+      if (attempt) {
+        attempt.status = "abandoned";
+        state.sandbox.firstLiveChallenge.status = attempt.success ? "completed" : "cooldown";
+      }
+    }
     const now = Date.now();
     state.harness.activeTurn = {
       ...turn,
@@ -7175,7 +8493,11 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     saveState("harness.recovery_abandoned");
     closeHarnessRecoveryOverlay();
     render();
-    showToast("已放弃叙事恢复", "本次行动的既有结算保持不变，可以继续普通行动。", "info");
+    showToast("已放弃叙事恢复", turn.kind === "storyteller_event"
+      ? "这项世界事件已放弃，不会补写叙事。"
+      : turn.kind === "sandbox_first_live"
+        ? "First Live 的前端判定保持不变，不会补写演出叙事。"
+      : "本次行动的既有结算保持不变，可以继续普通行动。", "info");
     return true;
   }
 
@@ -7221,9 +8543,12 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const recoveryTurn = state.harness?.activeTurn;
     if (
       recoveryTurn
-      && recoveryTurn.kind === "produce_action"
       && recoveryTurn.status === "recovery_required"
-      && isHarnessOrdinaryAction(recoveryTurn.action)
+      && (
+        (recoveryTurn.kind === "produce_action" && isHarnessOrdinaryAction(recoveryTurn.action))
+        || (recoveryTurn.kind === "map_explore" && recoveryTurn.action === "map_location")
+        || recoveryTurn.kind === "storyteller_event"
+      )
       && isHarnessTurnInActiveScope(recoveryTurn, getHarnessRecoveryContext())
     ) {
       recordHarnessTrace("turn.rejected_recovery_pending", {
@@ -7276,6 +8601,154 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     return { ok: true, turnId };
   }
 
+  function beginHarnessMapExploreTurn(stepKind, details = {}) {
+    details = details && typeof details === "object" ? details : {};
+    if (!["arrival", "explore_choice", "custom_choice"].includes(stepKind)) {
+      return { ok: false, reason: "invalid_map_step" };
+    }
+    const recoveryTurn = state.harness?.activeTurn;
+    if (
+      recoveryTurn
+      && recoveryTurn.status === "recovery_required"
+      && (
+        (recoveryTurn.kind === "produce_action" && isHarnessOrdinaryAction(recoveryTurn.action))
+        || (recoveryTurn.kind === "map_explore" && recoveryTurn.action === "map_location")
+        || recoveryTurn.kind === "storyteller_event"
+      )
+      && isHarnessTurnInActiveScope(recoveryTurn, getHarnessRecoveryContext())
+    ) {
+      recordHarnessTrace("turn.rejected_recovery_pending", {
+        turnId: recoveryTurn.turnId || "",
+        action: "map_location",
+        blockedByAction: recoveryTurn.action || ""
+      });
+      saveState("harness.recovery_pending_guard");
+      showToast("叙事恢复待处理", "请先重新生成或明确放弃上一回合的叙事恢复。", "warn");
+      maybeShowHarnessRecoveryPrompt({ force: true });
+      return { ok: false, reason: "recovery_pending" };
+    }
+    const blockingTurn = state.harness?.activeTurn;
+    if (isHarnessTurnBlocking(blockingTurn, runtimeSessionEpoch)) {
+      recordHarnessTrace("turn.rejected_duplicate", {
+        turnId: blockingTurn.turnId || "",
+        action: "map_location",
+        actionKey: `map:${String(details.locationId || "")}:${stepKind}`
+      });
+      showToast("行动处理中", "当前剧情请求仍在处理，请勿重复提交地图行动。", "warn");
+      return { ok: false, reason: "turn_blocked" };
+    }
+    const now = Date.now();
+    const turnId = createHarnessId("map-turn");
+    state.harness.activeTurn = {
+      turnId,
+      kind: "map_explore",
+      status: "prepared",
+      stepKind,
+      action: "map_location",
+      locationId: String(details.locationId || "").slice(0, 120),
+      locationName: String(details.locationName || "").slice(0, 120),
+      selectedAction: String(details.selectedAction || "").replace(/\s+/g, " ").trim().slice(0, 160),
+      settledMinutes: Math.max(0, Math.min(240, Number(details.settledMinutes) || 0)),
+      requestId: "",
+      requestIds: [],
+      saveScope: String(activeHostSaveScope || ""),
+      storageKey: String(activeStorageKey || ""),
+      sessionEpoch: runtimeSessionEpoch,
+      startPersistenceRevision: state.harness.persistenceRevision,
+      settledPersistenceRevision: null,
+      generationPrompt: "",
+      generationPromptLength: 0,
+      generationPromptStatus: "missing",
+      storytellerCandidateRef: null,
+      recoveryAttemptCount: 0,
+      snapshot: {
+        dayKey: String(getWorldFeedDayKey() || "").slice(0, 120),
+        clockMinutes: Math.max(0, Number(state.freeMode?.clockMinutes) || 0),
+        locationId: String(state.freeMode?.activeLocationId || "").slice(0, 120),
+        pendingAction: String(state.pendingActionContext?.action || "").slice(0, 100)
+      },
+      createdAt: now,
+      updatedAt: now
+    };
+    recordHarnessTrace("turn.prepared", { turnId, action: "map_location", stepKind });
+    debugHarnessEvent("turn.prepared", { turnId, action: "map_location", stepKind });
+    return { ok: true, turnId };
+  }
+
+  function beginHarnessStorytellerEventTurn(candidate, requestId, options) {
+    candidate = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(candidate);
+    requestId = String(requestId || "");
+    options = options && typeof options === "object" ? options : {};
+    const saveScope = String(activeHostSaveScope || activeStorageKey || "");
+    if (
+      !candidate
+      || !requestId
+      || candidate.channel !== "invite"
+      || !["notified", "deferred"].includes(candidate.status)
+      || candidate.saveScope !== saveScope
+    ) return { ok: false, reason: "candidate_unavailable" };
+    const now = Date.now();
+    const turnId = String(options.turnId || createHarnessId("storyteller-turn"));
+    state.harness.activeTurn = {
+      turnId,
+      kind: "storyteller_event",
+      status: "prepared",
+      action: "storyteller_event",
+      incidentId: candidate.incidentId,
+      requestId,
+      requestIds: appendHarnessRequestId([], requestId),
+      saveScope,
+      storageKey: String(activeStorageKey || ""),
+      sessionEpoch: runtimeSessionEpoch,
+      startPersistenceRevision: state.harness.persistenceRevision,
+      settledPersistenceRevision: null,
+      generationPrompt: "",
+      generationPromptLength: 0,
+      generationPromptStatus: "missing",
+      storytellerCandidateRef: {
+        incidentId: candidate.incidentId,
+        planId: candidate.planId,
+        saveScope: candidate.saveScope,
+        dayKey: candidate.dayKey,
+        sourceTurnId: candidate.sourceTurnId
+      },
+      recoveryAttemptCount: 0,
+      snapshot: {
+        dayKey: String(candidate.dayKey || "").slice(0, 120),
+        clockMinutes: Math.max(0, Number(state.freeMode?.clockMinutes) || 0),
+        locationId: String(candidate.locationId || "").slice(0, 120)
+      },
+      createdAt: now,
+      updatedAt: now
+    };
+    recordHarnessTrace("turn.prepared", { turnId, action: "storyteller_event", incidentId: candidate.incidentId });
+    debugHarnessEvent("turn.prepared", { turnId, action: "storyteller_event" });
+    return { ok: true, turnId };
+  }
+
+  function markHarnessMapExploreTurn(status, patch = {}, expectedRequestId = "") {
+    const turn = state.harness?.activeTurn;
+    if (!turn || turn.kind !== "map_explore" || turn.sessionEpoch !== runtimeSessionEpoch) return false;
+    if (expectedRequestId && turn.requestId !== expectedRequestId) return false;
+    state.harness.activeTurn = {
+      ...turn,
+      ...patch,
+      status,
+      updatedAt: Date.now()
+    };
+    recordHarnessTrace(`turn.${status}`, {
+      turnId: turn.turnId || "",
+      requestId: state.harness.activeTurn.requestId || "",
+      action: "map_location",
+      stepKind: turn.stepKind || ""
+    });
+    debugHarnessEvent(`turn.${status}`, {
+      turnId: turn.turnId || "",
+      requestId: state.harness.activeTurn.requestId || ""
+    });
+    return true;
+  }
+
   function markHarnessProduceTurn(status, patch = {}, expectedRequestId = "") {
     const turn = state.harness?.activeTurn;
     if (!turn || turn.kind !== "produce_action" || turn.sessionEpoch !== runtimeSessionEpoch) return false;
@@ -7296,6 +8769,20 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       turnId: turn.turnId || "",
       requestId: state.harness.activeTurn.requestId || ""
     });
+    return true;
+  }
+
+  function markHarnessSandboxFirstLiveTurn(status, patch = {}, expectedRequestId = "") {
+    const turn = state.harness?.activeTurn;
+    if (!isSandboxFirstLiveHarnessTurn(turn) || turn.sessionEpoch !== runtimeSessionEpoch) return false;
+    if (expectedRequestId && turn.requestId !== expectedRequestId) return false;
+    state.harness.activeTurn = { ...turn, ...patch, status, updatedAt: Date.now() };
+    recordHarnessTrace(`turn.${status}`, {
+      turnId: turn.turnId || "",
+      requestId: state.harness.activeTurn.requestId || "",
+      action: "sandbox_first_live"
+    });
+    debugHarnessEvent(`turn.${status}`, { turnId: turn.turnId || "", requestId: state.harness.activeTurn.requestId || "" });
     return true;
   }
 
@@ -7490,6 +8977,17 @@ ${summarizeProduceActionContext()}
     const narrativeLength = ["outing", "companion", "intimacy"].includes(action)
       ? "请写一段 900 字以内的完整场景叙事。本次回复需要把本次行动的情景从开始、互动推进到当天收束完整写完，不要停在待续。"
       : "请写一段 400 字以内的短叙事。";
+    const directorPrompt = composeWorldDirectorPromptAddendum({
+      participants: [state.idol],
+      locationId: actionContext.locationId
+    });
+    const storytellerIncidentPrompt = globalThis.HatsuWorldStorytellerInjection
+      ?.composeStorytellerIncidentPromptAddendum?.(actionContext.storytellerCandidate, { action, attribute }) || "";
+    const authorityContract = globalThis.HatsuWorldStorytellerInjection
+      ?.composeNarrativeAuthorityContract?.({
+        hasDirector: Boolean(directorPrompt),
+        hasStoryteller: Boolean(storytellerIncidentPrompt)
+      }) || "";
 
     return `[初星育成系统：行动已经由前端结算]
 
@@ -7512,7 +9010,7 @@ ${composeWorldSummaryBlock("produce")}
 本行动叙事规则：
 ${actionStyle}${destinationPrompt}${eventPrompt}
 
-${outputContract(narrativeLength)}${composeWorldDirectorPromptAddendum({ participants: [state.idol], locationId: actionContext.locationId })}`;
+${directorPrompt ? `${directorPrompt}\n\n` : ""}${storytellerIncidentPrompt ? `${storytellerIncidentPrompt}\n\n` : ""}${authorityContract ? `${authorityContract}\n\n` : ""}${outputContract(narrativeLength)}`;
   }
 
   function buildChoicePhase1Prompt(action, attribute, shuffledRewards, actionContext = {}) {
@@ -7596,19 +9094,25 @@ ${optionsPrompt}
 ${buildChoiceOnlyExample()}`;
   }
 
-  function buildMapLocationPresenceLine(locationId) {
+  function buildMapLocationPresenceLine(locationId, options = {}) {
     if (locationId === FREE_MODE_OUTING_LOCATION_ID) return "";
+    const actionContext = options.actionContext || state.pendingActionContext?.actionContext || {};
+    const snapshot = options.mapStepKind === "arrival"
+      ? (options.arrivalPresenceIds || actionContext.arrivalPresenceIds)
+      : null;
     const residentNpcs = getResidentNpcsAtLocation(locationId);
     const npcLine = residentNpcs.length
       ? `常驻NPC：${residentNpcs.map((npc) => `${npc.name}（${npc.promptLine || npc.publicLabel || "在场"}）`).join("、")}。`
       : "";
-    const campusLines = globalThis.HatsuWorld?.campusBehavior?.buildMapPresencePromptLines?.(
+    const campusLines = snapshot ? "" : globalThis.HatsuWorld?.campusBehavior?.buildMapPresencePromptLines?.(
       locationId,
       state,
       getHatsuWorldHelpers()
     );
     if (campusLines) return [campusLines, npcLine].filter(Boolean).join("\n");
-    const idolsHere = getIdolsPresentAtLocation(locationId);
+    const idolsHere = Array.isArray(snapshot)
+      ? [...new Set(snapshot.map((idolName) => canonicalIdolName(idolName)).filter((idolName) => idols[idolName]))].slice(0, 8)
+      : getIdolsPresentAtLocation(locationId);
     if (!idolsHere.length && !residentNpcs.length) return "当前该地点没有已确认到场的其他偶像。";
     const idolLine = idolsHere.length
       ? `当前该地点可能在场的偶像：${idolsHere.join("、")}。请自然写入剧情，但不要替前端重新决定她们是否在场。`
@@ -7624,7 +9128,11 @@ ${buildChoiceOnlyExample()}`;
     if (visitMode !== "alone" && state.idol) {
       names.add(canonicalIdolName(state.idol));
     }
-    getIdolsPresentAtLocation(locationId).forEach((idolName) => {
+    const snapshot = options.mapStepKind === "arrival"
+      ? (options.arrivalPresenceIds || actionContext.arrivalPresenceIds)
+      : null;
+    const presentIdols = Array.isArray(snapshot) ? snapshot : getIdolsPresentAtLocation(locationId);
+    presentIdols.forEach((idolName) => {
       const canonical = canonicalIdolName(idolName);
       if (canonical) names.add(canonical);
     });
@@ -7668,7 +9176,7 @@ ${buildChoiceOnlyExample()}`;
     if (!location) return "";
     const targetIdol = state.idol || "物色目标";
     const scoutQuestId = globalThis.HatsuTasks?.getScoutQuestId?.(state) || "scout_temari";
-    const presenceLine = buildMapLocationPresenceLine(locationId);
+    const presenceLine = buildMapLocationPresenceLine(locationId, options);
     const targetHere = getSandboxScoutTargetAtLocation(locationId) === targetIdol;
     const targetLocationId = globalThis.HatsuWorld?.campusBehavior?.getScoutTargetLocation?.(targetIdol, getHatsuWorldHelpers()) || "";
     const targetLocation = targetLocationId ? getWorldMapLocation(targetLocationId) : null;
@@ -7755,9 +9263,18 @@ ${summarizeMapExploreContext()}`
       : visitMode === "alone"
         ? `请写制作人独自来到 ${location.name} 刚到达时的开场场景，并设计 4 个不同的下一步行动选项。担当偶像 ${idol} 不在身边同行。`
         : `请写制作人与担当偶像 ${idol} 一起来到 ${location.name} 刚到达时的开场场景，并设计 4 个不同的下一步行动选项。`;
-    const presenceLine = buildMapLocationPresenceLine(locationId);
+    const presenceLine = buildMapLocationPresenceLine(locationId, {
+      actionContext,
+      mapStepKind: options.mapStepKind,
+      arrivalPresenceIds: options.arrivalPresenceIds
+    });
 
-    const relationshipBlock = buildFreeModeRelationshipPromptBlock(locationId, { actionContext, visitMode });
+    const relationshipBlock = buildFreeModeRelationshipPromptBlock(locationId, {
+      actionContext,
+      visitMode,
+      mapStepKind: options.mapStepKind,
+      arrivalPresenceIds: options.arrivalPresenceIds
+    });
     const sandboxMainBlock = isSandboxLaunch() && state.sandbox?.inviteComplete
       ? globalThis.HatsuTasks?.buildSandboxMainQuestPromptBlock?.(state, locationId) || ""
       : "";
@@ -7770,6 +9287,20 @@ ${summarizeMapExploreContext()}`
     const dayTimeLabel = isSandboxLaunch()
       ? `${formatCampusDayLabel()} ${formatFreeModeClock()}`
       : `${formatFreeModeDayLabel()} ${formatFreeModeClock()}`;
+    const directorPrompt = composeWorldDirectorPromptAddendum({
+      participants: visitMode === "alone" ? [] : [state.idol],
+      locationId
+    });
+    const storytellerIncidentPrompt = globalThis.HatsuWorldStorytellerInjection
+      ?.composeStorytellerIncidentPromptAddendum?.(options.storytellerCandidate, {
+        action: "map_location",
+        mapStepKind: options.mapStepKind
+      }) || "";
+    const authorityContract = globalThis.HatsuWorldStorytellerInjection
+      ?.composeNarrativeAuthorityContract?.({
+        hasDirector: Boolean(directorPrompt),
+        hasStoryteller: Boolean(storytellerIncidentPrompt)
+      }) || "";
     return `${promptHeader}
 
 担当偶像：${state.idol}
@@ -7793,6 +9324,9 @@ ${sceneInstruction}
 - 每个 option 必须包含 <time1> 这种耗时标签。
 
 ${buildMapExplorePlayRules({ outing: false, relationship: true })}
+${directorPrompt ? `\n${directorPrompt}\n` : ""}
+${storytellerIncidentPrompt ? `\n${storytellerIncidentPrompt}\n` : ""}
+${authorityContract ? `\n${authorityContract}\n` : ""}
 
 ${galgameRenderContract("choice")}
 ${buildMapExploreChoiceOutputBlock({ includeRelationship: true })}`;
@@ -9114,6 +10648,9 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   }
 
   function getWorldFeedDayKey(sourceState = state) {
+    if (isSandboxLaunch() || isHybridCampusMode()) {
+      return `campus+${sourceState?.freeMode?.postLiveDay || 1}`;
+    }
     if (isFreeModeUnlocked()) {
       return globalThis.HatsuWorld?.dailyTick?.getDayKey?.(sourceState)
         || `live+${sourceState?.freeMode?.postLiveDay || 1}`;
@@ -9248,7 +10785,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     }
   }
 
-  function completeScoutFromReplyAndBeginWrapUp(source, segmentStory) {
+  function completeScoutFromReplyAndBeginWrapUp(source, segmentStory, requestId) {
     if (!scoutCompletionPendingInReply(source)) return false;
     const scoutId = globalThis.HatsuTasks?.getScoutQuestId?.(state);
     const completed = globalThis.HatsuTasks?.applyQuestCompletionsFromReply?.(state, source) || [];
@@ -9264,6 +10801,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     }
     notifyQuestCompletions(completed);
     refreshWorldPresenceFromRules(true);
+    sendAiReplyAck(requestId, true, false);
     beginSandboxScoutWrapUp();
     return true;
   }
@@ -9527,6 +11065,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     ensureFreeModeTimeDefaults();
     if (!state.freeMode.world) state.freeMode.world = {};
     state.freeMode.world.macro_phase = "scout";
+    globalThis.HatsuTasks?.syncSandboxMacroPhase?.(state);
     state.gameMode = "hybrid";
     state.freeMode = {
       ...(state.freeMode || {}),
@@ -9609,7 +11148,27 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   function getHybridFacilityKind(locationId) {
     if (HYBRID_FACILITY_LESSON_LOCATIONS.includes(locationId)) return "lesson";
     if (HYBRID_FACILITY_TRAINING_LOCATIONS.includes(locationId)) return "training";
+    if (locationId === "student_dormitory") return "rest";
+    if (locationId === "campus_stage") return "first_live";
     return null;
+  }
+
+  function getHybridFacilityActionMinutes(facilityKind) {
+    return facilityKind === "rest" ? STUDENT_DORMITORY_REST_MINUTES : HYBRID_FACILITY_ACTION_MINUTES;
+  }
+
+  function getSandboxFirstLiveChallengeStatusText() {
+    const challenge = normalizeSandboxFirstLiveChallenge(state.sandbox?.firstLiveChallenge);
+    const day = Number(state.freeMode?.postLiveDay) || 1;
+    const clock = Number(state.freeMode?.clockMinutes) || 0;
+    if (challenge.status === "completed") return "已完成";
+    if (challenge.status === "generating") return "叙事生成中";
+    if (challenge.status === "recovery_required") return "叙事待恢复";
+    if (challenge.status === "cooldown" && day < Number(challenge.nextAvailableDay || 0)) {
+      return `冷却至第 ${challenge.nextAvailableDay} 天`;
+    }
+    if (clock < FIRST_LIVE_MINUTES) return "19:00 后开放";
+    return "可挑战";
   }
 
   function formatCampusDayLabel() {
@@ -10632,6 +12191,7 @@ ${idolLine}
 
   function buildApartmentCompanionChatPrompt(idolName, topic, options = {}) {
     const { continuation = false } = options;
+    const producerAction = String(options.producerAction || "").trim().slice(0, 200);
     const targetIdol = canonicalIdolName(idolName);
     const profile = idols[targetIdol] || {};
     const dayTimeLabel = `${formatFreeModeDayLabel()} · ${formatFreeModeClock()}`;
@@ -10642,7 +12202,9 @@ ${idolLine}
       ? `请承接下文摘要，写制作人与 ${targetIdol} 在公寓内继续聊天的下一轮场景，并设计 4 个新的制作人回应选项。
 - 不要重复已经发生过的事件；从当前时间点自然续写。
 - 上文摘要（仅供衔接，不要原文复述）：
-${summarizeMapExploreContext()}`
+${summarizeMapExploreContext()}${producerAction ? `
+- 制作人本轮自定义输入：${producerAction}
+- 必须优先回应这次输入，再自然推进对话并给出下一组选项。` : ""}`
       : `请写制作人与 ${targetIdol} 一起回到公寓后，围绕指定话题聊天的开场，并设计 4 个不同的制作人回应选项。`;
     return `[初星育成系统：制作人公寓 · 同行聊天]
 
@@ -10724,11 +12286,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
     render();
   }
 
-  function requestNextApartmentCompanionOptions() {
+  function requestNextApartmentCompanionOptions(producerAction = "") {
     const actionContext = state.pendingActionContext?.actionContext || {};
     const targetIdol = actionContext.companionIdol;
     const topic = actionContext.companionTopic || "日常闲聊";
-    const prompt = buildApartmentCompanionChatPrompt(targetIdol, topic, { continuation: true });
+    const prompt = buildApartmentCompanionChatPrompt(targetIdol, topic, { continuation: true, producerAction });
     const requestId = createRequestId();
     pendingAiRequestId = requestId;
     state.lastPrompt = prompt;
@@ -10764,10 +12326,39 @@ ${buildChoiceHardRules({ phase1: true })}`;
     state.lastDebug = `公寓聊天：与 ${targetIdol} 已选择行动，时间 +${chosenMinutes} 分钟。`;
     appendEveningJournalActivity("公寓聊天", `与 ${targetIdol} · ${chosenOptionText}`);
     saveState();
+    scanStorytellerNotificationAtCheckpoint("time_advance", { locationId: "producer_apartment" });
     render();
     renderProducerApartmentStage();
     closeVnChoicesOverlay();
     requestNextApartmentCompanionOptions();
+  }
+
+  function handleApartmentCompanionCustomChoice(rawText) {
+    const producerAction = String(rawText || "").trim();
+    if (!producerAction) {
+      showToast("还没有内容", "请输入想说的话或想做的动作。", "warn");
+      return;
+    }
+    const actionContext = state.pendingActionContext?.actionContext || {};
+    const targetIdol = actionContext.companionIdol;
+    const chosenMinutes = 10;
+    advanceFreeModeTime(chosenMinutes);
+    const chosenLine = `<narration>▶ 制作人的自定义输入：${producerAction}</narration>`;
+    state.lastStory = state.lastStory ? `${state.lastStory}\n\n${chosenLine}` : chosenLine;
+    state.selectedChoiceText = "";
+    state.selectedChoiceRating = "";
+    state.pendingOptionTexts = [];
+    state.pendingOptionMinutes = [];
+    state.eventMode = "choice_prompt";
+    state.choiceStep = 1;
+    state.lastDebug = `公寓聊天：向 ${targetIdol} 发送自定义输入，时间 +${chosenMinutes} 分钟。`;
+    appendEveningJournalActivity("公寓聊天", `与 ${targetIdol} · 自定义：${producerAction}`);
+    saveState();
+    scanStorytellerNotificationAtCheckpoint("time_advance", { locationId: "producer_apartment" });
+    render();
+    renderProducerApartmentStage();
+    closeVnChoicesOverlay();
+    requestNextApartmentCompanionOptions(producerAction);
   }
 
   function appendApartmentCompanionControlButtons(container) {
@@ -10820,6 +12411,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
   function advanceFreeModeToNextDay(options = {}) {
     ensureFreeModeTimeDefaults();
     state.freeMode.postLiveDay += 1;
+    activateStorytellerStyleMixForDay(getWorldFeedDayKey());
     state.freeMode.clockMinutes = FREE_MODE_DAY_START_MINUTES;
     state.freeMode.eveningJournal = null;
     state.freeMode.atApartment = Boolean(options.stayAtApartment);
@@ -10833,11 +12425,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
       globalThis.HatsuTasks.syncSideQuestDay(state);
       maybeRequestSideQuestGeneration();
     }
-    runFreeModeWorldDailyTick();
+    const worldTickMode = runFreeModeWorldDailyTick();
+    if (worldTickMode !== "secondary" && typeof ensureStorytellerPlanForCheckpoint === "function") {
+      ensureStorytellerPlanForCheckpoint("day_change");
+    }
     prepareWorldDirectorJob("day_change", { persist: false });
     closeFreeModeTimeOverlay();
     saveState();
-    renderFreeModeStage();
+    render();
     showToast("新的一天", `${formatFreeModeDayLabel()} ${formatFreeModeClock()} 开始。`, "info");
     maybeRequestWorldDirector({ reason: "day_change" });
   }
@@ -10917,6 +12512,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const toAdvance = Math.min(parsed, remaining);
     const result = advanceFreeModeTime(toAdvance);
     saveState();
+    scanStorytellerNotificationAtCheckpoint("time_advance", { locationId: state.freeMode?.activeLocationId });
     renderFreeModeStage();
     updateFreeModeTimeOverlayUI();
     showToast("时间推进", `已推进 ${toAdvance} 分钟，当前 ${formatFreeModeClock()}。`, "info");
@@ -11153,6 +12749,51 @@ ${buildChoiceHardRules({ phase1: true })}`;
     });
   }
 
+  function shouldUseStorytellerMapHarness(session = {}) {
+    session = session && typeof session === "object" ? session : {};
+    if (!isSillyTavernHost() || isSandboxScoutActive()) return false;
+    if (!session.locationId || session.locationId === FREE_MODE_OUTING_LOCATION_ID || session.isOffCampus) return false;
+    if (session.isReturn || session.sideQuestResolving) return false;
+    if (session.sideQuestSlotIndex !== undefined && session.sideQuestSlotIndex !== null) return false;
+    return true;
+  }
+
+  function prepareMapExploreDispatch(stepKind, details = {}) {
+    details = details && typeof details === "object" ? details : {};
+    const blockingOwner = getPrimaryModelChannelOwner();
+    if (blockingOwner) {
+      rejectPrimaryModelDispatch(blockingOwner, {
+        requestId: "",
+        ownerKind: "map_explore",
+        reason: "channel_occupied"
+      });
+      return { ok: false, reason: "channel_occupied", blockingOwner };
+    }
+    const requestId = createRequestId();
+    const previousTurn = state.harness?.activeTurn || null;
+    const prepared = beginHarnessMapExploreTurn(stepKind, details);
+    if (!prepared.ok) return prepared;
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "map_explore",
+      turnId: prepared.turnId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      if (state.harness?.activeTurn?.turnId === prepared.turnId) {
+        state.harness.activeTurn = previousTurn;
+      }
+      rejectPrimaryModelDispatch(acquired.blockingOwner, {
+        requestId,
+        ownerKind: "map_explore",
+        reason: acquired.reason || "channel_occupied"
+      });
+      return { ok: false, reason: acquired.reason || "channel_occupied", blockingOwner: acquired.blockingOwner };
+    }
+    return { ok: true, requestId, turnId: prepared.turnId, owner: acquired.owner };
+  }
+
   function beginMapLocationExploreSession(session = {}) {
     const {
       locationId,
@@ -11171,9 +12812,39 @@ ${buildChoiceHardRules({ phase1: true })}`;
     });
     if (!location) return;
     const normalizedVisitMode = visitMode === "alone" ? "alone" : "with_idol";
+    const arrivedSideQuest = !isSandboxScoutActive() && isOffCampus ? getArrivedSideQuest(location.name) : null;
+    const arrivalPresenceIds = isOffCampus
+      ? []
+      : [...new Set(getIdolsPresentAtLocation(locationId).map((idolName) => canonicalIdolName(idolName)).filter((idolName) => idols[idolName]))].slice(0, 8);
+    const mapSession = {
+      locationId,
+      locationName: location.name,
+      outingDestination,
+      visitMode: normalizedVisitMode,
+      isOffCampus,
+      returnTarget,
+      arrivalPresenceIds,
+      ...extraActionContext,
+      ...(arrivedSideQuest ? { sideQuestSlotIndex: arrivedSideQuest.slotIndex } : {})
+    };
+    const useStorytellerHarness = shouldUseStorytellerMapHarness(mapSession);
+    const mapDispatch = useStorytellerHarness
+      ? prepareMapExploreDispatch("arrival", {
+          locationId,
+          locationName: location.name,
+          settledMinutes: FREE_MODE_MAP_ARRIVAL_MINUTES
+        })
+      : null;
+    if (useStorytellerHarness && !mapDispatch?.ok) return;
     ensureFreeModeTimeDefaults();
     const arrivalResult = advanceFreeModeTime(FREE_MODE_MAP_ARRIVAL_MINUTES);
     if (arrivalResult.hitDayEnd) {
+      if (mapDispatch?.ok) {
+        markHarnessMapExploreTurn("completed_without_narrative", {
+          settledPersistenceRevision: state.harness.persistenceRevision + 1
+        });
+        releasePrimaryModelChannel(mapDispatch.requestId, mapDispatch.owner.channelLeaseId, "completed_without_narrative");
+      }
       ensureEveningJournal();
       saveState();
       renderFreeModeStage();
@@ -11192,11 +12863,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
         outingDestination: isOffCampus ? locationName : "",
         visitMode: normalizedVisitMode,
         isOffCampus,
+        arrivalPresenceIds,
         ...extraActionContext,
         returnTarget
       }
     };
-    const arrivedSideQuest = !isSandboxScoutActive() && isOffCampus ? getArrivedSideQuest(location.name) : null;
     if (arrivedSideQuest) {
       state.pendingActionContext.actionContext = {
         ...state.pendingActionContext.actionContext,
@@ -11212,9 +12883,29 @@ ${buildChoiceHardRules({ phase1: true })}`;
     state.pendingOptionMinutes = [];
     state.selectedChoiceText = "";
     state.selectedChoiceRating = "";
-    const requestId = createRequestId();
+    const requestId = mapDispatch?.requestId || createRequestId();
     pendingAiRequestId = requestId;
-    const prompt = getMapExplorePrompt(locationId, { visitMode: normalizedVisitMode });
+    const storytellerAttachment = mapDispatch?.ok
+      ? attachStorytellerCandidateToMapTurn({ turnId: mapDispatch.turnId })
+      : { candidate: null, reference: null };
+    const prompt = getMapExplorePrompt(locationId, {
+      visitMode: normalizedVisitMode,
+      mapStepKind: "arrival",
+      arrivalPresenceIds,
+      storytellerCandidate: storytellerAttachment.candidate
+    });
+    const harnessPromptCapture = mapDispatch?.ok ? captureHarnessGenerationPrompt(prompt) : null;
+    if (mapDispatch?.ok) {
+      markHarnessMapExploreTurn("settled", {
+        settledPersistenceRevision: state.harness.persistenceRevision + 1,
+        storytellerCandidateRef: storytellerAttachment.reference,
+        ...harnessPromptCapture
+      });
+      markHarnessMapExploreTurn("generating", {
+        requestId,
+        requestIds: appendHarnessRequestId(state.harness?.activeTurn?.requestIds, requestId)
+      });
+    }
     state.lastPrompt = prompt;
     const scoutActive = isSandboxScoutActive();
     const scoutTalkHere = isSandboxScoutTalkAvailable(locationId);
@@ -11246,12 +12937,26 @@ ${buildChoiceHardRules({ phase1: true })}`;
       ? `正在等待「${arrivedSideQuest.title}」的委托现场生成...`
       : `正在等待 ${exploreLabel} 的场景与选项生成...`;
     openEventOverlay(overlayTitle, "正在等待 AI 生成本次行动选项", buildAiWaitingStory(waitingText));
-    if (!requestHostPromptSend(prompt, requestId)) {
-      openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制地点探索提示词后手动发送。");
+    const sent = mapDispatch?.ok
+      ? requestHostPromptSend(prompt, requestId, {
+          channelLeaseId: mapDispatch.owner.channelLeaseId,
+          ownerKind: "map_explore",
+          turnId: mapDispatch.turnId
+        })
+      : requestHostPromptSend(prompt, requestId);
+    if (!sent) {
+      if (mapDispatch?.ok) {
+        returnHarnessRecoveryAttemptToPending(requestId, "send_failed");
+        saveState("harness.map_send_failed");
+        render();
+        openHarnessRecoveryOverlay(state.harness.activeTurn);
+      } else {
+        openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制地点探索提示词后手动发送。");
+      }
     }
   }
 
-  function requestNextMapLocationOptions() {
+  function requestNextMapLocationOptions(mapDispatch = null, stepDetails = {}) {
     if (!isMapLocationExploreActive()) return;
     if (isSandboxScoutWrapUpPending()) return;
     if (!isFreeModeTravelAllowed()) {
@@ -11283,9 +12988,29 @@ ${buildChoiceHardRules({ phase1: true })}`;
     state.pendingOptionMinutes = [];
     state.selectedChoiceText = "";
     state.selectedChoiceRating = "";
-    const requestId = createRequestId();
+    const requestId = mapDispatch?.requestId || createRequestId();
     pendingAiRequestId = requestId;
-    const prompt = getMapExplorePrompt(locationId, { continuation: true, visitMode });
+    const storytellerAttachment = mapDispatch?.ok
+      ? attachStorytellerCandidateToMapTurn({ turnId: mapDispatch.turnId })
+      : { candidate: null, reference: null };
+    const prompt = getMapExplorePrompt(locationId, {
+      continuation: true,
+      visitMode,
+      mapStepKind: stepDetails.stepKind,
+      storytellerCandidate: storytellerAttachment.candidate
+    });
+    const harnessPromptCapture = mapDispatch?.ok ? captureHarnessGenerationPrompt(prompt) : null;
+    if (mapDispatch?.ok) {
+      markHarnessMapExploreTurn("settled", {
+        settledPersistenceRevision: state.harness.persistenceRevision + 1,
+        storytellerCandidateRef: storytellerAttachment.reference,
+        ...harnessPromptCapture
+      });
+      markHarnessMapExploreTurn("generating", {
+        requestId,
+        requestIds: appendHarnessRequestId(state.harness?.activeTurn?.requestIds, requestId)
+      });
+    }
     const exploreLabel = locationId === FREE_MODE_OUTING_LOCATION_ID ? `外出 · ${location.name}` : location.name;
     state.lastPrompt = prompt;
     state.lastDebug = `自由模式${locationId === FREE_MODE_OUTING_LOCATION_ID ? "外出" : "地点"}探索：${location.name}，等待下一轮行动选项。`;
@@ -11298,8 +13023,22 @@ ${buildChoiceHardRules({ phase1: true })}`;
       "正在等待 AI 生成本次行动选项",
       buildAiWaitingStory(`正在等待 ${exploreLabel} 的下一轮行动选项...`)
     );
-    if (!requestHostPromptSend(prompt, requestId)) {
-      openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制地点探索提示词后手动发送。");
+    const sent = mapDispatch?.ok
+      ? requestHostPromptSend(prompt, requestId, {
+          channelLeaseId: mapDispatch.owner.channelLeaseId,
+          ownerKind: "map_explore",
+          turnId: mapDispatch.turnId
+        })
+      : requestHostPromptSend(prompt, requestId);
+    if (!sent) {
+      if (mapDispatch?.ok) {
+        returnHarnessRecoveryAttemptToPending(requestId, "send_failed");
+        saveState("harness.map_send_failed");
+        render();
+        openHarnessRecoveryOverlay(state.harness.activeTurn);
+      } else {
+        openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制地点探索提示词后手动发送。");
+      }
     }
   }
 
@@ -11313,6 +13052,16 @@ ${buildChoiceHardRules({ phase1: true })}`;
       return;
     }
     const chosenMinutes = resolveMapOptionMinutes(state.pendingOptionMinutes?.[index]);
+    const useStorytellerHarness = shouldUseStorytellerMapHarness(actionContext);
+    const mapDispatch = useStorytellerHarness
+      ? prepareMapExploreDispatch("explore_choice", {
+          locationId,
+          locationName: location?.name || "",
+          selectedAction: chosenOptionText,
+          settledMinutes: chosenMinutes
+        })
+      : null;
+    if (useStorytellerHarness && !mapDispatch?.ok) return;
     processSandboxMainQuestMapChoice(locationId, chosenOptionText);
     const timeResult = advanceFreeModeTime(chosenMinutes);
     const chosenLine = `<narration>▶ 制作人的选择：${chosenOptionText}</narration>`;
@@ -11337,15 +13086,31 @@ ${buildChoiceHardRules({ phase1: true })}`;
     renderFreeModeStage();
     closeVnChoicesOverlay();
     if (timeResult.hitDayEnd) {
+      if (mapDispatch?.ok) {
+        markHarnessMapExploreTurn("completed_without_narrative", {
+          settledPersistenceRevision: state.harness.persistenceRevision
+        });
+        releasePrimaryModelChannel(mapDispatch.requestId, mapDispatch.owner.channelLeaseId, "completed_without_narrative");
+      }
       returnToFreeModeMap();
       return;
     }
     if (!isFreeModeTravelAllowed()) {
+      if (mapDispatch?.ok) {
+        markHarnessMapExploreTurn("completed_without_narrative", {
+          settledPersistenceRevision: state.harness.persistenceRevision
+        });
+        releasePrimaryModelChannel(mapDispatch.requestId, mapDispatch.owner.channelLeaseId, "completed_without_narrative");
+      }
       if (maybeTriggerEveningGoHomePrompt()) return;
       returnToFreeModeMap();
       return;
     }
-    requestNextMapLocationOptions();
+    requestNextMapLocationOptions(mapDispatch, {
+      stepKind: "explore_choice",
+      selectedAction: chosenOptionText,
+      settledMinutes: chosenMinutes
+    });
   }
 
   function handleSideQuestSceneChoice(index, chosenOptionText) {
@@ -11405,6 +13170,16 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const locationId = actionContext.locationId;
     const location = resolveMapExploreLocation(locationId, actionContext);
     const chosenMinutes = FREE_MODE_MAP_CHOICE_MINUTES;
+    const useStorytellerHarness = shouldUseStorytellerMapHarness(actionContext);
+    const mapDispatch = useStorytellerHarness
+      ? prepareMapExploreDispatch("custom_choice", {
+          locationId,
+          locationName: location?.name || "",
+          selectedAction: producerAction,
+          settledMinutes: chosenMinutes
+        })
+      : null;
+    if (useStorytellerHarness && !mapDispatch?.ok) return;
     processSandboxMainQuestMapChoice(locationId, producerAction);
     const timeResult = advanceFreeModeTime(chosenMinutes);
     const chosenLine = `<narration>▶ 制作人的选择：${producerAction}</narration>`;
@@ -11429,15 +13204,31 @@ ${buildChoiceHardRules({ phase1: true })}`;
     renderFreeModeStage();
     closeVnChoicesOverlay();
     if (timeResult.hitDayEnd) {
+      if (mapDispatch?.ok) {
+        markHarnessMapExploreTurn("completed_without_narrative", {
+          settledPersistenceRevision: state.harness.persistenceRevision
+        });
+        releasePrimaryModelChannel(mapDispatch.requestId, mapDispatch.owner.channelLeaseId, "completed_without_narrative");
+      }
       returnToFreeModeMap();
       return;
     }
     if (!isFreeModeTravelAllowed()) {
+      if (mapDispatch?.ok) {
+        markHarnessMapExploreTurn("completed_without_narrative", {
+          settledPersistenceRevision: state.harness.persistenceRevision
+        });
+        releasePrimaryModelChannel(mapDispatch.requestId, mapDispatch.owner.channelLeaseId, "completed_without_narrative");
+      }
       if (maybeTriggerEveningGoHomePrompt()) return;
       returnToFreeModeMap();
       return;
     }
-    requestNextMapLocationOptions();
+    requestNextMapLocationOptions(mapDispatch, {
+      stepKind: "custom_choice",
+      selectedAction: producerAction,
+      settledMinutes: chosenMinutes
+    });
   }
 
   function mergeWorldMapLayoutEnvelope(data) {
@@ -11892,12 +13683,18 @@ ${buildChoiceHardRules({ phase1: true })}`;
   function openHybridFacility(facilityKind, locationId) {
     if (!isHybridCampusMode() || !isFreeModeActive()) return;
     if (!isFreeModeTravelAllowed()) {
-      showToast("今日已不能安排", "22:00 后无法进入上课/训练，请进入下一天。", "warn");
+      showToast("今日已不能安排", "22:00 后无法进入校园设施，请进入下一天。", "warn");
       return;
     }
-    if (isSandboxCampusExhausted()) {
+    if (["lesson", "training"].includes(facilityKind) && isSandboxCampusExhausted()) {
       showSandboxCampusLimitToast();
       return;
+    }
+    if (facilityKind === "rest") {
+      if (Number(state.stamina || 0) >= 100) {
+        showToast("体力已满", "当前不需要休息，时间不会推进。", "info");
+        return;
+      }
     }
     const location = getWorldMapLocation(locationId);
     if (!location) return;
@@ -11905,8 +13702,9 @@ ${buildChoiceHardRules({ phase1: true })}`;
     state.freeMode.facilityLocationId = locationId;
     saveState();
     render();
-    const facilityLabel = facilityKind === "lesson" ? "上课" : "训练";
-    showToast(facilityLabel, `已进入 ${location.name}。每次${facilityLabel}推进 ${HYBRID_FACILITY_ACTION_MINUTES} 分钟。`, "info");
+    const facilityLabels = { lesson: "上课", training: "训练", rest: "休息", first_live: "First Live" };
+    const facilityLabel = facilityLabels[facilityKind] || "设施";
+    showToast(facilityLabel, `已进入 ${location.name}。${facilityLabel}将推进 ${getHybridFacilityActionMinutes(facilityKind)} 分钟。`, "info");
   }
 
   function exitHybridFacility() {
@@ -12064,12 +13862,30 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (facilityBtn) {
       if (facilityKind && !scoutActive) {
         facilityBtn.hidden = false;
-        if (campusExhausted) {
+        if (["lesson", "training"].includes(facilityKind) && campusExhausted) {
           facilityBtn.disabled = true;
           facilityBtn.textContent = "今日校园次数已用完";
         } else {
           facilityBtn.disabled = false;
-          facilityBtn.textContent = facilityKind === "lesson" ? "进入上课" : "进入训练";
+          const facilityLabels = {
+            lesson: "进入上课",
+            training: "进入训练",
+            rest: "进入宿舍休息",
+            first_live: "举办 First Live"
+          };
+          facilityBtn.textContent = facilityLabels[facilityKind] || "进入设施";
+          if (facilityKind === "first_live") {
+            const challenge = normalizeSandboxFirstLiveChallenge(state.sandbox?.firstLiveChallenge);
+            const day = Number(state.freeMode?.postLiveDay) || 1;
+            const clock = Number(state.freeMode?.clockMinutes) || 0;
+            const locked = challenge.status === "completed"
+              || challenge.status === "generating"
+              || challenge.status === "recovery_required"
+              || (challenge.status === "cooldown" && day < Number(challenge.nextAvailableDay || 0))
+              || clock < FIRST_LIVE_MINUTES;
+            facilityBtn.disabled = locked;
+            facilityBtn.textContent = locked ? `First Live：${getSandboxFirstLiveChallengeStatusText()}` : "举办 First Live";
+          }
         }
       } else {
         facilityBtn.hidden = true;
@@ -13094,10 +14910,18 @@ ${buildChoiceHardRules({ phase1: true })}`;
           if (campusExhausted) button.disabled = true;
           container.appendChild(button);
         });
+      } else if (kind === "rest") {
+        const button = createActionButton("休息恢复体力", "rest", null, "#20dfad", `+30体力 · ${STUDENT_DORMITORY_REST_MINUTES}分`);
+        if (Number(state.stamina || 0) >= 100) button.disabled = true;
+        container.appendChild(button);
+      } else if (kind === "first_live") {
+        container.appendChild(createActionButton("准备 First Live", "sandbox_first_live", null, "#ff4f9a", "专用流程"));
       }
       container.appendChild(createActionButton("返回地图", "campus_map_return", null, "#8c73ff", ""));
       const campusHint = campusRemaining !== null ? ` · 今日校园剩余 ${campusRemaining}/3` : "";
-      document.getElementById("actionModeLabel").textContent = `${facilityName} · ${kind === "lesson" ? "上课" : "训练"}（每次 +${HYBRID_FACILITY_ACTION_MINUTES} 分${campusHint}）`;
+      const facilityLabels = { lesson: "上课", training: "训练", rest: "休息", first_live: "First Live" };
+      const facilityLabel = facilityLabels[kind] || "设施";
+      document.getElementById("actionModeLabel").textContent = `${facilityName} · ${facilityLabel}${kind === "rest" ? `（+30体力，${STUDENT_DORMITORY_REST_MINUTES} 分）` : kind === "first_live" ? `（${getSandboxFirstLiveChallengeStatusText()}）` : `（每次 +${HYBRID_FACILITY_ACTION_MINUTES} 分${campusHint}）`}`;
       renderActionHighlights();
       return;
     }
@@ -13174,12 +14998,16 @@ ${buildChoiceHardRules({ phase1: true })}`;
         button.disabled = !isFreeModeUnlocked();
       } else if (button.dataset.action === "campus_map_return") {
         button.disabled = false;
+      } else if (button.dataset.action === "sandbox_first_live") {
+        button.disabled = false;
       } else if (isHybridFacilityActive()) {
         const kind = state.freeMode.facilityKind;
         if (button.dataset.action === "lesson") {
           button.disabled = kind !== "lesson" || !hasEnoughStaminaForAction("lesson");
         } else if (button.dataset.action === "training") {
           button.disabled = kind !== "training" || !hasEnoughStaminaForAction("training");
+        } else if (button.dataset.action === "rest") {
+          button.disabled = kind !== "rest" || Number(state.stamina || 0) >= 100;
         }
       } else {
         button.disabled = Boolean(state.liveReady) || !isActionAvailable(button.dataset.action);
@@ -13724,17 +15552,31 @@ ${buildChoiceHardRules({ phase1: true })}`;
   }
   function applyHostCharacter(character, saveScope = "", savedState = null, hasSavedState = false) {
     if (!character?.name) return;
+    const incomingScope = String(saveScope || "");
+    const isSameActiveScope = Boolean(incomingScope)
+      && (incomingScope === activeHostSaveScope
+        || activeStorageKey === storageKeyForScope(incomingScope));
+    if (isSameActiveScope) {
+      activeHostSaveScope = incomingScope;
+      hostStateReady = true;
+      state.boundCharacter = {
+        name: String(character.name),
+        avatar: character.avatar ? String(character.avatar) : ""
+      };
+      return;
+    }
     const previousOwner = getPrimaryModelChannelOwner();
-    if (previousOwner && previousOwner.saveScope !== String(saveScope || "")) {
+    if (previousOwner && previousOwner.saveScope !== incomingScope) {
       if (pendingAiRequestId === previousOwner.requestId) pendingAiRequestId = "";
       releasePrimaryModelChannel(previousOwner.requestId, previousOwner.channelLeaseId, "save_scope_changed");
     }
     const previousSecondaryOwner = getSecondaryModelChannelOwner();
-    if (previousSecondaryOwner && previousSecondaryOwner.saveScope !== String(saveScope || "")) {
+    if (previousSecondaryOwner && previousSecondaryOwner.saveScope !== incomingScope) {
       releaseSecondaryModelChannel(previousSecondaryOwner.jobId, previousSecondaryOwner.requestId, previousSecondaryOwner.saveScope, "save_scope_changed");
-    }    hostStateReady = false;
+    }
+    hostStateReady = false;
     activeHostSaveScope = "";
-    const switched = switchStorageScope(saveScope);
+    const switched = switchStorageScope(incomingScope);
     const localState = state;
     const resolution = resolveHostState(hasSavedState ? savedState : null, localState);
     if (resolution.source === "remote") {
@@ -13745,7 +15587,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
         ensureStateShape();
       }
     }
-    activeHostSaveScope = String(saveScope || "");
+    activeHostSaveScope = incomingScope;
     hostStateReady = Boolean(activeHostSaveScope);
     state.boundCharacter = {
       name: String(character.name),
@@ -14013,6 +15855,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     bar.classList.toggle("is-music", mode === "music");
     bar.classList.toggle("is-broadcast", mode === "broadcast");
     bar.classList.toggle("is-sns", mode === "sns");
+    bar.classList.toggle("is-world-engine", mode === "world-engine");
   }
 
   function setPhoneNavBarVisible(visible) {
@@ -14022,6 +15865,16 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
   // 底部功能栏“返回”：按当前所在的 app / 子视图逐级回退，最后回到主屏幕。
   function phoneNavBack() {
+    const worldEngineApp = document.getElementById("phoneWorldEngineApp");
+    if (worldEngineApp && !worldEngineApp.hidden) {
+      const settingsView = document.getElementById("worldEngineSettingsView");
+      if (settingsView && !settingsView.hidden) {
+        closeWorldEngineAdvancedSettings();
+        return;
+      }
+      showPhoneHomeView();
+      return;
+    }
     const snsApp = document.getElementById("phoneSnsApp");
     if (snsApp && !snsApp.hidden) {
       showPhoneHomeView();
@@ -14061,9 +15914,19 @@ ${buildChoiceHardRules({ phase1: true })}`;
     return `
       <button type="button" class="phone-app-icon" data-phone-app="${app.id}" role="listitem">
         <span class="phone-app-icon-badge" ${badgeStyle}>${escapePhoneText(app.iconText)}</span>
+        ${getStorytellerPhoneBadgeState(app.id) ? '<span class="phone-app-notification-dot" aria-label="有待处理事件"></span>' : ""}
         <span class="phone-app-icon-label">${escapePhoneText(app.name)}</span>
       </button>
     `;
+  }
+
+  function getStorytellerPhoneBadgeState(appId) {
+    if (!["sns", "world-engine"].includes(appId)) return false;
+    const api = globalThis.HatsuWorldStorytellerNotifications;
+    const candidate = state.freeMode?.world?.storyteller?.pendingCandidate;
+    if (!api?.getNotificationBadgeState || !candidate) return false;
+    const worldMinute = api.buildStorytellerWorldMinute({ dayOrdinal: Number(state.freeMode?.postLiveDay || state.day || 0), clockMinutes: Number(state.freeMode?.clockMinutes || 0) });
+    return Boolean(api.getNotificationBadgeState(candidate, worldMinute).visible);
   }
 
   function renderPhoneHome() {
@@ -14090,6 +15953,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     setElementHidden("phoneMusicApp", true);
     setElementHidden("phoneBroadcastApp", true);
     setElementHidden("phoneSnsApp", true);
+    setElementHidden("phoneWorldEngineApp", true);
     setElementHidden("phoneLineApp", false);
     setPhoneStatusBarMode("line");
     setPhoneNavBarVisible(true);
@@ -14103,6 +15967,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     setElementHidden("phoneMusicApp", true);
     setElementHidden("phoneBroadcastApp", true);
     setElementHidden("phoneSnsApp", true);
+    setElementHidden("phoneWorldEngineApp", true);
     setElementHidden("phoneHomeView", false);
     setPhoneStatusBarMode("home");
     setPhoneNavBarVisible(false);
@@ -14125,6 +15990,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
       openPhoneBroadcastApp();
     } else if (appId === "sns") {
       openPhoneSnsApp();
+    } else if (appId === "world-engine") {
+      openPhoneWorldEngineApp();
     }
   }
 
@@ -14181,6 +16048,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     setElementHidden("phoneLineApp", true);
     setElementHidden("phoneBroadcastApp", true);
     setElementHidden("phoneSnsApp", true);
+    setElementHidden("phoneWorldEngineApp", true);
     setElementHidden("phoneMusicApp", false);
     setPhoneStatusBarMode("music");
     setPhoneNavBarVisible(true);
@@ -14319,6 +16187,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     setElementHidden("phoneLineApp", true);
     setElementHidden("phoneMusicApp", true);
     setElementHidden("phoneSnsApp", true);
+    setElementHidden("phoneWorldEngineApp", true);
     setElementHidden("phoneBroadcastApp", false);
     setPhoneStatusBarMode("broadcast");
     setPhoneNavBarVisible(true);
@@ -14776,10 +16645,12 @@ ${buildChoiceHardRules({ phase1: true })}`;
       return;
     }
     ensureStateShape();
+    scanStorytellerNotificationAtCheckpoint("open_sns");
     setElementHidden("phoneHomeView", true);
     setElementHidden("phoneLineApp", true);
     setElementHidden("phoneMusicApp", true);
     setElementHidden("phoneBroadcastApp", true);
+    setElementHidden("phoneWorldEngineApp", true);
     setElementHidden("phoneSnsApp", false);
     setPhoneStatusBarMode("sns");
     setPhoneNavBarVisible(true);
@@ -14801,6 +16672,597 @@ ${buildChoiceHardRules({ phase1: true })}`;
       saveState();
       refreshSnsFeed();
     });
+  }
+
+  // ===== 小手机 · 初星世界引擎 =====
+  let phoneWorldEngineInited = false;
+  let phoneWorldEngineActiveTab = "today";
+  let storytellerMajorConfirmationMode = "";
+
+  function openPhoneWorldEngineApp() {
+    setElementHidden("phoneHomeView", true);
+    setElementHidden("phoneLineApp", true);
+    setElementHidden("phoneMusicApp", true);
+    setElementHidden("phoneBroadcastApp", true);
+    setElementHidden("phoneSnsApp", true);
+    setElementHidden("phoneWorldEngineApp", false);
+    setPhoneStatusBarMode("world-engine");
+    setPhoneNavBarVisible(true);
+    if (!phoneWorldEngineInited) {
+      phoneWorldEngineInited = true;
+      bindPhoneWorldEngineEvents();
+    }
+    closeWorldEngineAdvancedSettings();
+    reconcileWorldDirectorAttempt();
+    scanStorytellerNotificationAtCheckpoint("open_world_engine");
+    renderWorldEnginePhoneApp();
+  }
+
+  function openWorldEngineAdvancedSettings() {
+    setElementHidden("worldEngineMainView", true);
+    setElementHidden("worldEngineSettingsView", false);
+    updateWorldEngineApiSettingsUI();
+  }
+
+  function closeWorldEngineAdvancedSettings() {
+    setElementHidden("worldEngineSettingsView", true);
+    setElementHidden("worldEngineMainView", false);
+  }
+
+  function bindPhoneWorldEngineEvents() {
+    document.getElementById("worldEngineTabs")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-world-engine-tab]");
+      if (!button) return;
+      setWorldEnginePhoneTab(button.dataset.worldEngineTab);
+    });
+    document.getElementById("worldEngineRefreshBtn")?.addEventListener("click", () => {
+      reconcileWorldDirectorAttempt();
+      renderWorldEnginePhoneApp();
+    });
+    document.getElementById("worldEngineSettingsBtn")?.addEventListener("click", openWorldEngineAdvancedSettings);
+    document.getElementById("worldEngineSettingsBackBtn")?.addEventListener("click", closeWorldEngineAdvancedSettings);
+    document.getElementById("worldEngineApiSaveBtn")?.addEventListener("click", saveWorldEngineApiSettings);
+    document.getElementById("worldEngineStyleSaveBtn")?.addEventListener("click", saveWorldEngineStyleMix);
+    document.getElementById("worldEngineHeroicWeight")?.addEventListener("input", () => syncWorldEngineStyleInputs("heroic"));
+    document.getElementById("worldEngineRomanceWeight")?.addEventListener("input", () => syncWorldEngineStyleInputs("romance"));
+    document.getElementById("worldEngineApiTestBtn")?.addEventListener("click", runSecondaryApiTest);
+    document.getElementById("worldEngineCommissionRegenBtn")?.addEventListener("click", forceSecondaryRegeneration);
+    document.getElementById("worldEngineStaleRecoveryBtn")?.addEventListener("click", recoverStaleWorldDirectorAttempt);
+    document.getElementById("worldEngineManualRunBtn")?.addEventListener("click", () => {
+      requestManualWorldDirectorRecalculation();
+      renderWorldEnginePhoneApp();
+    });
+    document.getElementById("worldEngineContent")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-storyteller-event-action]");
+      if (!button) return;
+      const action = button.dataset.storytellerEventAction;
+      if (action === "accept") acceptStorytellerNotification();
+      else if (action === "defer") deferStorytellerNotification();
+      else if (action === "ignore") ignoreStorytellerNotification();
+    });
+  }
+
+  function setWorldEnginePhoneTab(tab) {
+    phoneWorldEngineActiveTab = ["today", "pressures", "runtime", "events"].includes(tab) ? tab : "today";
+    document.querySelectorAll("[data-world-engine-tab]").forEach((button) => {
+      const active = button.dataset.worldEngineTab === phoneWorldEngineActiveTab;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    renderWorldEnginePhoneApp();
+  }
+
+  function resolveWorldEngineActorLabel(actorId) {
+    const value = String(actorId || "");
+    if (value === "producer") return getPhoneProducerLabel();
+    if (!value.startsWith("idol:")) return "未知对象";
+    const name = canonicalIdolName(value.slice(5));
+    return idols[name] ? name : "未知对象";
+  }
+
+  function getWorldEnginePhoneViewModel() {
+    const director = state.freeMode?.world?.director || null;
+    const directorModel = globalThis.HatsuWorld?.directorPhoneView?.buildViewModel?.(director, {
+      currentDayKey: getWorldFeedDayKey(),
+      resolveActorLabel: resolveWorldEngineActorLabel
+    }) || {
+      availability: "unavailable",
+      direction: null,
+      pressures: [],
+      runtime: {
+        enabled: false,
+        dirty: false,
+        jobStatus: "idle",
+        jobStartedAt: null,
+        directorRevision: 0,
+        chronicleRevision: 0,
+        lastError: "",
+        receipts: []
+      }
+    };
+    const storytellerModel = globalThis.HatsuWorldStorytellerPhoneView?.buildViewModel?.(
+      state.freeMode?.world?.storyteller,
+      {
+        currentDayKey: getWorldFeedDayKey(),
+        currentSaveScope: getSecondaryChannelSaveScope(),
+        activeTurn: state.harness?.activeTurn || null,
+        worldMinute: globalThis.HatsuWorldStorytellerNotifications?.buildStorytellerWorldMinute?.({ dayOrdinal: Number(state.freeMode?.postLiveDay || state.day || 0), clockMinutes: Number(state.freeMode?.clockMinutes || 0) }) || 0
+      }
+    ) || {
+      status: "empty",
+      dayKey: "",
+      pacingLabel: "尚未计划",
+      categories: [],
+      severityBudget: { minor: 0, moderate: 0, major: 0 },
+      noveltySummary: "暂无多样性计划",
+      cooldownSummary: "暂无冷却计划",
+      lastError: "",
+      candidate: null,
+      selection: null,
+      lastObservation: null,
+      inbox: { available: false },
+      badges: { worldEngine: false, sns: false }
+    };
+    return { ...directorModel, storyteller: storytellerModel };
+  }
+
+  function formatWorldEngineJobStatus(status) {
+    const labels = {
+      idle: "空闲",
+      prepared: "等待生成",
+      generating: "生成中",
+      validating: "验证中",
+      committed: "已提交",
+      retryable_failed: "可重试失败"
+    };
+    return labels[status] || "状态未明";
+  }
+
+  function formatWorldEngineRuntimeTime(value) {
+    const timestamp = Number(value);
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return "未记录";
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return "未记录";
+    return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+
+  function renderWorldEngineStorytellerPlan(plan) {
+    if (!plan || plan.status !== "committed") {
+      const error = plan?.lastError
+        ? `<p class="world-engine-plan-error">${escapePhoneText(plan.lastError)}</p>`
+        : "";
+      return `<section class="world-engine-storyteller-plan is-empty"><div class="world-engine-section-head"><span>Storyteller Plan</span><strong>未就绪</strong></div>${error}</section>`;
+    }
+    const candidate = plan.candidate;
+    const candidateSection = candidate
+      ? `<div class="world-engine-storyteller-candidate">
+          <div class="world-engine-section-head"><span>当前事件候选</span><strong>${escapePhoneText(candidate.statusLabel)}</strong></div>
+          <div class="world-engine-day-key">来源 ${escapePhoneText(candidate.sourceLabel)}</div>
+          <p><strong>${escapePhoneText(candidate.categoryLabel)} · ${escapePhoneText(candidate.severityLabel)}</strong></p>
+          <p>${escapePhoneText(candidate.archetypeLabel)} · ${escapePhoneText(candidate.locationLabel)}</p>
+          <div class="world-engine-day-key">事件 ${escapePhoneText(candidate.incidentSuffix)} · 回合 ${escapePhoneText(candidate.turnSuffix)}</div>
+          <p>近期冷却记录 ${candidate.cooldownCount}${candidate.lastReason ? ` · ${escapePhoneText(candidate.lastReason)}` : ""}</p>
+        </div>`
+      : "";
+    const selection = plan.selection;
+    const selectionSection = selection
+      ? `<div class="world-engine-storyteller-candidate">
+          <div class="world-engine-section-head"><span>选择依据</span><strong>${selection.selectedScore} 分</strong></div>
+          <p>类别 ${selection.categoryWeight} · 行动 ${selection.actionFit} · 新颖 ${selection.noveltyBonus} · 压力 ${selection.pressureBonus}</p>
+          <div class="world-engine-day-key">相关压力 ${selection.relevantPressureCount} · 候选 ${selection.eligibleCount}/${selection.evaluatedCount}</div>
+          ${selection.rejectionSummary.length ? `<p>${selection.rejectionSummary.map((item) => escapePhoneText(item)).join(" · ")}</p>` : ""}
+        </div>`
+      : "";
+    const style = plan.style;
+    const styleSection = style
+      ? `<div class="world-engine-storyteller-style">
+          <div class="world-engine-section-head"><span>叙事风格诊断</span><strong>v${style.styleMixRevision}</strong></div>
+          <p>今日 ${style.activeMix.heroic}% 王道 · ${style.activeMix.romance}% 恋爱</p>
+          <p>次日 ${style.pendingMix.heroic}% 王道 · ${style.pendingMix.romance}% 恋爱${style.pendingActivationDayKey ? `（${escapePhoneText(style.pendingActivationDayKey)}）` : ""}</p>
+          <p>合法候选 ${style.legalCandidateCounts.heroic} / ${style.legalCandidateCounts.romance} · 归一化 ${style.normalizedWeights.heroic}% / ${style.normalizedWeights.romance}%</p>
+          ${style.selectedStyleLabel ? `<p>本次选择：${escapePhoneText(style.selectedStyleLabel)}${style.selectedOperators.length ? ` · ${style.selectedOperators.map((item) => escapePhoneText(item)).join("、")}` : ""}</p>` : ""}
+          <p>最近成功分布：王道 ${style.recentDistribution.heroic} · 恋爱 ${style.recentDistribution.romance} · 当前连续 ${style.streak.committedCount}</p>
+        </div>`
+      : "";
+    const lastObservation = plan.lastObservation;
+    const observationSection = lastObservation
+      ? `<div class="world-engine-storyteller-candidate">
+          <div class="world-engine-section-head"><span>最近反馈</span><strong>${escapePhoneText(lastObservation.sourceLabel)}</strong></div>
+          <p>${escapePhoneText(lastObservation.categoryLabel)} · ${escapePhoneText(lastObservation.severityLabel)}</p>
+        </div>`
+      : "";
+    return `<section class="world-engine-storyteller-plan">
+      <div class="world-engine-section-head"><span>Storyteller Plan</span><strong>${escapePhoneText(plan.pacingLabel)}</strong></div>
+      <div class="world-engine-plan-budget">
+        <span>轻微 ${plan.severityBudget.minor}</span><span>中等 ${plan.severityBudget.moderate}</span><span>重大 ${plan.severityBudget.major}</span>
+      </div>
+      <div class="world-engine-plan-categories">${plan.categories.map((item) => `<span>${escapePhoneText(item.label)} ${item.weight}</span>`).join("")}</div>
+      <p>${escapePhoneText(plan.noveltySummary)}</p>
+      <p>${escapePhoneText(plan.cooldownSummary)}</p>
+      <div class="world-engine-day-key">${escapePhoneText(plan.dayKey)}</div>
+      ${plan.lastError ? `<p class="world-engine-plan-error">${escapePhoneText(plan.lastError)}</p>` : ""}
+      ${candidateSection}
+      ${selectionSection}
+      ${styleSection}
+      ${observationSection}
+    </section>`;
+  }
+
+  function renderWorldEngineToday(model) {
+    const planSection = renderWorldEngineStorytellerPlan(model.storyteller);
+    const disabled = model.availability === "disabled";
+    const unavailable = model.availability === "unavailable";
+    if (unavailable) {
+      return `${planSection}<section class="world-engine-empty"><span class="world-engine-empty-mark">星</span><h2>世界引擎尚未启用</h2><p>当前存档还没有可读取的 Director 结果。</p></section>`;
+    }
+    const stateBanner = disabled
+      ? `<div class="world-engine-notice is-muted">世界引擎已停用，以下为最近一次可读结果。</div>`
+      : model.runtime.dirty
+        ? `<div class="world-engine-notice">发现新动向，等待日切或手动重算</div>`
+        : "";
+    if (!model.direction) {
+      return `${planSection}${stateBanner}<section class="world-engine-empty"><span class="world-engine-empty-mark">星</span><h2>今日方向尚未生成</h2><p>Director 完成日切计算后会在这里留下今日基调。</p></section>`;
+    }
+    const freshness = model.direction.isCurrentDay ? "今日有效" : "尚未更新";
+    return `${planSection}${stateBanner}
+      <section class="world-engine-direction">
+        <div class="world-engine-kicker-row">
+          <span>今日叙事方向</span>
+          <span class="world-engine-status-dot${model.direction.isCurrentDay ? " is-ready" : " is-stale"}">${freshness}</span>
+        </div>
+        <h2>${escapePhoneText(model.direction.tone)}</h2>
+        <p>${escapePhoneText(model.direction.summary)}</p>
+        <div class="world-engine-day-key">${escapePhoneText(model.direction.dayKey)}</div>
+      </section>`;
+  }
+
+  function renderWorldEnginePressures(model) {
+    if (model.availability === "unavailable") {
+      return `<section class="world-engine-empty"><span class="world-engine-empty-mark">线</span><h2>压力线尚未建立</h2><p>当前存档没有可读取的 Director 状态。</p></section>`;
+    }
+    if (!model.pressures.length) {
+      return `<section class="world-engine-empty"><span class="world-engine-empty-mark">静</span><h2>今日局势平稳</h2><p>目前没有仍需观察的叙事压力。</p></section>`;
+    }
+    return `<section class="world-engine-pressure-section">
+      <div class="world-engine-section-head"><span>当前压力线</span><strong>${model.pressures.length} 条</strong></div>
+      <div class="world-engine-pressure-list">
+        ${model.pressures.map((pressure) => `
+          <article class="world-engine-pressure">
+            <div class="world-engine-pressure-head">
+              <div><strong>${escapePhoneText(pressure.actorLabel)}</strong><span>${escapePhoneText(pressure.themeLabel)}</span></div>
+              <span class="world-engine-pressure-stage">${escapePhoneText(pressure.stageLabel)}</span>
+            </div>
+            <p>${escapePhoneText(pressure.summary || "该动向仍在观察中。")}</p>
+            <div class="world-engine-pressure-meter" role="img" aria-label="压力强度 ${pressure.intensity}">
+              <span style="width:${pressure.intensity}%"></span>
+            </div>
+          </article>`).join("")}
+      </div>
+    </section>`;
+  }
+
+  function renderWorldEngineRuntime(model) {
+    const runtime = model.runtime;
+    const availabilityLabel = model.availability === "unavailable"
+      ? "尚未建立"
+      : runtime.enabled ? "运行中" : "已停用";
+    const receipts = runtime.receipts.length
+      ? `<div class="world-engine-receipts">${runtime.receipts.map((receipt) => `
+          <div class="world-engine-receipt">
+            <time>${escapePhoneText(formatWorldEngineRuntimeTime(receipt.createdAt))}</time>
+            <span>${escapePhoneText(receipt.triggerLabel)}</span>
+            <strong>${escapePhoneText(receipt.resultLabel)}</strong>
+          </div>`).join("")}</div>`
+      : `<div class="world-engine-runtime-empty">暂无运行记录</div>`;
+    const failure = runtime.lastError
+      ? `<div class="world-engine-failure"><strong>最近一次生成未完成</strong><p>${escapePhoneText(runtime.lastError)}</p><span>可通过现有 DEBUG 入口手动重算。</span></div>`
+      : "";
+    return `<section class="world-engine-runtime">
+      <div class="world-engine-runtime-lead">
+        <span>Director 状态</span>
+        <strong>${availabilityLabel}</strong>
+      </div>
+      <dl class="world-engine-runtime-grid">
+        <div><dt>当前任务</dt><dd>${escapePhoneText(formatWorldEngineJobStatus(runtime.jobStatus))}</dd></div>
+        <div><dt>待处理证据</dt><dd>${runtime.dirty ? "有" : "无"}</dd></div>
+        <div><dt>Director revision</dt><dd>${runtime.directorRevision}</dd></div>
+        <div><dt>Chronicle revision</dt><dd>${runtime.chronicleRevision}</dd></div>
+      </dl>
+      ${runtime.jobStartedAt ? `<p class="world-engine-runtime-time">本次任务开始于 ${escapePhoneText(formatWorldEngineRuntimeTime(runtime.jobStartedAt))}</p>` : ""}
+      ${failure}
+      <div class="world-engine-section-head"><span>最近结果</span><strong>${runtime.receipts.length}</strong></div>
+      ${receipts}
+    </section>`;
+  }
+
+  function renderWorldEngineEvents(model) {
+    const inbox = model.storyteller?.inbox;
+    if (!inbox?.available) return `<section class="world-engine-empty"><span class="world-engine-empty-mark">静</span><h2>暂无待处理事件</h2><p>世界引擎会在安全节点记录可选择的学园动向。</p></section>`;
+    return `<section class="world-engine-event-inbox">
+      <div class="world-engine-section-head"><span>事件收件箱</span><strong>${escapePhoneText(inbox.statusLabel)}</strong></div>
+      <h2>${escapePhoneText(inbox.archetypeLabel)}</h2>
+      <p>${escapePhoneText(inbox.categoryLabel)} · ${escapePhoneText(inbox.severityLabel)} · ${escapePhoneText(inbox.locationLabel)}</p>
+      <p>${inbox.actorLabels.map((item) => escapePhoneText(item)).join(" / ")}</p>
+      ${inbox.modifierLabels?.length ? `<p class="world-engine-event-modifiers">${inbox.modifierLabels.map((item) => escapePhoneText(item)).join(" · ")}</p>` : ""}
+      ${inbox.confirmationCopy ? `<p class="world-engine-event-confirmation">${escapePhoneText(inbox.confirmationCopy)}</p>` : ""}
+      <div class="world-engine-event-actions">
+        <button type="button" data-storyteller-event-action="accept">接受</button>
+        <button type="button" data-storyteller-event-action="defer">稍后</button>
+        <button type="button" data-storyteller-event-action="ignore">忽略</button>
+      </div>
+    </section>`;
+  }
+
+  function transitionStorytellerInboxAction(action, options) {
+    options = options && typeof options === "object" ? options : {};
+    const storyteller = state.freeMode?.world?.storyteller;
+    const candidate = storyteller?.pendingCandidate;
+    const api = globalThis.HatsuWorldStorytellerNotifications;
+    if (!candidate || !api?.transitionNotification) return false;
+    const worldMinute = api.buildStorytellerWorldMinute({ dayOrdinal: Number(state.freeMode?.postLiveDay || state.day || 0), clockMinutes: Number(state.freeMode?.clockMinutes || 0) });
+    const result = api.transitionNotification(candidate, action, { saveScope: candidate.saveScope, dayKey: candidate.dayKey, planId: candidate.planId, sourceTurnId: candidate.sourceTurnId, worldMinute });
+    if (!result.ok) return false;
+    storyteller.pendingCandidate = result.candidate;
+    const majorDecline = action === "ignore" && candidate.severity === "major" && candidate.requiresConfirmation;
+    const receiptInput = {
+      event: action === "defer" ? "deferred" : majorDecline ? "declined" : "ignored",
+      reason: String(options.reason || (majorDecline ? "player_confirmed_major_decline" : "player_action")),
+      dayKey: candidate.dayKey,
+      saveScope: candidate.saveScope,
+      createdAt: Date.now()
+    };
+    const receipt = api.buildNotificationReceipt?.(receiptInput) || receiptInput;
+    storyteller.receipts = [...(storyteller.receipts || []), receipt].slice(-40);
+    saveState(`storyteller.notification_${action}`);
+    renderPhoneHome();
+    renderWorldEnginePhoneApp();
+    return true;
+  }
+
+  function deferStorytellerNotification() { return transitionStorytellerInboxAction("defer"); }
+  function ignoreStorytellerNotification() {
+    const candidate = globalThis.HatsuWorldStorytellerIncidents
+      ?.normalizeIncidentCandidate?.(state.freeMode?.world?.storyteller?.pendingCandidate);
+    if (candidate?.severity === "major" && candidate.requiresConfirmation) {
+      return openStorytellerMajorConfirmation("decline");
+    }
+    return transitionStorytellerInboxAction("ignore");
+  }
+
+  function buildStorytellerIndependentEventPrompt(candidate) {
+    const location = getWorldMapLocation(candidate?.locationId);
+    const worldFacts = `[初星世界事件]
+当前日期：${getWorldFeedDayKey()}
+当前时间：${formatFreeModeClock()}
+当前地点：${location?.name || "学园"}
+当前担当：${state.idol || "未指定"}
+${composeWorldSummaryBlock("produce", candidate?.locationId)}`;
+    const directorPrompt = composeWorldDirectorPromptAddendum({
+      participants: [...(candidate?.actorIds || []), ...(candidate?.targetIds || [])],
+      locationId: candidate?.locationId
+    });
+    const actorLabels = [...new Set([...(candidate?.actorIds || []), ...(candidate?.targetIds || [])]
+      .map(resolveWorldEngineActorLabel)
+      .filter(Boolean))].slice(0, 4);
+    const eventPrompt = globalThis.HatsuWorldStorytellerInjection
+      ?.composeStorytellerIndependentEventPromptAddendum?.(candidate, { actorLabels }) || "";
+    const authorityContract = globalThis.HatsuWorldStorytellerInjection
+      ?.composeNarrativeAuthorityContract?.({
+        hasDirector: Boolean(directorPrompt),
+        hasStoryteller: Boolean(eventPrompt)
+      }) || "";
+    return `${worldFacts}
+
+${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\n\n` : ""}${authorityContract ? `${authorityContract}\n\n` : ""}${outputContract("请写 700 字以内的完整独立事件正文，自然收束，不要输出选项，不要待续。")}`;
+  }
+
+  function dispatchAcceptedStorytellerCandidate(rawCandidate) {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
+    const notificationApi = globalThis.HatsuWorldStorytellerNotifications;
+    const candidate = incidentApi?.normalizeIncidentCandidate?.(rawCandidate);
+    const saveScope = String(getSecondaryChannelSaveScope() || activeHostSaveScope || activeStorageKey || "");
+    const dayKey = String(getWorldFeedDayKey() || "");
+    if (
+      !storyteller
+      || !candidate
+      || !notificationApi?.transitionNotification
+      || candidate.channel !== "invite"
+      || !["notified", "deferred"].includes(candidate.status)
+      || !saveScope
+      || candidate.saveScope !== saveScope
+      || candidate.dayKey !== dayKey
+      || candidate.planId !== String(storyteller.plan?.planId || "")
+    ) {
+      showToast("事件不可用", "这项事件已过期或不属于当前聊天。", "warn");
+      return false;
+    }
+    const requestId = createRequestId();
+    const turnId = createHarnessId("storyteller-turn");
+    if (!isSillyTavernHost()) {
+      state.lastPrompt = buildStorytellerIndependentEventPrompt(candidate);
+      openAiPromptOverlay("当前页面未连接 SillyTavern；候选事件仍保持未接受状态。可手动复制提示词。 ");
+      return false;
+    }
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "storyteller_event",
+      turnId,
+      saveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "storyteller_event" });
+      return false;
+    }
+    const begun = beginHarnessStorytellerEventTurn(candidate, requestId, { turnId });
+    if (!begun.ok) {
+      releasePrimaryModelChannel(requestId, acquired.owner.channelLeaseId, begun.reason || "event_prepare_failed");
+      return false;
+    }
+    const transition = notificationApi.transitionNotification(candidate, "invite", {
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      planId: candidate.planId,
+      sourceTurnId: candidate.sourceTurnId
+    });
+    if (!transition.ok) {
+      state.harness.activeTurn = null;
+      releasePrimaryModelChannel(requestId, acquired.owner.channelLeaseId, transition.reason || "event_transition_failed");
+      return false;
+    }
+    storyteller.pendingCandidate = transition.candidate;
+    const prompt = buildStorytellerIndependentEventPrompt(transition.candidate);
+    const captured = captureHarnessGenerationPrompt(prompt);
+    if (captured.generationPromptStatus !== "captured") {
+      state.harness.activeTurn = null;
+      storyteller.pendingCandidate = candidate;
+      releasePrimaryModelChannel(requestId, acquired.owner.channelLeaseId, "event_prompt_rejected");
+      return false;
+    }
+    state.harness.activeTurn = {
+      ...state.harness.activeTurn,
+      ...captured,
+      status: "generating",
+      updatedAt: Date.now()
+    };
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = prompt;
+    state.lastStory = "正在生成已接受的世界事件…";
+    recordHarnessTrace("turn.generating", { turnId, requestId, action: "storyteller_event" });
+    saveState("storyteller.event_generating");
+    renderPhoneHome();
+    renderWorldEnginePhoneApp();
+    openEventOverlay("初星世界事件", "事件已接受，正在生成叙事", buildAiWaitingStory(state.lastStory));
+    const sent = requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "storyteller_event",
+      turnId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) return false;
+    return true;
+  }
+
+  function openStorytellerMajorConfirmation(mode) {
+    if (!['accept', 'decline'].includes(mode)) return false;
+    storytellerMajorConfirmationMode = mode;
+    const decline = mode === 'decline';
+    const title = document.getElementById('storytellerMajorConfirmationTitle');
+    const copy = document.getElementById('storytellerMajorConfirmationCopy');
+    const confirm = document.getElementById('storytellerMajorConfirmationConfirmBtn');
+    if (title) title.textContent = decline ? '确认忽略重大事件' : '确认接受重大事件';
+    if (copy) copy.textContent = decline
+      ? '忽略后，本次重大事件候选会过期且不会生成叙事。此操作不会推进时间或修改其他业务状态。'
+      : '接受后会生成一段独立事件叙事，但不会自动推进时间或修改数值、资源和任务。';
+    if (confirm) confirm.textContent = decline ? '确认忽略' : '确认接受';
+    setElementHidden('storytellerMajorConfirmationOverlay', false);
+    return true;
+  }
+
+  function closeStorytellerMajorConfirmation() {
+    storytellerMajorConfirmationMode = '';
+    setElementHidden('storytellerMajorConfirmationOverlay', true);
+    return true;
+  }
+
+  function revalidateCurrentStorytellerMajorCandidate(candidate) {
+    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
+    if (!incidentApi?.revalidateIncidentCandidate) {
+      return { valid: false, reason: 'storyteller_revalidation_unavailable' };
+    }
+    const context = buildStorytellerIncidentContext('notification', '', {
+      turnId: candidate.sourceTurnId,
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      locationId: candidate.locationId
+    });
+    return incidentApi.revalidateIncidentCandidate(candidate, context, {
+      requiredChannel: 'invite',
+      allowMajorConfirmation: true
+    });
+  }
+
+  function confirmStorytellerMajorAction() {
+    const mode = storytellerMajorConfirmationMode;
+    if (!['accept', 'decline'].includes(mode)) return false;
+    const storyteller = state.freeMode?.world?.storyteller;
+    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
+    const candidate = incidentApi?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    if (
+      !candidate
+      || candidate.severity !== 'major'
+      || !candidate.requiresConfirmation
+      || candidate.channel !== 'invite'
+      || !['notified', 'deferred'].includes(candidate.status)
+    ) {
+      showToast('事件不可用', '重大事件已经变化，请关闭确认后刷新收件箱。', 'warn');
+      return false;
+    }
+    const revalidated = revalidateCurrentStorytellerMajorCandidate(candidate);
+    if (!revalidated?.valid) {
+      showToast('事件已变化', '当前条件不再满足这项重大事件，请关闭确认后刷新收件箱。', 'warn');
+      return false;
+    }
+    const completed = mode === 'decline'
+      ? transitionStorytellerInboxAction('ignore', { reason: 'player_confirmed_major_decline' })
+      : dispatchAcceptedStorytellerCandidate(candidate);
+    if (completed) closeStorytellerMajorConfirmation();
+    return completed;
+  }
+
+  function acceptStorytellerNotification() {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
+    const candidate = incidentApi?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    const saveScope = String(getSecondaryChannelSaveScope() || activeHostSaveScope || activeStorageKey || '');
+    const dayKey = String(getWorldFeedDayKey() || '');
+    if (
+      !candidate
+      || candidate.channel !== 'invite'
+      || !['notified', 'deferred'].includes(candidate.status)
+      || !saveScope
+      || candidate.saveScope !== saveScope
+      || candidate.dayKey !== dayKey
+      || candidate.planId !== String(storyteller?.plan?.planId || '')
+    ) {
+      showToast('事件不可用', '这项事件已过期或不属于当前聊天。', 'warn');
+      return false;
+    }
+    if (candidate.severity === 'major' && candidate.requiresConfirmation) {
+      return openStorytellerMajorConfirmation('accept');
+    }
+    return dispatchAcceptedStorytellerCandidate(candidate);
+  }
+
+  function updateWorldEngineManualRunButton(model) {
+    const button = document.getElementById("worldEngineManualRunBtn");
+    if (!button) return;
+    const jobBusy = ["generating", "validating"].includes(model?.runtime?.jobStatus);
+    const channelBusy = Boolean(getPrimaryModelChannelOwner() || getSecondaryModelChannelOwner());
+    const busy = jobBusy || channelBusy;
+    button.disabled = busy;
+    button.textContent = busy ? "正在推演…" : "手动推演本日走向";
+  }
+
+  function renderWorldEnginePhoneApp() {
+    const content = document.getElementById("worldEngineContent");
+    if (!content) return;
+    document.querySelectorAll("[data-world-engine-tab]").forEach((button) => {
+      const active = button.dataset.worldEngineTab === phoneWorldEngineActiveTab;
+      button.classList.toggle("is-active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    const model = getWorldEnginePhoneViewModel();
+    const renderers = {
+      today: renderWorldEngineToday,
+      pressures: renderWorldEnginePressures,
+      runtime: renderWorldEngineRuntime,
+      events: renderWorldEngineEvents
+    };
+    content.innerHTML = (renderers[phoneWorldEngineActiveTab] || renderers.today)(model);
+    updateWorldEngineManualRunButton(model);
   }
 
   function renderMusicLibrary() {
@@ -16765,6 +19227,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
       handleMapLocationCustomChoice(customText);
       return;
     }
+    if (isApartmentCompanionSessionActive() && isChoicePromptMode()) {
+      handleApartmentCompanionCustomChoice(customText);
+      return;
+    }
     showToast("当前不可用", "此处暂不支持自定义输入。", "warn");
   }
 
@@ -17362,6 +19828,15 @@ ${buildChoiceHardRules({ phase1: true })}`;
       && turn?.status === "generating"
     ) {
       markHarnessProduceTurn("completed_without_narrative", { completionReason: "debug_skip" }, owner.requestId);
+    }
+    if (
+      ["storyteller_event", "storyteller_event_recovery"].includes(owner.ownerKind)
+      && turn?.kind === "storyteller_event"
+      && turn?.turnId === owner.turnId
+      && turn?.requestId === owner.requestId
+      && turn?.status === "generating"
+    ) {
+      returnHarnessRecoveryAttemptToPending(owner.requestId, "debug_skip");
     }
     if (isSillyTavernHost()) {
       window.parent.postMessage({
@@ -18328,6 +20803,63 @@ ${buildChoiceHardRules({ phase1: true })}`;
     return html;
   }
 
+  function isCurrentSandboxFirstLiveReply(requestId) {
+    const turn = state.harness?.activeTurn;
+    return Boolean(
+      (turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live")
+      && turn.status === "generating"
+      && turn.requestId === requestId
+      && pendingAiRequestId === requestId
+      && isPrimaryModelLeaseCurrent(requestId, activeInboundPrimaryChannelLeaseId)
+    );
+  }
+
+  function handleSandboxFirstLiveReply(source, requestId, rawText, renderedText, text, isFinal, messageId) {
+    const narrative = extractSandboxFirstLiveNarrative(source);
+    if (!isFinal) {
+      state.lastStory = String(source || "");
+      const storyEl = document.getElementById("eventStory");
+      if (storyEl) storyEl.innerHTML = formatStoryText(state.lastStory);
+      setEventActionsEnabled(false, true);
+      sendAiReplyAck(requestId, true, false, false);
+      return true;
+    }
+    if (!narrative) {
+      pendingAiRequestId = "";
+      state.pendingAiRequestId = "";
+      state.sandbox.firstLiveChallenge.status = "recovery_required";
+      if (state.sandbox.firstLiveChallenge.activeAttempt) {
+        state.sandbox.firstLiveChallenge.activeAttempt.status = "recovery_required";
+      }
+      markHarnessSandboxFirstLiveTurn("recovery_required", {
+        requestId: "",
+        recoveryFailureReason: "invalid_reply"
+      }, requestId);
+      saveState("harness.sandbox_first_live_invalid_reply");
+      render();
+      openHarnessRecoveryOverlay(state.harness.activeTurn);
+      sendAiReplyAck(requestId, false, false);
+      return true;
+    }
+    const challenge = state.sandbox.firstLiveChallenge;
+    const attempt = challenge.activeAttempt;
+    state.lastStory = `${narrative.pre}\n\n${narrative.post}`;
+    state.lastPrompt = state.harness.activeTurn?.generationPrompt || state.lastPrompt;
+    if (state.log[0]) state.log[0].aiReply = state.lastStory;
+    state.activeStoryNode = null;
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    if (attempt) attempt.status = "completed";
+    challenge.status = attempt?.success ? "completed" : "cooldown";
+    markHarnessSandboxFirstLiveTurn("completed", {}, requestId);
+    requestChronicleUpdate(rawText, renderedText, text, messageId);
+    saveState("harness.sandbox_first_live_completed");
+    render();
+    openEventOverlay("校内舞台 · First Live", "演出叙事已完成", state.lastStory);
+    sendAiReplyAck(requestId, true, false);
+    return true;
+  }
+
   function isJunkReply(value) {
     const compact = String(value || "").replace(/\s+/g, "");
     return !compact || compact.length < 2 || /^[.…。·\-—_]+$/.test(compact) || /^正文$/.test(compact) || /^…正文…$/.test(compact);
@@ -18629,6 +21161,38 @@ ${buildChoiceHardRules({ phase1: true })}`;
       sendAiReplyAck(requestId, false, false);
       return;
     }
+    if (isCurrentStorytellerEventReply(requestId)) {
+      const replyCandidates = collectAiReplyCandidates(text, rawText, renderedText);
+      const source = selectAiReplySource(text, rawText, renderedText);
+      const reply = extractReplyText(replyCandidates);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      if (!isFinal) {
+        const storyEl = document.getElementById("eventStory");
+        if (storyEl && reply) storyEl.innerHTML = formatStoryText(reply);
+        setEventActionsEnabled(false, true);
+        sendAiReplyAck(requestId, true, false, false);
+        return;
+      }
+      if (!reply || reply.replace(/\s+/g, "").length < 12 || isJunkReply(reply)) {
+        if (returnHarnessRecoveryAttemptToPending(requestId, "invalid_reply")) {
+          pendingAiRequestId = "";
+          state.pendingAiRequestId = "";
+          saveState("harness.storyteller_event_invalid_reply");
+          render();
+          openHarnessRecoveryOverlay(state.harness.activeTurn);
+        }
+        sendAiReplyAck(requestId, false, false);
+        return;
+      }
+      commitStorytellerEventReply(requestId, reply, rawText, renderedText, text, messageId);
+      return;
+    }
+    if (isCurrentSandboxFirstLiveReply(requestId)) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleSandboxFirstLiveReply(source, requestId, rawText, renderedText, text, isFinal, messageId);
+      return;
+    }
     preparePendingDirectorDigestCandidate(acceptedRequest, requestId, rawText, renderedText, text, messageId);
     if (shouldRequestChronicleUpdate(acceptedRequest, isFinal)) {
       requestChronicleUpdate(rawText, renderedText, text, messageId);
@@ -18713,8 +21277,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
           sendAiReplyAck(requestId, true, false, false);
           return;
         }
-        if (completeScoutFromReplyAndBeginWrapUp(source, scoutStory)) {
-          sendAiReplyAck(requestId, true, false);
+        if (completeScoutFromReplyAndBeginWrapUp(source, scoutStory, requestId)) {
           return;
         }
       }
@@ -18800,6 +21363,9 @@ ${buildChoiceHardRules({ phase1: true })}`;
             state.lastDebug = `公寓聊天好感度已更新：${relationshipSummary}`;
           }
         }
+        if (state.pendingActionContext?.action === "map_location") {
+          markHarnessMapExploreTurn("completed", {}, requestId);
+        }
         saveState();
 
         const actionName = currentChoiceActionTitle();
@@ -18858,6 +21424,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
       state.choiceStep = 1;
       state.pendingOptionTexts = [];
       state.lastStory = reply || "选项生成不完整，请点击重新生成。";
+      if (state.pendingActionContext?.action === "map_location"
+        && returnHarnessRecoveryAttemptToPending(requestId, "incomplete_choice")) {
+        saveState("harness.map_incomplete_choice");
+        render();
+        openHarnessRecoveryOverlay(state.harness.activeTurn);
+        sendAiReplyAck(requestId, false, false);
+        return;
+      }
       saveState();
       render();
       openEventOverlay(currentChoiceActionTitle(), "选项生成不完整，请点击重新生成", state.lastStory);
@@ -19124,12 +21698,70 @@ ${buildChoiceHardRules({ phase1: true })}`;
     sendAiReplyAck(requestId, true, false);
   }
 
-  function sendAiReplyAck(requestId, accepted, retry, isFinal = true) {
+  function isCurrentStorytellerEventReply(requestId) {
+    const turn = state.harness?.activeTurn;
+    return Boolean(
+      turn
+      && turn.kind === "storyteller_event"
+      && turn.status === "generating"
+      && turn.requestId === requestId
+      && turn.sessionEpoch === runtimeSessionEpoch
+      && isHarnessTurnInActiveScope(turn, getHarnessRecoveryContext())
+      && isPrimaryModelLeaseCurrent(requestId, activeInboundPrimaryChannelLeaseId)
+    );
+  }
+
+  function commitStorytellerEventReply(requestId, reply, rawText, renderedText, text, messageId) {
+    const candidateSettlement = settleStorytellerEventForReply(requestId, true, false, true);
+    if (!candidateSettlement.resolved) {
+      sendAiReplyAck(requestId, false, false);
+      return false;
+    }
+    const observationResult = recordAcceptedFinalStorytellerObservation(requestId, candidateSettlement);
+    preparePendingDirectorDigestCandidate(true, requestId, rawText, renderedText, text, messageId);
+    requestChronicleUpdate(rawText, renderedText, text, messageId);
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    state.lastStory = reply;
+    saveState(observationResult.recorded ? "storyteller.event_resolved_observed" : "storyteller.event_resolved");
+    render();
+    renderPhoneHome();
+    renderWorldEnginePhoneApp();
+    openEventOverlay("初星世界事件", "事件叙事已完成", reply);
+    sendAiReplyAck(requestId, true, false, true, { preSettled: true });
+    return true;
+  }
+
+  function sendAiReplyAck(requestId, accepted, retry, isFinal = true, options) {
+    options = options && typeof options === "object" ? options : {};
     settlePendingDirectorDigestCandidate(requestId, accepted, retry, isFinal);
+    const candidateSettlement = options.preSettled
+      ? { resolved: false, reason: "pre_settled" }
+      : settleStorytellerCandidateForReply(requestId, accepted, retry, isFinal);
     if (isFinal && !retry) {
       releasePrimaryModelChannel(requestId, activeInboundPrimaryChannelLeaseId, accepted ? "accepted_final" : "rejected_final");
     }
     recordAiAckDebug(requestId, accepted, retry, isFinal);
+    let observationRecorded = false;
+    if (accepted && isFinal && !retry && !options.preSettled) {
+      const observationResult = recordAcceptedFinalStorytellerObservation(requestId, candidateSettlement);
+      observationRecorded = Boolean(observationResult.recorded);
+    }
+    if (candidateSettlement.resolved) {
+      saveState("storyteller.candidate_resolved");
+    } else if (observationRecorded) {
+      saveState("storyteller.observation");
+    }
+    const completedTurn = state.harness?.activeTurn;
+    if (
+      accepted
+      && isFinal
+      && !retry
+      && completedTurn?.kind === "map_explore"
+      && completedTurn.status === "completed"
+    ) {
+      scanStorytellerNotificationAtCheckpoint("map_complete", { locationId: completedTurn.locationId });
+    }
     if (!isSillyTavernHost() || !requestId) return;
     window.parent.postMessage({
       source: "hatsuboshi-produce",
@@ -19682,6 +22314,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
       render();
       return;
     }
+    if (button.dataset.action === "sandbox_first_live") {
+      confirmSandboxFirstLiveAttempt();
+      return;
+    }
     if (button.dataset.action === "bond") {
       const threshold = pendingAffinityActionThreshold();
       if (threshold) triggerAffinityStory(threshold);
@@ -19797,6 +22433,12 @@ ${buildChoiceHardRules({ phase1: true })}`;
   document.getElementById("harnessRecoveryAbandonBtn")?.addEventListener("click", abandonHarnessNarrativeRecovery);
   document.getElementById("harnessRecoveryOverlay")?.addEventListener("click", (event) => {
     if (event.target.id === "harnessRecoveryOverlay") closeHarnessRecoveryOverlay();
+  });
+  document.getElementById("storytellerMajorConfirmationCloseBtn")?.addEventListener("click", closeStorytellerMajorConfirmation);
+  document.getElementById("storytellerMajorConfirmationCancelBtn")?.addEventListener("click", closeStorytellerMajorConfirmation);
+  document.getElementById("storytellerMajorConfirmationConfirmBtn")?.addEventListener("click", confirmStorytellerMajorAction);
+  document.getElementById("storytellerMajorConfirmationOverlay")?.addEventListener("click", (event) => {
+    if (event.target.id === "storytellerMajorConfirmationOverlay") closeStorytellerMajorConfirmation();
   });
 
   // Galgame 播放器控制按钮事件绑定
@@ -20063,18 +22705,6 @@ ${buildChoiceHardRules({ phase1: true })}`;
   });
   document.getElementById("sideQuestOverlay")?.addEventListener("click", (event) => {
     if (event.target.id === "sideQuestOverlay") closeSideQuestOverlay();
-  });
-  document.getElementById("sideQuestApiSaveBtn")?.addEventListener("click", saveSideQuestApiPanel);
-  document.getElementById("sideQuestApiTestBtn")?.addEventListener("click", runSecondaryApiTest);
-  document.getElementById("sideQuestApiRegenBtn")?.addEventListener("click", forceSecondaryRegeneration);
-  document.getElementById("sideQuestApiPanel")?.addEventListener("toggle", (event) => {
-    if (!event.target.open) return;
-    const scrollBody = document.querySelector(".side-quest-body");
-    const saveBtn = document.getElementById("sideQuestApiSaveBtn");
-    if (!scrollBody || !saveBtn) return;
-    requestAnimationFrame(() => {
-      saveBtn.scrollIntoView({ block: "end", behavior: "smooth" });
-    });
   });
   document.getElementById("freeModeStatusBadge")?.addEventListener("click", openFreeModeTimeOverlay);
   document.getElementById("vnFreeModeClock")?.addEventListener("click", openFreeModeTimeOverlay);

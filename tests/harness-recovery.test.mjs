@@ -276,7 +276,7 @@ test("recovery prompt auto-opens once per page and can be forced open", () => {
 
 test("recovery prompt is scheduled only after the active host scope and render are ready", () => {
   const applyHost = readFunction(appSource, "applyHostCharacter");
-  const scopeIndex = applyHost.indexOf("activeHostSaveScope = String(saveScope || \"\")");
+  const scopeIndex = applyHost.indexOf("activeHostSaveScope = incomingScope");
   const renderIndex = applyHost.indexOf("render();", scopeIndex);
   const scheduleIndex = applyHost.indexOf("requestAnimationFrame(() => maybeShowHarnessRecoveryPrompt())");
   assert.ok(scopeIndex >= 0 && scopeIndex < renderIndex && renderIndex < scheduleIndex);

@@ -1,0 +1,48 @@
+<h2>选择游戏收放控制方式</h2>
+<p class="subtitle">下方模拟游戏全屏打开时的控制位置。控制器位于宿主页面顶层，不属于游戏 iframe，因此不会再被游戏页面盖住。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image" style="position:relative;height:260px;overflow:hidden;background:#eef1f4">
+      <div style="position:absolute;inset:0;background:#18222d;color:#e8edf2;padding:18px">
+        <div style="font-size:12px;opacity:.65">初星学园 · 游戏界面</div>
+        <div style="margin-top:70px;text-align:center;font-size:18px">当前游戏内容保持原位</div>
+      </div>
+      <div style="position:absolute;right:14px;top:103px;width:46px;height:46px;border-radius:50%;background:#f7c948;color:#20262d;display:flex;align-items:center;justify-content:center;font-size:21px;box-shadow:0 4px 15px #0006">−</div>
+    </div>
+    <div class="card-body">
+      <h3>A. 右侧常驻圆球（推荐）</h3>
+      <p>始终显示在屏幕右侧中部。点一下收起游戏，再点一下展开；结构最简单，触屏也最可靠。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image" style="position:relative;height:260px;overflow:hidden;background:#eef1f4">
+      <div style="position:absolute;inset:0;background:#18222d;color:#e8edf2;padding:18px">
+        <div style="font-size:12px;opacity:.65">初星学园 · 游戏界面</div>
+        <div style="margin-top:70px;text-align:center;font-size:18px">当前游戏内容保持原位</div>
+      </div>
+      <div style="position:absolute;right:0;top:88px;width:28px;height:76px;border-radius:8px 0 0 8px;background:#f7c948;color:#20262d;display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:0 4px 15px #0006">‹</div>
+    </div>
+    <div class="card-body">
+      <h3>B. 右侧边缘标签</h3>
+      <p>占用面积更小，像抽屉把手。对游戏遮挡最少，但第一次使用时不如圆球直观。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image" style="position:relative;height:260px;overflow:hidden;background:#eef1f4">
+      <div style="position:absolute;inset:0;background:#18222d;color:#e8edf2;padding:18px">
+        <div style="font-size:12px;opacity:.65">初星学园 · 游戏界面</div>
+        <div style="margin-top:70px;text-align:center;font-size:18px">当前游戏内容保持原位</div>
+      </div>
+      <div style="position:absolute;right:58px;bottom:36px;width:46px;height:46px;border-radius:50%;background:#f7c948;color:#20262d;display:flex;align-items:center;justify-content:center;font-size:21px;box-shadow:0 4px 15px #0006">↕</div>
+    </div>
+    <div class="card-body">
+      <h3>C. 可拖动圆球</h3>
+      <p>可拖到任意位置，灵活但会增加拖拽、点击判定、位置记忆和手机手势冲突。</p>
+    </div>
+  </div>
+</div>
+
+<p style="margin-top:20px;color:#697386">建议先做 A。后续确有遮挡需求，再把拖动作为独立增强，不与本次可靠性修复捆绑。</p>

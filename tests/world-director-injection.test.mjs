@@ -129,6 +129,28 @@ test("disabled or stale-day direction produces no private narrative block", () =
   assert.equal(api.composeDirectorNarrativeBlock(directorState(), context({ currentDayKey: "day-3" })), "");
 });
 
+test("styled direction injects separate active long-term threads and omits dormant threads", () => {
+  const api = loadInjection();
+  const director = directorState();
+  director.dailyDirection.styleMixRevision = 3;
+  director.dailyDirection.styleThreads = {
+    heroic: {
+      status: "active", weight: 60, focusPressureIds: ["p-focus"],
+      dramaticQuestion: "她能否找到新的训练方法？", narrativeGoals: ["检验当前方法的极限"], dormantReason: ""
+    },
+    romance: {
+      status: "dormant", weight: 40, focusPressureIds: [],
+      dramaticQuestion: "", narrativeGoals: [], dormantReason: "当前没有合法关系素材"
+    },
+    kaibunsho: null
+  };
+  const block = api.composeDirectorNarrativeBlock(director, context({ maxChars: 1200 }));
+  assert.match(block, /王道长期问题/);
+  assert.match(block, /她能否找到新的训练方法/);
+  assert.doesNotMatch(block, /恋爱长期问题/);
+  assert.doesNotMatch(block, /当前没有合法关系素材/);
+});
+
 test("evidence contract requests bounded structured facts without authorizing state changes", () => {
   const contract = loadInjection().composeDirectorEvidenceContract();
   assert.match(contract, /<director_event>/);
@@ -139,15 +161,15 @@ test("evidence contract requests bounded structured facts without authorizing st
   assert.match(contract, /不代表状态修改/);
 });
 
-test("only the three approved prompt builders receive one director addendum", () => {
-  for (const name of ["buildPrompt", "buildFreeChatPrompt", "buildIdolInteractionPrompt"]) {
+test("only the approved prompt builders receive one director addendum", () => {
+  for (const name of ["buildPrompt", "buildFreeChatPrompt", "buildIdolInteractionPrompt", "buildMapLocationExplorePrompt"]) {
     const start = appSource.indexOf(`function ${name}(`);
     assert.notEqual(start, -1);
     const end = appSource.indexOf("\n  function ", start + 1);
     const source = appSource.slice(start, end);
     assert.equal((source.match(/composeWorldDirectorPromptAddendum\(/g) || []).length, 1, `${name} should append once`);
   }
-  for (const name of ["buildPhoneChatPrompt", "buildMapLocationExplorePrompt", "buildFirstLivePrePrompt", "buildBroadcastPrompt"]) {
+  for (const name of ["buildPhoneChatPrompt", "buildFirstLivePrePrompt", "buildBroadcastPrompt"]) {
     const start = appSource.indexOf(`function ${name}(`);
     if (start < 0) continue;
     const end = appSource.indexOf("\n  function ", start + 1);
@@ -177,9 +199,15 @@ test("approved builders execute against frozen state and append the director con
     composeWorldDirectorPromptAddendum: () => {
       addendumCalls += 1;
       return "[DIRECTOR ADDENDUM]";
+    },
+    globalThis: {
+      HatsuWorldStorytellerInjection: {
+        composeStorytellerIncidentPromptAddendum: () => "[STORYTELLER]",
+        composeNarrativeAuthorityContract: () => "[AUTHORITY]"
+      }
     }
   };
-  sandbox.globalThis = sandbox;
+  Object.assign(sandbox.globalThis, sandbox);
   const buildPrompt = vm.runInNewContext(`(${readFunction(appSource, "buildPrompt")})`, sandbox);
   const buildFreeChatPrompt = vm.runInNewContext(`(${readFunction(appSource, "buildFreeChatPrompt")})`, sandbox);
   const buildIdolInteractionPrompt = vm.runInNewContext(`(${readFunction(appSource, "buildIdolInteractionPrompt")})`, sandbox);
@@ -191,6 +219,10 @@ test("approved builders execute against frozen state and append the director con
   assert.equal(addendumCalls, 3);
   for (const prompt of prompts) assert.equal((prompt.match(/\[DIRECTOR ADDENDUM\]/g) || []).length, 1);
   assert.match(prompts[0], /\[PUBLIC WORLD\]/);
+  assert.ok(prompts[0].indexOf("缁撶畻瀹屾垚") < prompts[0].indexOf("[DIRECTOR ADDENDUM]"));
+  assert.ok(prompts[0].indexOf("[DIRECTOR ADDENDUM]") < prompts[0].indexOf("[STORYTELLER]"));
+  assert.ok(prompts[0].indexOf("[STORYTELLER]") < prompts[0].indexOf("[AUTHORITY]"));
+  assert.ok(prompts[0].indexOf("[AUTHORITY]") < prompts[0].indexOf("[OUTPUT]"));
   assert.equal(state.day, 2);
 });
 test("director injection module loads before app in direct and ST loaders", () => {

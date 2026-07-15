@@ -560,7 +560,15 @@
       "world/director-state.js",
       "world/director-api.js",
       "world/director-injection.js",
+      "world/director-phone-view.js",
       "world/secondary-channel-owner.js",
+      "world/storyteller/styles.js",
+      "world/storyteller/observations.js",
+      "world/storyteller/plan.js",
+      "world/storyteller/incidents.js",
+      "world/storyteller/notifications.js",
+      "world/storyteller/injection.js",
+      "world/storyteller/phone-view.js",
       "broadcast/prompts.js",
       "tasks/side-pool.js",
       "tasks/side-quest-api.js",
@@ -854,6 +862,7 @@
     const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer']);
     const SHUJUKU_PLANNING_TIMEOUT_MS = 120000;
     const SHUJUKU_ASSISTANT_TIMEOUT_MS = 120000;
+    const SECONDARY_DIRECTOR_FETCH_TIMEOUT_MS = 180000;
     const HOST_EMPTY_FINAL_MAX_RETRIES = 2;
 
     function createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope) {
@@ -2153,6 +2162,20 @@
     }
 
     async function runSecondaryApiPrompt(envelope) {
+    function classifySecondaryApiCompletion(json) {
+      const choice = json?.choices?.[0];
+      const text = String(choice?.message?.content || '').trim();
+      const finishReason = String(choice?.finish_reason || '');
+      if (finishReason === 'length') {
+        return { text, ok: false, error: 'output_truncated', finishReason };
+      }
+      return {
+        text,
+        ok: Boolean(text),
+        error: text ? '' : 'empty_response',
+        finishReason
+      };
+    }
       if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
       const prompt = String(envelope.prompt || '').trim();
       const apiConfig = envelope.apiConfig || {};
@@ -2166,11 +2189,22 @@
         return;
       }
       const url = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+      const isDirectorRequest = envelope.kind === 'director';
+      const abortController = isDirectorRequest ? new AbortController() : null;
+      let fetchTimeoutId = 0;
+      let fetchTimedOut = false;
+      if (abortController) {
+        fetchTimeoutId = setTimeout(() => {
+          fetchTimedOut = true;
+          abortController.abort();
+        }, SECONDARY_DIRECTOR_FETCH_TIMEOUT_MS);
+      }
       try {
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature, max_tokens: maxTokens })
+          body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature, max_tokens: maxTokens }),
+          ...(abortController ? { signal: abortController.signal } : {})
         });
         if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
         if (!res.ok) {
@@ -2179,11 +2213,16 @@
         }
         const json = await res.json();
         if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
-        const text = String(json?.choices?.[0]?.message?.content || '').trim();
-        postSecondaryReply(envelope, text, { ok: Boolean(text), error: text ? '' : 'empty_response' });
+        const completion = classifySecondaryApiCompletion(json);
+        postSecondaryReply(envelope, completion.text, completion);
       } catch (error) {
         if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
-        postSecondaryReply(envelope, '', { ok: false, error: String(error?.message || error) });
+        postSecondaryReply(envelope, '', {
+          ok: false,
+          error: fetchTimedOut ? 'director_timeout' : String(error?.message || error)
+        });
+      } finally {
+        if (fetchTimeoutId) clearTimeout(fetchTimeoutId);
       }
     }
     async function runTransactionalViaTavernHelper(tavernHelper, promptText, reqId) {

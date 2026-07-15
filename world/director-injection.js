@@ -82,12 +82,31 @@
     return `- ${actors}｜${pressure.stage}｜强度 ${pressure.intensity}｜叙事需要：${pressure.dramaticNeed}${escalation}${relief}`;
   }
 
+  function formatStyleThread(label, value) {
+    if (!value || value.status !== "active") return [];
+    const question = cleanText(value.dramaticQuestion, 240);
+    const goals = Array.isArray(value.narrativeGoals)
+      ? value.narrativeGoals.map((item) => cleanText(item, 180)).filter(Boolean).slice(0, 6)
+      : [];
+    return [
+      question ? `${label}长期问题：${question}` : "",
+      goals.length ? `${label}可追求：${goals.join("；")}` : ""
+    ].filter(Boolean);
+  }
+
   function composeDirectorNarrativeBlock(director, options = {}) {
     const context = normalizeContext(options);
     const direction = director?.dailyDirection;
     if (!director?.enabled || !direction || direction.dayKey !== context.currentDayKey) return "";
     const pressures = selectRelevantPressures(director, context);
+    const threads = direction.styleThreads && typeof direction.styleThreads === "object"
+      ? direction.styleThreads
+      : null;
+    const styleLines = threads
+      ? [...formatStyleThread("王道", threads.heroic), ...formatStyleThread("恋爱", threads.romance)]
+      : [];
     const lines = [
+      ...styleLines,
       "[世界导演私密叙事参考]",
       `今日叙事方向（是语气与关注点，不是既定剧本）：${cleanText(direction.tone, 120)}；${cleanText(direction.summary, 320)}`,
       direction.narrativeGoals?.length ? `可追求：${direction.narrativeGoals.map((item) => cleanText(item, 180)).filter(Boolean).join("；")}` : "",

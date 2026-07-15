@@ -129,7 +129,8 @@ test("recovery acquires a new lease before changing the active turn", () => {
   const activeTurnWriteIndex = recovery.indexOf("state.harness.activeTurn = {");
 
   assert.ok(acquireIndex >= 0 && acquireIndex < activeTurnWriteIndex);
-  assert.match(recovery, /ownerKind:\s*"ordinary_recovery"/);
+  assert.match(recovery, /turn\.kind === "map_explore"[\s\S]*"map_recovery"[\s\S]*turn\.kind === "storyteller_event"[\s\S]*"storyteller_event_recovery"[\s\S]*"ordinary_recovery"/);
+  assert.match(recovery, /ownerKind:\s*recoveryOwnerKind/);
   assert.match(recovery, /turnId:\s*turn\.turnId/);
   assert.match(recovery, /requestHostPromptSend\(prompt, requestId,\s*\{[\s\S]*channelLeaseId/);
   assert.match(readFunction(appSource, "hasConflictingHarnessRecoveryFlow"), /getPrimaryModelChannelOwner/);

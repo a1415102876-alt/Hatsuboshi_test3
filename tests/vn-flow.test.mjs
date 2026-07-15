@@ -588,3 +588,33 @@ test("choice prompt regeneration creates a fresh request id", () => {
   assert.match(fn, /isChoicePromptMode\(\)\s*\?\s*createRequestId\(\)/);
   assert.doesNotMatch(fn, /const requestId = state\.lastRequestId \|\| createRequestId\(\);/);
 });
+test("sandbox scout releases the accepted request before starting wrap-up generation", () => {
+  const calls = [];
+  const context = {
+    state: {
+      lastStory: "",
+      pendingActionContext: { actionContext: { locationId: "campus" } }
+    },
+    globalThis: {
+      HatsuTasks: {
+        getScoutQuestId: () => "scout_temari",
+        applyQuestCompletionsFromReply: () => ["scout_temari"]
+      }
+    },
+    scoutCompletionPendingInReply: () => true,
+    notifyQuestCompletions() {},
+    refreshWorldPresenceFromRules() {},
+    sendAiReplyAck: (...args) => calls.push(["ack", ...args]),
+    beginSandboxScoutWrapUp: () => calls.push(["wrap-up"])
+  };
+  vm.runInNewContext(
+    `${readFunction("completeScoutFromReplyAndBeginWrapUp")}; this.completeScout = completeScoutFromReplyAndBeginWrapUp;`,
+    context
+  );
+
+  assert.equal(context.completeScout("reply", "signed story", "request-scout"), true);
+  assert.deepEqual(calls, [
+    ["ack", "request-scout", true, false],
+    ["wrap-up"]
+  ]);
+});

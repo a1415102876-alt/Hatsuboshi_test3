@@ -1,0 +1,118 @@
+<style>
+  .engine-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px; align-items:start; }
+  .engine-card { cursor:pointer; }
+  .phone { width:100%; max-width:260px; aspect-ratio:9/18.4; margin:0 auto; background:#11141b; border:7px solid #242832; border-radius:30px; overflow:hidden; box-shadow:0 18px 40px rgba(0,0,0,.22); color:#20242b; }
+  .screen { height:100%; display:flex; flex-direction:column; background:#f4f6f8; }
+  .status { height:22px; padding:7px 14px 0; display:flex; justify-content:space-between; color:#2c3138; font:600 9px/1 system-ui; }
+  .app-head { padding:13px 15px 12px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid rgba(30,35,44,.1); }
+  .app-title { display:flex; gap:9px; align-items:center; }
+  .app-mark { width:29px; height:29px; display:grid; place-items:center; background:#1d6674; color:#fff; border-radius:8px; font:700 15px/1 system-ui; }
+  .app-title strong { display:block; font:700 13px/1.15 system-ui; }
+  .app-title small { display:block; margin-top:3px; color:#69717d; font:500 8px/1 system-ui; }
+  .live-dot { width:8px; height:8px; border-radius:50%; background:#3fa36c; box-shadow:0 0 0 4px rgba(63,163,108,.15); }
+  .phone-body { flex:1; padding:13px 14px; overflow:hidden; }
+  .eyebrow { color:#66707b; font:700 8px/1 system-ui; text-transform:uppercase; }
+  .direction { margin:8px 0 12px; padding-left:10px; border-left:3px solid #d85665; }
+  .direction h4 { margin:0 0 5px; font:700 17px/1.18 system-ui; letter-spacing:0; }
+  .direction p { margin:0; color:#59616c; font:500 9px/1.5 system-ui; }
+  .mini-section { margin-top:12px; }
+  .section-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; font:700 9px/1 system-ui; }
+  .pressure { padding:9px 0; border-top:1px solid rgba(30,35,44,.1); }
+  .pressure:first-of-type { border-top:0; }
+  .pressure-top { display:flex; justify-content:space-between; gap:8px; font:700 9px/1.2 system-ui; }
+  .pressure p { margin:5px 0 7px; color:#69717d; font:500 8px/1.4 system-ui; }
+  .meter { height:5px; background:#dde2e7; border-radius:3px; overflow:hidden; }
+  .meter span { display:block; height:100%; width:35%; background:#d85665; }
+  .tabs { display:grid; grid-template-columns:repeat(3,1fr); margin:0 12px 10px; border-top:1px solid rgba(30,35,44,.1); }
+  .tabs span { padding-top:9px; text-align:center; color:#747c87; font:700 7px/1 system-ui; }
+  .tabs .active { color:#1d6674; }
+  .ledger { display:grid; grid-template-columns:1fr auto; gap:8px 10px; padding:10px 0; border-bottom:1px solid rgba(30,35,44,.1); font:600 8px/1.25 system-ui; }
+  .ledger span:nth-child(odd) { color:#69717d; }
+  .ok { color:#29855a; }
+  .raw { background:#171b22; color:#cbd6dc; }
+  .raw .status, .raw .app-head { color:#e9eff2; border-color:rgba(255,255,255,.1); }
+  .raw .app-title small, .raw .eyebrow { color:#8d9ba3; }
+  .terminal { padding:12px 13px; font:500 7px/1.55 ui-monospace,Consolas,monospace; white-space:pre-wrap; color:#a8d6c3; }
+  .terminal b { color:#f3bd69; font-weight:600; }
+  .choice-copy { padding:14px 4px 2px; }
+  .choice-copy h3 { margin:0 0 6px; font-size:16px; }
+  .choice-copy p { margin:0; color:var(--muted-foreground); }
+  .recommended { color:#29855a; font-weight:600; }
+  @media (max-width:850px){ .engine-options{grid-template-columns:1fr;} .phone{max-width:270px;} }
+</style>
+
+<h2>“初星世界引擎”应用应该更像什么？</h2>
+<p class="subtitle">三种方案都读取同一份 Director 状态，只改变信息层级和玩家感受。</p>
+
+<div class="engine-options cards">
+  <div class="card engine-card" data-choice="player" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone"><div class="screen">
+        <div class="status"><span>9:41</span><span>5G · 86%</span></div>
+        <div class="app-head"><div class="app-title"><span class="app-mark">星</span><span><strong>初星世界引擎</strong><small>WORLD PULSE</small></span></div><span class="live-dot"></span></div>
+        <div class="phone-body">
+          <div class="eyebrow">今日叙事方向 · 学园第 2 天</div>
+          <div class="direction"><h4>克制而温暖</h4><p>让训练中的承诺获得一次自然、可观察的回应。</p></div>
+          <div class="mini-section"><div class="section-head"><span>正在酝酿</span><span>2 条</span></div>
+            <div class="pressure"><div class="pressure-top"><span>琴音 · 信任确认</span><span>潜伏</span></div><p>她在确认制作人的承诺是否可靠。</p><div class="meter"><span></span></div></div>
+            <div class="pressure"><div class="pressure-top"><span>学园 · 舆论余波</span><span>萌芽</span></div><p>公开广播正在改变学生对担当的关注。</p><div class="meter"><span style="width:24%;background:#1d6674"></span></div></div>
+          </div>
+        </div>
+        <div class="tabs"><span class="active">今日</span><span>压力线</span><span>历史</span></div>
+      </div></div>
+    </div>
+    <div class="choice-copy"><h3>A · 玩家视角</h3><p>只显示可读的方向和压力，不出现 revision、requestId 或错误原因。</p></div>
+  </div>
+
+  <div class="card engine-card" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone"><div class="screen">
+        <div class="status"><span>9:41</span><span>5G · 86%</span></div>
+        <div class="app-head"><div class="app-title"><span class="app-mark">星</span><span><strong>初星世界引擎</strong><small>DIRECTOR CONSOLE</small></span></div><span class="live-dot"></span></div>
+        <div class="phone-body">
+          <div class="eyebrow">今日方向</div>
+          <div class="direction"><h4>克制而温暖</h4><p>推进承诺，但避免替玩家决定。</p></div>
+          <div class="mini-section"><div class="section-head"><span>运行记录</span><span class="ok">已提交</span></div>
+            <div class="ledger"><span>当前日期</span><strong>day-2</strong><span>Director revision</span><strong>3</strong><span>Chronicle revision</span><strong>7</strong><span>有效压力</span><strong>2</strong><span>最近生成</span><strong class="ok">committed</strong><span>待处理证据</span><strong>1</strong></div>
+          </div>
+          <div class="mini-section"><div class="section-head"><span>最近结果</span><span>01:02</span></div><p style="margin:0;color:#69717d;font:500 8px/1.5 system-ui">日切生成完成。方向与 2 条压力已通过本地校验，下一次普通行动可注入。</p></div>
+        </div>
+        <div class="tabs"><span>今日</span><span>压力线</span><span class="active">运行</span></div>
+      </div></div>
+    </div>
+    <div class="choice-copy"><h3>B · 双层档案 <span class="recommended">推荐</span></h3><p>默认给玩家看叙事结果，单独“运行”页提供状态、revision 和失败原因。</p></div>
+  </div>
+
+  <div class="card engine-card" data-choice="developer" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="phone"><div class="screen raw">
+        <div class="status"><span>9:41</span><span>TRACE · LIVE</span></div>
+        <div class="app-head"><div class="app-title"><span class="app-mark">&gt;_</span><span><strong>World Engine</strong><small>RAW INSPECTOR</small></span></div><span class="live-dot"></span></div>
+        <div class="terminal"><b>DIRECTOR_STATE</b>
+enabled: true
+dirty: false
+status: committed
+directorRevision: 3
+chronicleRevision: 7
+
+<b>DAILY_DIRECTION</b>
+dayKey: day-2
+tone: 克制而温暖
+focusActorIds:
+  - idol:藤田琴音
+
+<b>PRESSURE[0]</b>
+type: relationship
+theme: trust
+stage: latent
+intensity: 35
+sourceRefs: 2
+
+<b>LAST_RECEIPT</b>
+trigger: day_change
+status: committed</div>
+      </div></div>
+    </div>
+    <div class="choice-copy"><h3>C · 调试终端</h3><p>高密度展示结构化字段，最适合开发验收，但会破坏手机应用的世界观感。</p></div>
+  </div>
+</div>

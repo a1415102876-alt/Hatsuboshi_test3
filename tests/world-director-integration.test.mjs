@@ -63,6 +63,8 @@ function makeSandbox(overrides = {}) {
     Math,
     setTimeout,
     clearTimeout,
+    clone: (value) => JSON.parse(JSON.stringify(value)),
+    DIRECTOR_MODEL_CHANNEL_TIMEOUT_MS: 210000,
     window: { setTimeout, clearTimeout, confirm: () => true },
     state: makeState(),
     activeHostSaveScope: "scope-a",
@@ -86,11 +88,12 @@ function makeSandbox(overrides = {}) {
       sandbox.secondaryChannelMeta = { ...meta };
       return { ok: true, owner };
     },
-    releaseSecondaryModelChannel(jobId, requestId, saveScope) {
+    releaseSecondaryModelChannel(jobId, requestId, saveScope, reason) {
       if (!sandbox.secondaryChannelOwner
         || sandbox.secondaryChannelOwner.jobId !== jobId
         || sandbox.secondaryChannelOwner.requestId !== requestId
         || sandbox.secondaryChannelOwner.saveScope !== saveScope) return false;
+      sandbox.lastReleaseReason = reason;
       sandbox.secondaryChannelOwner = null;
       sandbox.secondaryChannelMeta = null;
       events.push("release:director");
@@ -112,6 +115,7 @@ function makeSandbox(overrides = {}) {
     }),
     saveState(reason) { events.push(`save:${reason || "default"}`); },
     renderSecondaryApiDebug() { events.push("render-debug"); },
+    renderWorldEnginePhoneApp() { events.push("render-phone"); },
     showToast() { events.push("toast"); },
     pushSecondaryDebug() { return null; },
     ...overrides
@@ -130,8 +134,10 @@ const orchestrationFunctions = [
   "maybeRequestWorldDirector",
   "finishWorldDirectorAttempt",
   "resumeWorldDirectorAfterRelease",
+  "describeWorldDirectorIdentityMismatch",
   "handleWorldDirectorReply",
-  "requestManualWorldDirectorRecalculation"
+  "requestManualWorldDirectorRecalculation",
+  "reconcileWorldDirectorAttempt"
 ];
 
 test("day-change and manual preparation create bounded jobs while scene commits do not", () => {
@@ -160,6 +166,23 @@ test("same-day automatic preparation cannot replace a committed direction but ma
   assert.equal(sandbox.prepareWorldDirectorJob("manual", { persist: false }).trigger, "manual");
 });
 
+test("Director job preparation freezes style mode mix and revision", () => {
+  const sandbox = makeSandbox();
+  installFunctions(sandbox, orchestrationFunctions.slice(0, 3));
+  sandbox.state.freeMode.world.storyteller = {
+    styleConfig: {
+      activeMix: { heroic: 30, romance: 70, kaibunsho: 0 },
+      pendingMix: { heroic: 60, romance: 40, kaibunsho: 0 },
+      styleMixRevision: 5,
+      legacyUntilDayChange: false
+    }
+  };
+  const prepared = normalize(sandbox.prepareWorldDirectorJob("manual", { persist: false }));
+  assert.equal(prepared.styleMode, "styled");
+  assert.deepEqual(prepared.styleMix, { heroic: 30, romance: 70, kaibunsho: 0 });
+  assert.equal(prepared.styleMixRevision, 5);
+});
+
 test("busy secondary channel leaves a prepared director job and UI/state untouched", () => {
   const sandbox = makeSandbox();
   installFunctions(sandbox, orchestrationFunctions.slice(0, 4));
@@ -182,6 +205,30 @@ test("a prepared job rebases to new digest revision before acquiring the seconda
   assert.equal(job.baseChronicleRevision, 1);
   assert.equal(job.status, "generating");
 });
+test("secondary API config reads cannot detach the Director updated after ownership acquire", () => {
+  const sandbox = makeSandbox();
+  sandbox.state.tasks = {
+    secondaryApi: { enabled: true, baseUrl: "https://example.test", model: "model-a" }
+  };
+  sandbox.readSecondaryApiKeyStorage = () => "";
+  sandbox.ensureStateShape = () => {
+    const current = sandbox.state.freeMode.world.director;
+    sandbox.state.freeMode.world.director = sandbox.HatsuWorld.directorState.ensureDirectorShape(
+      current,
+      { recoverInterrupted: false }
+    );
+  };
+  installFunctions(sandbox, [
+    "getSecondaryApiConfig",
+    "isSecondaryApiConfigured",
+    ...orchestrationFunctions.slice(0, 4)
+  ]);
+  sandbox.prepareWorldDirectorJob("day_change", { persist: false });
+
+  assert.equal(sandbox.maybeRequestWorldDirector(), true);
+  assert.equal(sandbox.state.freeMode.world.director.activeJob.status, "generating");
+  assert.equal(sandbox.state.freeMode.world.director.activeJob.requestId, "director-request-1");
+});
 test("director request acquires before prompt assembly and persists generating identity", () => {
   const sandbox = makeSandbox();
   installFunctions(sandbox, orchestrationFunctions.slice(0, 4));
@@ -194,6 +241,8 @@ test("director request acquires before prompt assembly and persists generating i
   assert.equal(sandbox.maybeRequestWorldDirector(), true);
   assert.equal(sandbox.state.freeMode.world.director.activeJob.status, "generating");
   assert.equal(sandbox.state.freeMode.world.director.activeJob.requestId, "director-request-1");
+  assert.equal(sandbox.secondaryChannelMeta.runtimeStateRef, sandbox.state);
+  assert.equal(sandbox.secondaryChannelMeta.runtimeDirectorRef, sandbox.state.freeMode.world.director);
   assert.deepEqual(sandbox.events.slice(0, 3), ["acquire:director", "save:director.generating", "send:director"]);
 });
 
@@ -223,6 +272,7 @@ test("a valid director reply commits atomically and releases the exact owner", (
   assert.equal(director.dirty, false);
   assert.equal(director.activeJob.status, "committed");
   assert.equal(sandbox.secondaryChannelOwner, null);
+  assert.ok(sandbox.events.includes("render-phone"));
 });
 test("prompt assembly exceptions release the exact owner and remain retryable", () => {
   const sandbox = makeSandbox();
@@ -234,11 +284,12 @@ test("prompt assembly exceptions release the exact owner and remain retryable", 
   assert.equal(sandbox.maybeRequestWorldDirector(), false);
   assert.equal(sandbox.secondaryChannelOwner, null);
   assert.equal(sandbox.state.freeMode.world.director.activeJob.status, "retryable_failed");
+  assert.ok(sandbox.events.includes("render-phone"));
   assert.equal(sandbox.state.freeMode.world.director.activeJob.reason, "prompt_build_failed");
 });
 test("API and parse failures are retryable and preserve committed direction and pressures", () => {
   const sandbox = makeSandbox();
-  installFunctions(sandbox, orchestrationFunctions.slice(0, 7));
+  installFunctions(sandbox, orchestrationFunctions.slice(0, 8));
   const director = sandbox.state.freeMode.world.director;
   director.dailyDirection = { dayKey: "day-1", tone: "old", summary: "old", focusActorIds: [], focusPressureIds: [], narrativeGoals: [], avoid: [] };
   director.pressures = [{ id: "p1", type: "relationship", theme: "trust", actorId: "idol:藤田琴音", targetIds: ["producer"], scopeKey: "global" }];
@@ -258,7 +309,7 @@ test("API and parse failures are retryable and preserve committed direction and 
 
 test("old scope request and stale revision cannot commit", () => {
   const sandbox = makeSandbox();
-  installFunctions(sandbox, orchestrationFunctions.slice(0, 7));
+  installFunctions(sandbox, orchestrationFunctions.slice(0, 8));
   sandbox.prepareWorldDirectorJob("day_change", { persist: false });
   sandbox.maybeRequestWorldDirector();
   const owner = { ...sandbox.secondaryChannelOwner };
@@ -277,7 +328,7 @@ test("old scope request and stale revision cannot commit", () => {
   assert.equal(sandbox.state.freeMode.world.director.activeJob.reason, "stale_revision");
 });
 
-test("an old director reply releases its owner and starts the newer prepared day job", () => {
+test("an old director reply releases its owner without automatically starting the newer job", () => {
   const sandbox = makeSandbox();
   installFunctions(sandbox, orchestrationFunctions);
   sandbox.prepareWorldDirectorJob("day_change", { persist: false });
@@ -285,11 +336,92 @@ test("an old director reply releases its owner and starts the newer prepared day
   const oldOwner = { ...sandbox.secondaryChannelOwner };
   sandbox.getWorldFeedDayKey = () => "day-3";
   sandbox.prepareWorldDirectorJob("day_change", { dayKey: "day-3", persist: false });
+  sandbox.events.length = 0;
   assert.equal(sandbox.handleWorldDirectorReply({ ...oldOwner, ok: true, text: "old" }, oldOwner), false);
-  assert.equal(sandbox.secondaryChannelOwner.kind, "director");
-  assert.notEqual(sandbox.secondaryChannelOwner.jobId, oldOwner.jobId);
+  assert.equal(sandbox.secondaryChannelOwner, null);
   assert.equal(sandbox.state.freeMode.world.director.activeJob.dayKey, "day-3");
-  assert.equal(sandbox.state.freeMode.world.director.activeJob.status, "generating");
+  assert.equal(sandbox.state.freeMode.world.director.activeJob.status, "prepared");
+  assert.equal(sandbox.events.some((event) => event.startsWith("send:")), false);
+});
+
+test("a job mismatch with no matching owner becomes retryable without resending", () => {
+  const sandbox = makeSandbox();
+  installFunctions(sandbox, orchestrationFunctions);
+  sandbox.prepareWorldDirectorJob("day_change", { persist: false });
+  sandbox.maybeRequestWorldDirector();
+  const owner = { ...sandbox.secondaryChannelOwner };
+  const director = sandbox.state.freeMode.world.director;
+  director.dailyDirection = {
+    dayKey: "day-1", tone: "old", summary: "keep",
+    focusActorIds: [], focusPressureIds: [], narrativeGoals: [], avoid: []
+  };
+  director.pressures = [{ id: "pressure-1", theme: "keep" }];
+  director.activeJob = { ...director.activeJob, requestId: "", status: "generating" };
+  const beforeDirection = normalize(director.dailyDirection);
+  const beforePressures = normalize(director.pressures);
+  sandbox.events.length = 0;
+
+  assert.equal(sandbox.handleWorldDirectorReply({ ...owner, ok: true, text: "old" }, owner), false);
+  assert.equal(sandbox.secondaryChannelOwner, null);
+  assert.equal(director.activeJob.status, "retryable_failed");
+  assert.equal(director.activeJob.requestId, "");
+  assert.equal(sandbox.lastReleaseReason, "director_job_mismatch:request_id:generating:1:active_job_replaced");
+  assert.equal(director.activeJob.reason, "director_job_mismatch");
+  assert.equal(director.dirty, true);
+  assert.deepEqual(normalize(director.dailyDirection), beforeDirection);
+  assert.deepEqual(normalize(director.pressures), beforePressures);
+  assert.equal(sandbox.events.some((event) => event.startsWith("send:")), false);
+});
+
+test("Director mismatch diagnostics identify the changed identity without exposing values", () => {
+  const sandbox = makeSandbox();
+  installFunctions(sandbox, ["describeWorldDirectorIdentityMismatch"]);
+  const owner = {
+    jobId: "director-job-secret",
+    requestId: "director-request-secret",
+    saveScope: "scope-secret",
+    kind: "director"
+  };
+
+  assert.equal(sandbox.describeWorldDirectorIdentityMismatch(null, owner), "director_job_mismatch:missing_job");
+  assert.equal(sandbox.describeWorldDirectorIdentityMismatch({
+    ...owner, jobId: "other-job-secret", status: "prepared", attempts: 0
+  }, owner), "director_job_mismatch:job_id:prepared:0");
+  assert.equal(sandbox.describeWorldDirectorIdentityMismatch({
+    ...owner, requestId: "other-request-secret", status: "generating", attempts: 1
+  }, owner), "director_job_mismatch:request_id:generating:1");
+  assert.equal(sandbox.describeWorldDirectorIdentityMismatch({
+    ...owner, saveScope: "other-scope-secret", status: "validating", attempts: 2
+  }, owner), "director_job_mismatch:save_scope:validating:2");
+
+  const diagnostic = sandbox.describeWorldDirectorIdentityMismatch({
+    ...owner, jobId: "other-job-secret", status: "prepared", attempts: 0
+  }, owner);
+  assert.equal(diagnostic.includes("secret"), false);
+
+  const acquiredState = {};
+  const acquiredDirector = {};
+  assert.equal(sandbox.describeWorldDirectorIdentityMismatch({
+    ...owner, requestId: "other-request-secret", status: "prepared", attempts: 0
+  }, owner, {
+    acquiredState,
+    currentState: {},
+    acquiredDirector,
+    currentDirector: acquiredDirector
+  }), "director_job_mismatch:request_id:prepared:0:state_replaced");
+  assert.equal(sandbox.describeWorldDirectorIdentityMismatch({
+    ...owner, requestId: "other-request-secret", status: "prepared", attempts: 0
+  }, owner, {
+    acquiredState,
+    currentState: acquiredState,
+    acquiredDirector,
+    currentDirector: {}
+  }), "director_job_mismatch:request_id:prepared:0:director_replaced");
+  assert.equal(sandbox.describeWorldDirectorIdentityMismatch({
+    ...owner, requestId: "other-request-secret", status: "prepared", attempts: 0
+  }, owner, {
+    acquiredState, currentState: acquiredState, acquiredDirector, currentDirector: acquiredDirector
+  }), "director_job_mismatch:request_id:prepared:0:active_job_replaced");
 });
 test("day advance mutates deterministic state and queues public world before director check", () => {
   const events = [];
@@ -297,13 +429,17 @@ test("day advance mutates deterministic state and queues public world before dir
     state: { freeMode: { postLiveDay: 1, clockMinutes: 0, apartmentCompanionIdol: "x" } },
     FREE_MODE_DAY_START_MINUTES: 480,
     ensureFreeModeTimeDefaults: () => events.push("ensure"),
+    getWorldFeedDayKey: () => "live+2",
+    activateStorytellerStyleMixForDay: () => events.push("activate-style"),
+    ensureStorytellerPlanForCheckpoint: () => events.push("prepare-storyteller"),
     HatsuTasks: { isSandboxTasksActive: () => false },
     runFreeModeWorldDailyTick: () => events.push("public-world"),
     prepareWorldDirectorJob: () => { events.push("prepare-director"); return {}; },
     maybeRequestWorldDirector: () => events.push("request-director"),
     closeFreeModeTimeOverlay: () => events.push("close"),
     saveState: () => events.push("save"),
-    renderFreeModeStage: () => events.push("render"),
+    renderFreeModeStage: () => events.push("render-map-only"),
+    render: () => events.push(`render:${sandbox.state.freeMode.postLiveDay}@${sandbox.state.freeMode.clockMinutes}`),
     showToast: () => events.push("toast"),
     formatFreeModeDayLabel: () => "day",
     formatFreeModeClock: () => "08:00"
@@ -312,13 +448,27 @@ test("day advance mutates deterministic state and queues public world before dir
   vm.runInNewContext(`${readFunction(appSource, "advanceFreeModeToNextDay")}; globalThis.advance = advanceFreeModeToNextDay;`, sandbox);
   sandbox.advance();
   assert.equal(sandbox.state.freeMode.postLiveDay, 2);
+  assert.ok(events.includes("render:2@480"));
+  assert.ok(events.indexOf("activate-style") < events.indexOf("prepare-storyteller"));
   assert.ok(events.indexOf("public-world") < events.indexOf("prepare-director"));
+  assert.ok(events.indexOf("prepare-storyteller") < events.indexOf("prepare-director"));
   assert.ok(events.indexOf("prepare-director") < events.indexOf("request-director"));
 });
 
 test("public world completion and failure each contain exactly one director follow-up", () => {
   const source = readFunction(appSource, "handleSecondaryAiReply");
-  assert.equal((source.match(/maybeRequestWorldDirector\(/g) || []).length, 3, "failure, parse failure, and success each follow up once");
+  assert.equal((source.match(/maybeFollowWorldDirectorAfterPublicWorld\(/g) || []).length, 3, "failure, parse failure, and success each follow up once");
+});
+
+test("manual commission regeneration suppresses Director follow-up without changing normal day generation", () => {
+  const calls = [];
+  const sandbox = { maybeRequestWorldDirector: (options) => { calls.push(options); return true; } };
+  installFunctions(sandbox, ["maybeFollowWorldDirectorAfterPublicWorld"]);
+
+  assert.equal(sandbox.maybeFollowWorldDirectorAfterPublicWorld({ suppressDirectorFollowup: true }, "public_world_completed"), false);
+  assert.deepEqual(calls, []);
+  assert.equal(sandbox.maybeFollowWorldDirectorAfterPublicWorld({}, "public_world_completed"), true);
+  assert.deepEqual(normalize(calls), [{ reason: "public_world_completed" }]);
 });
 
 test("refresh normalization clears an in-flight request without automatically resending", () => {
@@ -333,4 +483,124 @@ test("refresh normalization clears an in-flight request without automatically re
   assert.equal(normalized.activeJob.status, "retryable_failed");
   assert.equal(normalized.activeJob.requestId, "");
   assert.equal(appSource.includes("maybeRequestWorldDirector({ reason: \"state_restore\""), false);
+});
+
+test("Director reconciliation makes an ownerless in-flight job retryable without touching committed output", () => {
+  const sandbox = makeSandbox();
+  installFunctions(sandbox, ["getWorldDirectorState", "reconcileWorldDirectorAttempt"]);
+  const director = sandbox.state.freeMode.world.director;
+  director.dailyDirection = { dayKey: "day-1", tone: "old", summary: "keep", focusActorIds: [], focusPressureIds: [], narrativeGoals: [], avoid: [] };
+  director.pressures = [{ id: "pressure-1", theme: "keep" }];
+  director.activeJob = {
+    jobId: "director-job", requestId: "director-request", saveScope: "scope-a", trigger: "manual",
+    dayKey: "day-2", baseDirectorRevision: 0, baseChronicleRevision: 0, status: "generating", startedAt: 123
+  };
+  const beforeDirection = normalize(director.dailyDirection);
+  const beforePressures = normalize(director.pressures);
+
+  assert.equal(sandbox.reconcileWorldDirectorAttempt(), true);
+  assert.equal(director.activeJob.status, "retryable_failed");
+  assert.equal(director.activeJob.requestId, "");
+  assert.equal(director.activeJob.reason, "owner_missing");
+  assert.equal(director.activeJob.startedAt, 0);
+  assert.equal(director.dirty, true);
+  assert.deepEqual(normalize(director.dailyDirection), beforeDirection);
+  assert.deepEqual(normalize(director.pressures), beforePressures);
+  assert.deepEqual(sandbox.events, ["save:director.owner_missing", "render-debug"]);
+  assert.equal(sandbox.lastPrompt, undefined);
+});
+
+test("Director reconciliation leaves an in-flight job unchanged when its exact owner exists", () => {
+  const sandbox = makeSandbox();
+  installFunctions(sandbox, ["getWorldDirectorState", "reconcileWorldDirectorAttempt"]);
+  const job = {
+    jobId: "director-job", requestId: "director-request", saveScope: "scope-a", trigger: "manual",
+    dayKey: "day-2", baseDirectorRevision: 0, baseChronicleRevision: 0, status: "validating", startedAt: 123
+  };
+  sandbox.state.freeMode.world.director.activeJob = job;
+  sandbox.secondaryChannelOwner = { jobId: job.jobId, requestId: job.requestId, saveScope: job.saveScope, kind: "director", acquiredAt: Date.now() };
+  const before = JSON.stringify(sandbox.state.freeMode.world.director);
+
+  assert.equal(sandbox.reconcileWorldDirectorAttempt(), false);
+  assert.equal(JSON.stringify(sandbox.state.freeMode.world.director), before);
+  assert.deepEqual(sandbox.events, []);
+});
+
+test("Director reconciliation never releases a different active secondary owner", () => {
+  const sandbox = makeSandbox();
+  installFunctions(sandbox, ["getWorldDirectorState", "reconcileWorldDirectorAttempt"]);
+  sandbox.state.freeMode.world.director.activeJob = {
+    jobId: "orphan-job", requestId: "orphan-request", saveScope: "scope-a", trigger: "day_change",
+    dayKey: "day-2", baseDirectorRevision: 0, baseChronicleRevision: 0, status: "generating", startedAt: 123
+  };
+  const newOwner = { jobId: "world-job", requestId: "world-request", saveScope: "scope-a", kind: "world", acquiredAt: 200 };
+  sandbox.secondaryChannelOwner = { ...newOwner };
+
+  assert.equal(sandbox.reconcileWorldDirectorAttempt(), true);
+  assert.deepEqual(normalize(sandbox.secondaryChannelOwner), newOwner);
+  assert.equal(sandbox.state.freeMode.world.director.activeJob.status, "retryable_failed");
+  assert.equal(sandbox.events.includes("release:director"), false);
+});
+
+test("Director reconciliation retires an in-flight job inherited from another save scope", () => {
+  const sandbox = makeSandbox();
+  installFunctions(sandbox, ["getWorldDirectorState", "reconcileWorldDirectorAttempt"]);
+  const director = sandbox.state.freeMode.world.director;
+  director.dailyDirection = { dayKey: "day-1", tone: "old", summary: "keep", focusActorIds: [], focusPressureIds: [], narrativeGoals: [], avoid: [] };
+  director.activeJob = {
+    jobId: "old-scope-job", requestId: "old-scope-request", saveScope: "scope-old", trigger: "manual",
+    dayKey: "day-2", baseDirectorRevision: 0, baseChronicleRevision: 0, status: "generating", startedAt: 123
+  };
+  const beforeDirection = normalize(director.dailyDirection);
+
+  assert.equal(sandbox.reconcileWorldDirectorAttempt(), true);
+  assert.equal(director.activeJob.status, "retryable_failed");
+  assert.equal(director.activeJob.requestId, "");
+  assert.equal(director.activeJob.reason, "scope_changed");
+  assert.deepEqual(normalize(director.dailyDirection), beforeDirection);
+  assert.equal(sandbox.lastPrompt, undefined);
+});
+
+test("Director reconciliation expires a stale matching Director owner through the shared timeout reply path", () => {
+  const sandbox = makeSandbox();
+  const replies = [];
+  sandbox.Date = { now: () => 300000 };
+  sandbox.handleSecondaryAiReply = (payload) => replies.push(normalize(payload));
+  installFunctions(sandbox, ["getWorldDirectorState", "reconcileWorldDirectorAttempt"]);
+  const job = {
+    jobId: "stale-job", requestId: "stale-request", saveScope: "scope-a", trigger: "manual",
+    dayKey: "day-2", baseDirectorRevision: 0, baseChronicleRevision: 0, status: "generating", startedAt: 1000
+  };
+  sandbox.state.freeMode.world.director.activeJob = job;
+  const owner = { jobId: job.jobId, requestId: job.requestId, saveScope: job.saveScope, kind: "director", acquiredAt: 80000 };
+  sandbox.secondaryChannelOwner = { ...owner };
+
+  assert.equal(sandbox.reconcileWorldDirectorAttempt(), true);
+  assert.deepEqual(replies, [{ ...owner, text: "", ok: false, error: "timeout" }]);
+  assert.deepEqual(normalize(sandbox.secondaryChannelOwner), owner);
+});
+
+test("explicit stale Director recovery requires confirmation and reuses the timeout reply path", () => {
+  const sandbox = makeSandbox();
+  const replies = [];
+  sandbox.Date = { now: () => 300000 };
+  sandbox.window.confirm = () => true;
+  sandbox.handleSecondaryAiReply = (payload) => replies.push(normalize(payload));
+  sandbox.updateWorldEngineApiSettingsUI = () => {};
+  installFunctions(sandbox, ["getWorldDirectorState", "recoverStaleWorldDirectorAttempt"]);
+  const job = {
+    jobId: "stale-job", requestId: "stale-request", saveScope: "scope-a", trigger: "manual",
+    dayKey: "day-2", baseDirectorRevision: 0, baseChronicleRevision: 0, status: "generating", startedAt: 1000
+  };
+  sandbox.state.freeMode.world.director.activeJob = job;
+  const owner = { jobId: job.jobId, requestId: job.requestId, saveScope: job.saveScope, kind: "director", acquiredAt: 80000 };
+  sandbox.secondaryChannelOwner = { ...owner };
+
+  assert.equal(sandbox.recoverStaleWorldDirectorAttempt(), true);
+  assert.deepEqual(replies, [{ ...owner, text: "", ok: false, error: "timeout" }]);
+
+  replies.length = 0;
+  sandbox.window.confirm = () => false;
+  assert.equal(sandbox.recoverStaleWorldDirectorAttempt(), false);
+  assert.deepEqual(replies, []);
 });

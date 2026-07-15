@@ -106,6 +106,56 @@ test("runtime normalization preserves an in-flight director attempt", () => {
   assert.equal(runtime.activeJob.status, "generating");
   assert.equal(runtime.activeJob.requestId, "request-live");
 });
+
+test("director state normalizes styled direction threads and frozen job identity", () => {
+  const api = loadDirectorState();
+  const normalized = normalize(api.ensureDirectorShape({
+    dailyDirection: {
+      dayKey: "day-2",
+      tone: "克制推进",
+      summary: "分别观察成长与关系线。",
+      focusActorIds: ["idol:a"],
+      focusPressureIds: ["pressure:a"],
+      narrativeGoals: [],
+      avoid: [],
+      styleMixRevision: 3,
+      styleThreads: {
+        heroic: {
+          status: "active", weight: 60, focusPressureIds: ["pressure:a"],
+          dramaticQuestion: "她能否找到新的训练方法？", narrativeGoals: ["检验当前方法的极限"], dormantReason: ""
+        },
+        romance: {
+          status: "dormant", weight: 40, focusPressureIds: [],
+          dramaticQuestion: "", narrativeGoals: [], dormantReason: "当前没有合法关系素材"
+        },
+        kaibunsho: null
+      }
+    },
+    activeJob: {
+      jobId: "job-a", requestId: "request-a", saveScope: "scope-a", trigger: "day_change",
+      dayKey: "day-2", baseDirectorRevision: 0, baseChronicleRevision: 0, status: "prepared",
+      styleMode: "styled", styleMix: { heroic: 60, romance: 40, kaibunsho: 0 }, styleMixRevision: 3
+    }
+  }, { recoverInterrupted: false }));
+  assert.equal(normalized.dailyDirection.styleMixRevision, 3);
+  assert.equal(normalized.dailyDirection.styleThreads.heroic.status, "active");
+  assert.equal(normalized.dailyDirection.styleThreads.romance.status, "dormant");
+  assert.equal(normalized.activeJob.styleMode, "styled");
+  assert.deepEqual(normalized.activeJob.styleMix, { heroic: 60, romance: 40, kaibunsho: 0 });
+  assert.equal(normalized.activeJob.styleMixRevision, 3);
+});
+
+test("legacy direction stays readable without fabricated style threads", () => {
+  const api = loadDirectorState();
+  const normalized = normalize(api.ensureDirectorShape({
+    dailyDirection: {
+      dayKey: "day-1", tone: "平静", summary: "旧存档方向",
+      focusActorIds: [], focusPressureIds: [], narrativeGoals: [], avoid: []
+    }
+  }));
+  assert.equal(normalized.dailyDirection.styleMixRevision, null);
+  assert.equal(normalized.dailyDirection.styleThreads, null);
+});
 test("frontend loads and normalizes the persisted director subtree", () => {
   const app = readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");

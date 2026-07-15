@@ -544,6 +544,24 @@
     return state?.launchMode === "sandbox";
   }
 
+  function hasCompletedScoutQuest(state) {
+    if (!isSandboxTasksActive(state)) return false;
+    return Object.values(SANDBOX_IDOL_QUEST_PACKS).some(
+      (pack) => state.tasks?.main?.[pack.scoutId]?.status === "completed"
+    );
+  }
+
+  function syncSandboxMacroPhase(state) {
+    if (!hasCompletedScoutQuest(state)) return false;
+    if (!state.freeMode || typeof state.freeMode !== "object") state.freeMode = {};
+    if (!state.freeMode.world || typeof state.freeMode.world !== "object") {
+      state.freeMode.world = {};
+    }
+    if (state.freeMode.world.macro_phase === "first_live") return false;
+    state.freeMode.world.macro_phase = "first_live";
+    return true;
+  }
+
   function ensureMainQuest(state, id, status = "locked") {
     if (!state.tasks.main[id]) {
       state.tasks.main[id] = defaultMainQuest(id, status);
@@ -660,6 +678,7 @@
         }
       });
     }
+    syncSandboxMacroPhase(state);
     return state;
   }
 
@@ -1271,6 +1290,7 @@ ${hiroLine}
     if (!isSandboxTasksActive(state)) return;
     if (!state.tasks.baseline) captureBaseline(state);
     activatePersonalQuests(state);
+    syncSandboxMacroPhase(state);
   }
 
   function onScoutTemariQuestCompleted(state) {
@@ -1901,6 +1921,8 @@ ${hiroLine}
     defaultTasksState,
     ensureTasksShape,
     isSandboxTasksActive,
+    hasCompletedScoutQuest,
+    syncSandboxMacroPhase,
     getSandboxQuestPack,
     getScoutQuestId,
     getPersonalQuestIds,

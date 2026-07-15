@@ -185,6 +185,7 @@ test("task panel suppresses leaked next scout before second idol is chosen", () 
 test("scout temari completes when AI outputs quest completion tag", () => {
   const HatsuTasks = loadHatsuTasks();
   const state = baseSandboxState();
+  state.freeMode = { world: { macro_phase: "scout" } };
   HatsuTasks.ensureTasksShape(state);
   HatsuTasks.activateScoutQuestForIdol(state, "月村手毬");
   HatsuTasks.onScoutInviteComplete(state);
@@ -198,6 +199,29 @@ test("scout temari completes when AI outputs quest completion tag", () => {
   assert.equal(state.tasks.main.temari_main_03.status, "active");
   assert.equal(state.tasks.baseline.Vo, 120);
   assert.equal(state.tasks.baseline.Vi, 80);
+  assert.equal(state.freeMode.world.macro_phase, "first_live");
+});
+
+test("legacy sandbox saves reconcile scout phase after a completed signing quest", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseSandboxState();
+  state.freeMode = { world: { macro_phase: "scout" } };
+  HatsuTasks.ensureTasksShape(state);
+  state.tasks.main.scout_temari.status = "completed";
+
+  HatsuTasks.ensureTasksShape(state);
+
+  assert.equal(state.freeMode.world.macro_phase, "first_live");
+});
+
+test("sandbox remains in scout phase before any signing quest completes", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseSandboxState();
+  state.freeMode = { world: { macro_phase: "scout" } };
+
+  HatsuTasks.ensureTasksShape(state);
+
+  assert.equal(state.freeMode.world.macro_phase, "scout");
 });
 
 test("scout location talk does not auto-complete without AI tag", () => {
@@ -307,7 +331,9 @@ test("app.js wires sandbox task hooks", () => {
   assert.match(appSource, /sendSecondaryPrompt|secondaryAiReply/);
   assert.match(appSource, /handleSecondaryAiReply/);
   assert.match(html, /tasks\/side-quest-api\.js/);
-  assert.match(html, /sideQuestApiPanel/);
+  assert.doesNotMatch(html, /sideQuestApiPanel/);
+  assert.match(html, /worldEngineSettingsView/);
+  assert.match(html, /worldEngineCommissionRegenBtn/);
   assert.match(appSource, /openTaskPanelOverlay/);
   assert.match(appSource, /renderTaskPanelOverlay/);
   assert.match(html, /taskPanelOverlay/);

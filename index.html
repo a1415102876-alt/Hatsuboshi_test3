@@ -613,6 +613,27 @@
     </article>
   </section>
 
+  <section id="storytellerMajorConfirmationOverlay" class="event-overlay storyteller-major-confirmation" hidden aria-label="重大世界事件确认">
+    <article class="event-panel storyteller-major-confirmation-panel" role="dialog" aria-modal="true" aria-labelledby="storytellerMajorConfirmationTitle">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Major Incident</p>
+          <h2 id="storytellerMajorConfirmationTitle">确认接受重大事件</h2>
+        </div>
+        <button id="storytellerMajorConfirmationCloseBtn" class="icon-button" type="button" aria-label="取消重大事件操作">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </header>
+      <div id="storytellerMajorConfirmationCopy" class="event-story storyteller-major-confirmation-copy">
+        重大事件会生成一段独立叙事，但不会自动推进时间或修改数值、资源和任务。
+      </div>
+      <footer class="event-actions">
+        <button id="storytellerMajorConfirmationCancelBtn" class="event-button secondary" type="button">取消</button>
+        <button id="storytellerMajorConfirmationConfirmBtn" class="event-button primary" type="button">确认接受</button>
+      </footer>
+    </article>
+  </section>
+
   <section id="chronicleLoadOverlay" class="event-overlay chronicle-load-overlay" hidden aria-label="剧情读档">
     <article class="event-panel chronicle-load-panel">
       <header class="event-head">
@@ -1017,38 +1038,6 @@
           <div id="sideQuestTierButtons" class="side-quest-tier-buttons"></div>
           <button id="sideQuestTierBackBtn" class="event-button secondary side-quest-tier-back" type="button">返回列表</button>
         </div>
-        <details id="sideQuestApiPanel" class="side-quest-api-panel">
-          <summary>次 API 配置（广播主题 / 初星圈 / 委托系统，不写入角色卡对话）</summary>
-          <div class="side-quest-api-panel-body">
-            <label class="side-quest-api-field" for="sideQuestApiEnabled">
-              <input id="sideQuestApiEnabled" type="checkbox">
-              <span>启用次 API 批量生成本日世界层内容</span>
-            </label>
-            <label class="side-quest-api-field" for="sideQuestApiBaseUrl">
-              <span>接口地址</span>
-              <input id="sideQuestApiBaseUrl" type="text" placeholder="https://api.openai.com/v1" spellcheck="false">
-            </label>
-            <label class="side-quest-api-field" for="sideQuestApiModel">
-              <span>模型</span>
-              <input id="sideQuestApiModel" type="text" placeholder="gpt-4o-mini" spellcheck="false">
-            </label>
-            <label class="side-quest-api-field" for="sideQuestApiKey">
-              <span>API Key（仅存浏览器本地）</span>
-              <input id="sideQuestApiKey" type="password" placeholder="sk-..." spellcheck="false">
-            </label>
-            <p id="sideQuestApiStatus" class="side-quest-api-status">未配置次 API 时将使用静态委托池。</p>
-            <div class="side-quest-api-actions">
-              <button id="sideQuestApiSaveBtn" class="event-button secondary side-quest-api-save" type="button">保存次 API 配置</button>
-              <button id="sideQuestApiTestBtn" class="event-button secondary side-quest-api-test" type="button">测试次 API 连接</button>
-            </div>
-            <button id="sideQuestApiRegenBtn" class="event-button secondary side-quest-api-regen" type="button">用次 API 重新生成本日委托</button>
-            <details id="sideQuestApiDebug" class="side-quest-api-debug">
-              <summary>调试日志（查看次 API 实际收发与解析结果）</summary>
-              <p id="sideQuestApiDebugSummary" class="side-quest-api-debug-summary">尚未发起次 API 请求</p>
-              <pre id="sideQuestApiDebugLog" class="side-quest-api-debug-log">暂无次 API 收发记录。</pre>
-            </details>
-          </div>
-        </details>
       </div>
     </article>
   </section>
@@ -1469,6 +1458,88 @@
             </div>
           </div>
 
+          <div id="phoneWorldEngineApp" class="world-engine-app" hidden>
+            <header class="world-engine-head">
+              <div class="world-engine-brand">
+                <span class="world-engine-mark" aria-hidden="true">星</span>
+                <div>
+                  <h1 class="world-engine-title">初星世界引擎</h1>
+                  <p class="world-engine-subtitle">WORLD PULSE</p>
+                </div>
+              </div>
+              <div class="world-engine-head-actions">
+                <button id="worldEngineRefreshBtn" type="button" class="world-engine-icon-btn" aria-label="刷新世界引擎状态">
+                  <svg aria-hidden="true"><use href="#icon-refresh"></use></svg>
+                </button>
+                <button id="worldEngineSettingsBtn" type="button" class="world-engine-icon-btn" aria-label="打开世界引擎高级设置">
+                  <svg aria-hidden="true"><use href="#icon-settings"></use></svg>
+                </button>
+              </div>
+            </header>
+            <div id="worldEngineMainView" class="world-engine-view">
+              <nav id="worldEngineTabs" class="world-engine-tabs" aria-label="世界引擎视图">
+                <button type="button" class="world-engine-tab is-active" data-world-engine-tab="today" aria-selected="true">今日</button>
+                <button type="button" class="world-engine-tab" data-world-engine-tab="pressures" aria-selected="false">压力线</button>
+                <button type="button" class="world-engine-tab" data-world-engine-tab="runtime" aria-selected="false">运行</button>
+                <button type="button" class="world-engine-tab" data-world-engine-tab="events" aria-selected="false">事件</button>
+              </nav>
+              <div id="worldEngineContent" class="world-engine-scroll" aria-live="polite"></div>
+              <footer class="world-engine-action-bar">
+                <button id="worldEngineManualRunBtn" type="button" class="world-engine-manual-run">手动推演本日走向</button>
+              </footer>
+            </div>
+            <div id="worldEngineSettingsView" class="world-engine-view world-engine-settings-view" hidden>
+              <div class="world-engine-settings-titlebar">
+                <button id="worldEngineSettingsBackBtn" type="button" class="world-engine-settings-back" aria-label="返回世界引擎">
+                  <svg aria-hidden="true"><use href="#icon-chevron-left"></use></svg>
+                </button>
+                <div><strong>高级设置</strong><span>ENGINE CONTROL</span></div>
+              </div>
+              <div class="world-engine-settings-scroll">
+                <section class="world-engine-settings-section">
+                  <h2>叙事者比例</h2>
+                  <label class="world-engine-range-field" for="worldEngineHeroicWeight">
+                    <span><strong>王道故事</strong><small>偶像努力、成长与方法突破</small></span>
+                    <input id="worldEngineHeroicWeight" type="range" min="0" max="100" step="5" value="60">
+                  </label>
+                  <label class="world-engine-range-field" for="worldEngineRomanceWeight">
+                    <span><strong>恋爱故事</strong><small>关系、期待、边界与依赖</small></span>
+                    <input id="worldEngineRomanceWeight" type="range" min="0" max="100" step="5" value="40">
+                  </label>
+                  <div class="world-engine-style-disabled"><span><strong>怪文书</strong><small>首版尚未启用</small></span><b>0%</b></div>
+                  <p id="worldEngineStyleStatus" class="world-engine-settings-status">今日 60/40 · 尚未设置次日比例</p>
+                  <button id="worldEngineStyleSaveBtn" type="button" class="world-engine-settings-primary">保存次日比例</button>
+                </section>
+                <section class="world-engine-settings-section">
+                  <h2>次 API</h2>
+                  <label class="world-engine-toggle" for="worldEngineApiEnabled">
+                    <span><strong>启用世界层生成</strong><small>公共世界、委托与 Director 共用</small></span>
+                    <input id="worldEngineApiEnabled" type="checkbox">
+                  </label>
+                  <label class="world-engine-field" for="worldEngineApiBaseUrl"><span>接口地址</span><input id="worldEngineApiBaseUrl" type="text" placeholder="https://api.openai.com/v1" spellcheck="false"></label>
+                  <label class="world-engine-field" for="worldEngineApiModel"><span>模型</span><input id="worldEngineApiModel" type="text" placeholder="gpt-4o-mini" spellcheck="false"></label>
+                  <label class="world-engine-field" for="worldEngineApiKey"><span>API Key（仅存浏览器本地）</span><input id="worldEngineApiKey" type="password" placeholder="sk-..." spellcheck="false" autocomplete="off"></label>
+                  <p id="worldEngineApiStatus" class="world-engine-settings-status">未配置次 API 时将使用静态世界池。</p>
+                  <div class="world-engine-settings-actions">
+                    <button id="worldEngineApiSaveBtn" type="button" class="world-engine-settings-primary">保存配置</button>
+                    <button id="worldEngineApiTestBtn" type="button" class="world-engine-settings-secondary">测试连接</button>
+                  </div>
+                </section>
+                <section class="world-engine-settings-section">
+                  <h2>手动操作</h2>
+                  <button id="worldEngineCommissionRegenBtn" type="button" class="world-engine-settings-command">重新生成本日委托</button>
+                  <p class="world-engine-settings-note">仅刷新委托内容，不会启动 Director 推演。</p>
+                  <button id="worldEngineStaleRecoveryBtn" type="button" class="world-engine-settings-danger" hidden>结束卡住的推演</button>
+                </section>
+                <section class="world-engine-settings-section">
+                  <h2>连接诊断</h2>
+                  <p id="worldEngineApiDebugSummary" class="world-engine-debug-summary">尚未发起次 API 请求</p>
+                  <pre id="worldEngineApiDebugLog" class="world-engine-debug-log">暂无次 API 收发记录。</pre>
+                </section>
+              </div>
+            </div>
+          </div>
+
           <nav id="phoneNavBar" class="phone-navbar" hidden aria-label="手机功能栏">
             <button id="phoneNavBackBtn" type="button" class="phone-nav-btn" aria-label="返回">
               <svg aria-hidden="true"><use href="#icon-chevron-left"></use></svg>
@@ -1554,7 +1625,15 @@
   <script src="./world/director-state.js"></script>
   <script src="./world/director-api.js"></script>
   <script src="./world/director-injection.js"></script>
+  <script src="./world/director-phone-view.js"></script>
   <script src="./world/secondary-channel-owner.js"></script>
+  <script src="./world/storyteller/styles.js"></script>
+  <script src="./world/storyteller/observations.js"></script>
+  <script src="./world/storyteller/plan.js"></script>
+  <script src="./world/storyteller/incidents.js"></script>
+  <script src="./world/storyteller/notifications.js"></script>
+  <script src="./world/storyteller/injection.js"></script>
+  <script src="./world/storyteller/phone-view.js"></script>
   <script src="./broadcast/prompts.js"></script>
   <script src="./tasks/side-pool.js"></script>
   <script src="./tasks/side-quest-api.js"></script>

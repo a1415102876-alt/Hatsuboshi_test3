@@ -94,6 +94,67 @@ test("host checks secondary scope before starting fetch and before posting resul
   assert.ok(firstScopeCheck >= 0 && firstScopeCheck < fetchIndex);
   assert.ok(secondScopeCheck > fetchIndex);
 });
+
+test("host aborts a hanging Director fetch and returns a normalized timeout reply", async () => {
+  const posted = [];
+  const timers = [];
+  let fetchOptions = null;
+  class FakeAbortController {
+    constructor() {
+      this.signal = { aborted: false, onabort: null };
+    }
+    abort() {
+      this.signal.aborted = true;
+      this.signal.onabort?.();
+    }
+  }
+  const context = {
+    getCurrentContextInfo: () => ({ saveScope: "scope-a" }),
+    AbortController: FakeAbortController,
+    setTimeout(callback, delay) {
+      timers.push({ callback, delay });
+      return timers.length;
+    },
+    clearTimeout() {},
+    fetch(_url, options) {
+      fetchOptions = options;
+      return new Promise((_resolve, reject) => {
+        options.signal.onabort = () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+      });
+    },
+    window: { postMessage: (payload) => posted.push(payload) }
+  };
+  vm.runInNewContext([
+    "const SECONDARY_DIRECTOR_FETCH_TIMEOUT_MS = 180000;",
+    readFunction(bridgeSource, "createSecondaryReplyPayload"),
+    "function postSecondaryReply(envelope, text, options) { window.postMessage(createSecondaryReplyPayload(envelope, text, options), '*'); }",
+    readFunction(bridgeSource, "runSecondaryApiPrompt"),
+    "this.run = runSecondaryApiPrompt;"
+  ].join("\n"), context);
+
+  const pending = context.run({
+    jobId: "director-job-1",
+    requestId: "director-request-1",
+    saveScope: "scope-a",
+    kind: "director",
+    prompt: "private prompt",
+    apiConfig: { baseUrl: "https://example.test", model: "m", apiKey: "secret" }
+  });
+  await Promise.resolve();
+
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 180000);
+  assert.ok(fetchOptions?.signal);
+  timers[0].callback();
+  await pending;
+
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].type, "secondaryAiReply");
+  assert.equal(posted[0].ok, false);
+  assert.equal(posted[0].error, "director_timeout");
+  assert.equal("prompt" in posted[0], false);
+  assert.equal("apiConfig" in posted[0], false);
+});
 test("host generation envelope requires request lease scope and explicit mode", () => {
   const { normalizeEnvelope } = loadEnvelopeHelpers();
   const normalized = normalizeEnvelope({
@@ -956,4 +1017,22 @@ test("explicit frontend cancellation clears only the matching host attempt", () 
   assert.match(handler, /data\.channelLeaseId[\s\S]*pendingChannelLeaseId/);
   assert.match(handler, /clearPendingReplyRequest\(\)/);
   assert.match(handler, /stopGeneration/);
+});
+
+test("secondary completion reports finish_reason length as output_truncated", () => {
+  const classify = vm.runInNewContext(`(${readFunction(bridgeSource, "classifySecondaryApiCompletion")})`);
+  const result = clone(classify({
+    choices: [{
+      message: { content: "partial private narrative" },
+      finish_reason: "length"
+    }]
+  }));
+
+  assert.deepEqual(result, {
+    text: "partial private narrative",
+    ok: false,
+    error: "output_truncated",
+    finishReason: "length"
+  });
+  assert.equal(JSON.stringify(result).includes("prompt"), false);
 });

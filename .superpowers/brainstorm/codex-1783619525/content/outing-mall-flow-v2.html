@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>购物中心外出玩法草图 v2</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+      color: #241b2f;
+      background: #edf1f7;
+    }
+    .page { min-height: 100vh; padding: 20px; display: grid; gap: 14px; grid-template-rows: auto 1fr; }
+    .top { display: flex; justify-content: space-between; align-items: end; gap: 16px; }
+    h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: 0; }
+    .note { margin: 0; color: #685e73; font-size: 14px; line-height: 1.5; }
+    .chip {
+      padding: 9px 14px;
+      border: 1px solid rgba(80, 70, 120, .16);
+      border-radius: 999px;
+      background: rgba(255,255,255,.86);
+      color: #5c5270;
+      font-size: 13px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .screen {
+      position: relative;
+      overflow: hidden;
+      min-height: 620px;
+      border: 1px solid rgba(48, 40, 70, .16);
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(28, 30, 48, .12), rgba(28, 30, 48, .18)),
+        url("../../../../assets/scenes/Shopping_Mall_Entrance.png") center/cover no-repeat,
+        linear-gradient(135deg, #e8eef7, #f8edf4);
+      box-shadow: 0 18px 44px rgba(30, 25, 50, .18);
+    }
+    .location-box,
+    .guide-hotspot,
+    .action-menu,
+    .modal-card {
+      border: 1px solid rgba(255,255,255,.48);
+      background: rgba(255,255,255,.86);
+      box-shadow: 0 12px 32px rgba(31, 25, 50, .18);
+      backdrop-filter: blur(12px);
+    }
+    .hud {
+      position: absolute;
+      inset: 16px 16px auto;
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .location-box {
+      width: min(360px, calc(100% - 220px));
+      padding: 13px 15px;
+      border-radius: 8px;
+    }
+    .kicker { display: block; margin-bottom: 5px; color: #d04980; font-size: 11px; font-weight: 900; letter-spacing: .12em; }
+    .location-box strong { display: block; font-size: 22px; }
+    .location-box span:last-child { display: block; margin-top: 4px; color: #655b70; font-size: 13px; line-height: 1.45; }
+    .top-actions { display: flex; gap: 8px; pointer-events: auto; }
+    button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 999px;
+      padding: 0 15px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .ghost { background: rgba(255,255,255,.9); color: #4f465d; }
+    .primary { background: #e94e87; color: #fff; }
+    .idol-stage {
+      position: absolute;
+      inset: 98px 20px 46px;
+      display: flex;
+      align-items: end;
+      justify-content: center;
+      gap: 30px;
+      z-index: 2;
+    }
+    .idol {
+      position: relative;
+      width: min(22vw, 210px);
+      min-width: 138px;
+      height: min(58vh, 440px);
+      border: 0;
+      border-radius: 0;
+      padding: 0;
+      background: transparent;
+      filter: drop-shadow(0 20px 24px rgba(20, 18, 40, .28));
+    }
+    .idol::before {
+      content: "";
+      position: absolute;
+      inset: 8% 10% 0;
+      border-radius: 48% 48% 8px 8px;
+      background: linear-gradient(180deg, var(--color), color-mix(in srgb, var(--color) 48%, #111 18%));
+      clip-path: polygon(50% 0, 76% 16%, 88% 48%, 100% 100%, 0 100%, 12% 48%, 24% 16%);
+    }
+    .idol::after {
+      content: attr(data-name);
+      position: absolute;
+      left: 50%;
+      bottom: -8px;
+      transform: translateX(-50%);
+      padding: 7px 13px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.92);
+      box-shadow: 0 8px 18px rgba(30,25,50,.16);
+      color: #2b2336;
+      white-space: nowrap;
+    }
+    .idol.selected::before { outline: 5px solid rgba(255,255,255,.72); outline-offset: 5px; }
+    .guide-hotspot {
+      position: absolute;
+      right: 46px;
+      top: 192px;
+      z-index: 6;
+      width: 154px;
+      min-height: 118px;
+      border-radius: 8px;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+      color: #342b3f;
+      text-align: left;
+    }
+    .guide-hotspot::before {
+      content: "";
+      width: 100%;
+      height: 42px;
+      border-radius: 6px;
+      background:
+        linear-gradient(90deg, #e94e87 0 32%, transparent 32% 36%, #7b8cff 36% 66%, transparent 66% 70%, #f0ad3f 70%),
+        #fff;
+      box-shadow: inset 0 0 0 1px rgba(70,60,100,.14);
+    }
+    .guide-hotspot strong { font-size: 15px; }
+    .guide-hotspot span { color: #6b6076; font-size: 12px; line-height: 1.35; }
+    .action-menu {
+      position: absolute;
+      left: 50%;
+      bottom: 28px;
+      z-index: 7;
+      width: min(520px, calc(100% - 36px));
+      transform: translateX(-50%);
+      border-radius: 8px;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .action-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 4px; font-size: 13px; color: #655b70; }
+    .action-title strong { color: #241b2f; font-size: 16px; }
+    .action-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .action-grid button {
+      min-height: 54px;
+      border-radius: 8px;
+      background: #fff;
+      color: #3b3348;
+      box-shadow: inset 0 0 0 1px rgba(80,70,120,.12);
+    }
+    .action-grid button.primary-action { background: #e94e87; color: #fff; box-shadow: none; }
+    .modal {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(20, 18, 35, .32);
+    }
+    .modal-card {
+      width: min(820px, 100%);
+      border-radius: 8px;
+      padding: 18px;
+    }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .modal-head h2 { margin: 0 0 4px; font-size: 22px; }
+    .modal-head p { margin: 0; color: #71667b; font-size: 13px; }
+    .mall-map {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr 1fr;
+      grid-template-rows: 82px 82px 82px;
+      gap: 10px;
+      padding: 12px;
+      border-radius: 8px;
+      background:
+        linear-gradient(rgba(70,60,100,.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(70,60,100,.05) 1px, transparent 1px),
+        rgba(255,255,255,.68);
+      background-size: 18px 18px;
+      box-shadow: inset 0 0 0 1px rgba(70,60,100,.12);
+    }
+    .facility {
+      border: 1px solid rgba(70,60,100,.14);
+      border-radius: 8px;
+      background: #fff;
+      color: #332b40;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      line-height: 1.25;
+      box-shadow: 0 8px 18px rgba(30,25,50,.08);
+    }
+    .facility b { display: block; font-size: 16px; }
+    .facility span { display: block; margin-top: 4px; color: #756b80; font-size: 12px; font-weight: 700; }
+    .facility.current { background: #302942; color: #fff; }
+    .facility.current span { color: rgba(255,255,255,.7); }
+    .facility.game { grid-column: 1; grid-row: 1 / span 2; }
+    .facility.karaoke { grid-column: 2; grid-row: 1; }
+    .facility.cinema { grid-column: 3; grid-row: 1 / span 2; }
+    .facility.anime { grid-column: 2; grid-row: 2; }
+    .facility.mall { grid-column: 1 / span 2; grid-row: 3; }
+    .facility.food { grid-column: 3; grid-row: 3; }
+    .legend-row {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: #6b6076;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .legend-row span { padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.7); }
+    @media (max-width: 760px) {
+      .page { padding: 12px; }
+      .top { align-items: start; flex-direction: column; }
+      .screen { min-height: 720px; }
+      .location-box { width: min(330px, 100%); }
+      .top-actions { flex-direction: column; }
+      .idol-stage { inset: 132px 8px 132px; gap: 6px; }
+      .idol { min-width: 98px; width: 30vw; height: 330px; }
+      .guide-hotspot { right: 12px; top: 246px; width: 132px; min-height: 104px; }
+      .action-menu { bottom: 14px; }
+      .action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .modal { padding: 12px; }
+      .mall-map { grid-template-columns: 1fr; grid-template-rows: repeat(6, 70px); }
+      .facility,
+      .facility.game,
+      .facility.karaoke,
+      .facility.cinema,
+      .facility.anime,
+      .facility.mall,
+      .facility.food { grid-column: auto; grid-row: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="top">
+      <div>
+        <h1>购物中心外出玩法草图 v2</h1>
+        <p class="note">移动入口改成右侧“设施导览牌”，点击后弹出商场示意图，不再占用底部大块空间。</p>
+      </div>
+      <div class="chip">入口场景 -> 点导览牌 -> 选择设施</div>
+    </header>
+
+    <section class="screen" aria-label="购物中心入口场景草图">
+      <div class="hud">
+        <div class="location-box">
+          <span class="kicker">SHOPPING MALL</span>
+          <strong>购物中心入口</strong>
+          <span>当前背景：Shopping_Mall_Entrance。右侧导览牌负责移动，偶像菜单负责互动。</span>
+        </div>
+        <div class="top-actions">
+          <button class="ghost">返回线路图</button>
+          <button class="primary">开始探索</button>
+        </div>
+      </div>
+
+      <button class="guide-hotspot" aria-label="打开设施导览图">
+        <strong>设施导览</strong>
+        <span>点击查看商场内设施示意图</span>
+      </button>
+
+      <div class="idol-stage">
+        <button class="idol selected" style="--color:#ff5d83" data-name="花海咲季" aria-label="花海咲季"></button>
+        <button class="idol" style="--color:#7c8cff" data-name="筱泽广" aria-label="筱泽广"></button>
+        <button class="idol" style="--color:#f0ad3f" data-name="仓本千奈" aria-label="仓本千奈"></button>
+      </div>
+
+      <div class="action-menu">
+        <div class="action-title">
+          <strong>花海咲季</strong>
+          <span>点击立绘后弹出行动选项</span>
+        </div>
+        <div class="action-grid">
+          <button class="primary-action">闲聊</button>
+          <button>邀请同行</button>
+          <button>询问想去哪</button>
+          <button>查看状态</button>
+        </div>
+      </div>
+
+      <div class="modal" aria-label="设施导览弹窗">
+        <div class="modal-card">
+          <div class="modal-head">
+            <div>
+              <h2>购物中心设施导览</h2>
+              <p>选择后切换背景和 prompt 的“当前设施”。当前示意为弹窗展开状态。</p>
+            </div>
+            <button class="ghost">关闭</button>
+          </div>
+          <div class="mall-map">
+            <button class="facility game"><span>2F</span><b>游戏厅</b><span>Game_Center</span></button>
+            <button class="facility karaoke"><span>3F</span><b>卡拉OK</b><span>Karaoke</span></button>
+            <button class="facility cinema"><span>4F</span><b>电影院</b><span>暂用商场内图</span></button>
+            <button class="facility anime"><span>2F</span><b>动漫店</b><span>AnimeShop</span></button>
+            <button class="facility mall current"><span>1F</span><b>入口大厅 / 商场内</b><span>Shopping_Mall</span></button>
+            <button class="facility food"><span>B1</span><b>餐饮区</b><span>后续可扩展</span></button>
+          </div>
+          <div class="legend-row">
+            <span>选择设施后：关闭弹窗</span>
+            <span>更新场景背景</span>
+            <span>更新 prompt 当前设施</span>
+            <span>保留偶像行动菜单</span>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<style>
+  .transit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+  }
+  .transit-card {
+    border: 1px solid rgba(126, 87, 194, 0.18);
+    border-radius: 16px;
+    padding: 16px;
+    background: linear-gradient(180deg, #fff, #faf8ff);
+    box-shadow: 0 14px 34px rgba(82, 64, 120, 0.08);
+    cursor: pointer;
+  }
+  .transit-card.selected {
+    outline: 3px solid #a070ff;
+  }
+  .mini-map {
+    width: 100%;
+    aspect-ratio: 1.7;
+    border-radius: 14px;
+    background:
+      linear-gradient(rgba(124, 97, 160, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124, 97, 160, 0.05) 1px, transparent 1px),
+      linear-gradient(135deg, #fff8fd, #f5f7ff);
+    background-size: 18px 18px, 18px 18px, cover;
+    overflow: hidden;
+  }
+  .station-label {
+    font: 600 3.4px sans-serif;
+    fill: #2c2440;
+  }
+  .line-main { stroke: #ff5fa2; }
+  .line-sports { stroke: #4e9bff; }
+  .line-media { stroke: #8b63ff; }
+  .line-home { stroke: #f2a936; }
+  .line {
+    fill: none;
+    stroke-width: 3.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .dot {
+    fill: #fff;
+    stroke-width: 2.1;
+  }
+  .dot-main { stroke: #ff5fa2; }
+  .dot-sports { stroke: #4e9bff; }
+  .dot-media { stroke: #8b63ff; }
+  .dot-home { stroke: #f2a936; }
+  .legend-note {
+    display: grid;
+    gap: 6px;
+    margin: 12px 0 0;
+    color: #5d5470;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .legend-note b {
+    color: #282039;
+  }
+  @media (max-width: 900px) {
+    .transit-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<h2>校外线路图重排方向</h2>
+<p class="subtitle">目标是减少线条交叉、让主线和支线层级清楚、避免站名互相压住。点选你更喜欢的方向。</p>
+
+<div class="transit-grid">
+  <div class="transit-card card" data-choice="A-standard-metro" onclick="toggleSelect(this)">
+    <div class="label">方案 A / 推荐</div>
+    <h3>标准地铁图：主线横向，支线分层</h3>
+    <div class="mini-map">
+      <svg viewBox="0 0 100 58" width="100%" height="100%" aria-label="方案A线路草图">
+        <path class="line line-main" d="M9 42 H31 H52 H73 H91" />
+        <path class="line line-sports" d="M9 42 V15" />
+        <path class="line line-media" d="M31 42 V29 H45 H59 H73" />
+        <path class="line line-media" d="M45 29 V14 H59 H73" opacity="0.9" />
+        <path class="line line-home" d="M52 42 V17 H67" />
+        <g>
+          <circle class="dot dot-main" cx="9" cy="42" r="3.2" /><text class="station-label" x="5" y="51">初星</text>
+          <circle class="dot dot-main" cx="31" cy="42" r="3.2" /><text class="station-label" x="27" y="51">商店街</text>
+          <circle class="dot dot-main" cx="52" cy="42" r="4.2" /><text class="station-label" x="46" y="51">购物中心</text>
+          <circle class="dot dot-main" cx="73" cy="42" r="3.2" /><text class="station-label" x="69" y="51">游乐园</text>
+          <circle class="dot dot-main" cx="91" cy="42" r="3.2" /><text class="station-label" x="87" y="51">水族</text>
+          <circle class="dot dot-sports" cx="9" cy="15" r="3.2" /><text class="station-label" x="4" y="10">体育中心</text>
+          <circle class="dot dot-media" cx="31" cy="29" r="3.2" /><text class="station-label" x="25" y="25">电台</text>
+          <circle class="dot dot-media" cx="45" cy="29" r="3.2" /><text class="station-label" x="39" y="36">活动会场</text>
+          <circle class="dot dot-media" cx="59" cy="29" r="3.2" /><text class="station-label" x="54" y="25">品牌</text>
+          <circle class="dot dot-media" cx="73" cy="29" r="3.2" /><text class="station-label" x="68" y="25">音乐节</text>
+          <circle class="dot dot-media" cx="45" cy="14" r="3.2" /><text class="station-label" x="39" y="10">电视台</text>
+          <circle class="dot dot-media" cx="59" cy="14" r="3.2" /><text class="station-label" x="54" y="10">摄影棚</text>
+          <circle class="dot dot-home" cx="52" cy="17" r="3.2" /><text class="station-label" x="46" y="13">咲季家</text>
+          <circle class="dot dot-home" cx="67" cy="17" r="3.2" /><text class="station-label" x="62" y="13">千奈家</text>
+        </g>
+      </svg>
+    </div>
+    <div class="legend-note">
+      <div><b>优点：</b>换乘点清楚，购物中心作为主换乘站；主线、商演、住宅不会打架。</div>
+      <div><b>代价：</b>更像功能图，不强调真实空间方位。</div>
+    </div>
+  </div>
+
+  <div class="transit-card card" data-choice="B-district-map" onclick="toggleSelect(this)">
+    <div class="label">方案 B</div>
+    <h3>分区地图感：商业区居中，娱乐区右侧</h3>
+    <div class="mini-map">
+      <svg viewBox="0 0 100 58" width="100%" height="100%" aria-label="方案B线路草图">
+        <path class="line line-main" d="M9 42 H27 H48 C56 42 61 40 67 35 H84" />
+        <path class="line line-main" d="M84 35 L92 42" />
+        <path class="line line-sports" d="M9 42 V16" />
+        <path class="line line-media" d="M27 42 L36 28 H53 L66 23 H82" />
+        <path class="line line-media" d="M36 28 L43 14 H60" opacity="0.9" />
+        <path class="line line-home" d="M48 42 L55 18 H70" />
+        <circle class="dot dot-main" cx="9" cy="42" r="3.2" /><text class="station-label" x="5" y="51">初星</text>
+        <circle class="dot dot-main" cx="27" cy="42" r="3.2" /><text class="station-label" x="22" y="51">商店街</text>
+        <circle class="dot dot-main" cx="48" cy="42" r="4.2" /><text class="station-label" x="42" y="51">购物中心</text>
+        <circle class="dot dot-main" cx="84" cy="35" r="3.2" /><text class="station-label" x="80" y="31">游乐园</text>
+        <circle class="dot dot-main" cx="92" cy="42" r="3.2" /><text class="station-label" x="88" y="51">水族</text>
+        <circle class="dot dot-sports" cx="9" cy="16" r="3.2" /><text class="station-label" x="4" y="11">体育中心</text>
+        <circle class="dot dot-media" cx="36" cy="28" r="3.2" /><text class="station-label" x="30" y="24">电台</text>
+        <circle class="dot dot-media" cx="53" cy="28" r="3.2" /><text class="station-label" x="47" y="35">活动会场</text>
+        <circle class="dot dot-media" cx="66" cy="23" r="3.2" /><text class="station-label" x="61" y="19">品牌</text>
+        <circle class="dot dot-media" cx="82" cy="23" r="3.2" /><text class="station-label" x="76" y="19">音乐节</text>
+        <circle class="dot dot-media" cx="43" cy="14" r="3.2" /><text class="station-label" x="37" y="10">电视台</text>
+        <circle class="dot dot-media" cx="60" cy="14" r="3.2" /><text class="station-label" x="55" y="10">摄影棚</text>
+        <circle class="dot dot-home" cx="55" cy="18" r="3.2" /><text class="station-label" x="50" y="14">咲季家</text>
+        <circle class="dot dot-home" cx="70" cy="18" r="3.2" /><text class="station-label" x="65" y="14">千奈家</text>
+      </svg>
+    </div>
+    <div class="legend-note">
+      <div><b>优点：</b>更像“从学校出发到校外区域”的地图，氛围比较自然。</div>
+      <div><b>代价：</b>斜线多一些，长标签仍要小心避让。</div>
+    </div>
+  </div>
+</div>

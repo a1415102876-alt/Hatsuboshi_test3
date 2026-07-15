@@ -144,7 +144,7 @@ test("map location explore uses choice flow with return to map", () => {
   assert.match(readFunction("renderMapLocationPresence"), /map-location-presence-avatar/);
   assert.match(readFunction("renderWorldMapIdolMarkers"), /profile\.avatar/);
   assert.match(readFunction("returnToFreeModeMap"), /activeLocationId = null/);
-  assert.match(readFunction("handleMapLocationChoiceSelection"), /requestNextMapLocationOptions\(\)/);
+  assert.match(readFunction("handleMapLocationChoiceSelection"), /requestNextMapLocationOptions\(mapDispatch,/);
   assert.match(readFunction("handleApartmentCompanionChoiceSelection"), /requestNextApartmentCompanionOptions\(\)/);
   assert.doesNotMatch(readFunction("handleApartmentCompanionChoiceSelection"), /closeApartmentCompanionSession\(\)/);
   assert.match(source, /function requestNextMapLocationOptions\(/);
@@ -195,6 +195,250 @@ test("school entrance supports off-campus outing with preset destinations", () =
   assert.match(readFunction("buildFreeModeOutingExplorePrompt"), /连续多轮选择 option/);
   assert.match(readFunction("buildFreeModeOutingExplorePrompt"), /buildFreeModeRelationshipPromptBlock/);
   assert.doesNotMatch(readFunction("confirmFreeModeOutingDestination"), /settleAction\("outing"/);
+});
+
+test("sandbox First Live rules normalize challenge state and calculate tiered average rates", () => {
+  const sandbox = { globalThis: {} };
+  vm.runInNewContext(`${readFunction("defaultSandboxFirstLiveChallenge")}; ${readFunction("normalizeSandboxFirstLiveChallenge")}; ${readFunction("getSandboxFirstLiveContributionRate")}; ${readFunction("calculateSandboxFirstLiveSuccessRate")}; this.api = { defaultSandboxFirstLiveChallenge, normalizeSandboxFirstLiveChallenge, getSandboxFirstLiveContributionRate, calculateSandboxFirstLiveSuccessRate };`, sandbox);
+  const api = sandbox.api;
+  assert.deepEqual(JSON.parse(JSON.stringify(api.defaultSandboxFirstLiveChallenge())), {
+    schemaVersion: 1, status: "available", attemptCount: 0, lastAttemptDay: null,
+    nextAvailableDay: null, activeAttempt: null, history: []
+  });
+  assert.equal(api.getSandboxFirstLiveContributionRate(399), 0);
+  assert.equal(api.getSandboxFirstLiveContributionRate(400), 0.5);
+  assert.equal(api.getSandboxFirstLiveContributionRate(499), 0.5);
+  assert.equal(api.getSandboxFirstLiveContributionRate(500), 0.8);
+  assert.equal(api.getSandboxFirstLiveContributionRate(599), 0.8);
+  assert.equal(api.getSandboxFirstLiveContributionRate(600), 1);
+  assert.equal(api.calculateSandboxFirstLiveSuccessRate({ Vo: 650, Da: 550, Vi: 450 }), 0.7667);
+  const migrated = api.normalizeSandboxFirstLiveChallenge({ status: "garbage", attemptCount: -2, history: [{ attemptId: "x" }] });
+  assert.equal(migrated.status, "available");
+  assert.equal(migrated.attemptCount, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(migrated.history)), []);
+});
+
+test("sandbox map exposes stage and dormitory with dedicated entry actions", () => {
+  assert.match(source, /id: "campus_stage"/);
+  assert.match(source, /id: "student_dormitory"/);
+  assert.match(readFunction("getHybridFacilityKind"), /student_dormitory/);
+  assert.match(readFunction("getHybridFacilityKind"), /campus_stage/);
+  assert.match(readFunction("updateMapLocationEntryActions"), /firstLive|student_dormitory|rest/);
+  assert.match(html, /mapLocationEnterFacilityBtn/);
+});
+
+test("student dormitory rest is available throughout map hours and uses two hours", () => {
+  assert.match(source, /STUDENT_DORMITORY_REST_MINUTES|DORMITORY_REST_MINUTES/);
+  assert.match(readFunction("openHybridFacility"), /rest/);
+  assert.match(readFunction("openHybridFacility"), /getHybridFacilityActionMinutes|120|STUDENT_DORMITORY_REST_MINUTES/);
+  assert.match(readFunction("openHybridFacility"), /stamina/);
+
+  const runOpen = ({ clockMinutes, stamina }) => {
+    const calls = [];
+    const sandbox = {
+      state: { stamina, freeMode: { clockMinutes, facilityKind: null, facilityLocationId: null } },
+      isHybridCampusMode: () => true,
+      isFreeModeActive: () => true,
+      isFreeModeTravelAllowed: () => true,
+      isSandboxCampusExhausted: () => calls.push("campus-limit-read"),
+      showSandboxCampusLimitToast: () => calls.push("campus-limit-toast"),
+      getWorldMapLocation: () => ({ id: "student_dormitory", name: "学生宿舍" }),
+      showToast: (...args) => calls.push(["toast", ...args]),
+      saveState: () => calls.push("save"),
+      render: () => calls.push("render"),
+      HYBRID_FACILITY_ACTION_MINUTES: 60,
+      STUDENT_DORMITORY_REST_MINUTES: 120
+    };
+    vm.runInNewContext(`${readFunction("getHybridFacilityActionMinutes")}; ${readFunction("openHybridFacility")}; this.open = openHybridFacility;`, sandbox);
+    sandbox.open("rest", "student_dormitory");
+    return { state: sandbox.state, calls };
+  };
+
+  const morning = runOpen({ clockMinutes: 8 * 60, stamina: 40 });
+  assert.equal(morning.state.freeMode.facilityKind, "rest");
+  assert.equal(morning.calls.includes("save"), true);
+
+  const full = runOpen({ clockMinutes: 20 * 60, stamina: 100 });
+  assert.equal(full.state.freeMode.facilityKind, null);
+  assert.equal(full.calls.includes("save"), false);
+
+  const ready = runOpen({ clockMinutes: 20 * 60, stamina: 40 });
+  assert.equal(ready.state.freeMode.facilityKind, "rest");
+  assert.equal(ready.state.freeMode.facilityLocationId, "student_dormitory");
+  assert.equal(ready.calls.includes("save"), true);
+  assert.equal(ready.calls.includes("campus-limit-read"), false);
+});
+
+test("sandbox First Live settlement freezes one roll and never re-rolls on replay", () => {
+  const sandbox = { globalThis: {} };
+  vm.runInNewContext(`${readFunction("getSandboxFirstLiveContributionRate")}; ${readFunction("calculateSandboxFirstLiveSuccessRate")}; ${readFunction("buildSandboxFirstLiveSettlement")}; this.api = { buildSandboxFirstLiveSettlement };`, sandbox);
+  const first = sandbox.api.buildSandboxFirstLiveSettlement({ Vo: 650, Da: 550, Vi: 450 }, 0.75);
+  const replay = sandbox.api.buildSandboxFirstLiveSettlement(first.snapshot, first.roll);
+  assert.equal(first.roll, 0.75);
+  assert.equal(first.successRate, 0.7667);
+  assert.equal(first.success, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(replay)), JSON.parse(JSON.stringify(first)));
+});
+
+test("sandbox First Live confirmation requires a lease before challenge mutation", () => {
+  assert.match(source, /function prepareSandboxFirstLiveAttempt\(/);
+  assert.match(readFunction("prepareSandboxFirstLiveAttempt"), /tryAcquirePrimaryModelChannel/);
+  assert.match(readFunction("prepareSandboxFirstLiveAttempt"), /sandbox_first_live/);
+  assert.match(readFunction("prepareSandboxFirstLiveAttempt"), /Math\.random/);
+  assert.ok(readFunction("prepareSandboxFirstLiveAttempt").indexOf("tryAcquirePrimaryModelChannel") < readFunction("prepareSandboxFirstLiveAttempt").indexOf("Math.random"));
+  assert.match(readFunction("prepareSandboxFirstLiveAttempt"), /180|FIRST_LIVE_ACTION_MINUTES/);
+});
+
+test("sandbox First Live prompt and parser require both live blocks", () => {
+  const sandbox = { state: { idol: "月村手毬", freeMode: { postLiveDay: 2 } } };
+  vm.runInNewContext(`${readFunction("buildSandboxFirstLivePrompt")}; ${readFunction("extractSandboxFirstLiveNarrative")}; this.api = { buildSandboxFirstLivePrompt, extractSandboxFirstLiveNarrative };`, sandbox);
+  const prompt = sandbox.api.buildSandboxFirstLivePrompt({
+    attemptDay: 2,
+    snapshot: { Vo: 650, Da: 550, Vi: 450 },
+    contributionRates: { Vo: 1, Da: 0.8, Vi: 0.5 },
+    successRate: 0.7667,
+    roll: 0.2,
+    success: true
+  });
+  assert.match(prompt, /live_pre/);
+  assert.match(prompt, /live_post/);
+  const valid = sandbox.api.extractSandboxFirstLiveNarrative("【live_pre开始】登台前的准备与觉悟足够长。 【live_pre结束】\n【live_post开始】演出后的复盘与情绪变化足够长。 【live_post结束】");
+  assert.equal(valid.pre.includes("登台前"), true);
+  assert.equal(valid.post.includes("演出后"), true);
+  assert.equal(sandbox.api.extractSandboxFirstLiveNarrative("【live_pre开始】只有前半段。 【live_pre结束】"), null);
+});
+
+test("sandbox First Live recovery keeps turn identity but rotates request id", () => {
+  assert.match(readFunction("retryHarnessNarrativeRecovery"), /sandbox_first_live_recovery/);
+  assert.match(readFunction("retryHarnessNarrativeRecovery"), /turnId: turn\.turnId/);
+  assert.match(readFunction("retryHarnessNarrativeRecovery"), /requestId = createRequestId/);
+  assert.match(readFunction("resolveHarnessRecoveryPrompt"), /generationPrompt/);
+  assert.doesNotMatch(readFunction("retryHarnessNarrativeRecovery"), /buildSandboxFirstLivePrompt/);
+});
+
+test("sandbox First Live UI exposes time and challenge status gates", () => {
+  assert.match(source, /function getSandboxFirstLiveChallengeStatusText\(/);
+  assert.match(readFunction("updateMapLocationEntryActions"), /FIRST_LIVE_MINUTES/);
+  assert.match(readFunction("updateMapLocationEntryActions"), /recovery_required/);
+  assert.match(readFunction("renderActionButtons"), /getSandboxFirstLiveChallengeStatusText/);
+});
+
+test("map arrival freezes the pre-travel presence only for the first arrival prompt", () => {
+  const begin = readFunction("beginMapLocationExploreSession");
+  const presence = readFunction("buildMapLocationPresenceLine");
+  const relationships = readFunction("getMapExploreRelationshipIdols");
+  assert.match(begin, /arrivalPresenceIds/);
+  assert.match(begin, /getIdolsPresentAtLocation\(locationId\)/);
+  assert.ok(begin.indexOf("arrivalPresenceIds") < begin.indexOf("advanceFreeModeTime"));
+  assert.match(begin, /mapStepKind: "arrival"[\s\S]*arrivalPresenceIds/);
+  assert.match(presence, /options/);
+  assert.match(presence, /mapStepKind === "arrival"/);
+  assert.match(relationships, /mapStepKind === "arrival"/);
+  assert.match(relationships, /arrivalPresenceIds/);
+});
+
+test("apartment companion custom choice routes from the shared VN input", () => {
+  const calls = [];
+  const sandbox = {
+    document: { getElementById: () => ({ value: "  今天辛苦了，想再聊一会儿  " }) },
+    isNsfwIntimacyActive: () => false,
+    isMapLocationExploreActive: () => false,
+    isApartmentCompanionSessionActive: () => true,
+    isChoicePromptMode: () => true,
+    handleNsfwIntimacyCustomChoice: () => calls.push("nsfw"),
+    handleMapLocationCustomChoice: () => calls.push("map"),
+    handleApartmentCompanionCustomChoice: (text) => calls.push(["apartment", text]),
+    showToast: () => calls.push("toast")
+  };
+  vm.runInNewContext(`${readFunction("handleVnCustomChoiceSubmit")}; this.submit = handleVnCustomChoiceSubmit;`, sandbox);
+
+  sandbox.submit();
+
+  assert.deepEqual(calls, [["apartment", "  今天辛苦了，想再聊一会儿  "]]);
+});
+
+test("apartment companion custom choice advances ten minutes and requests the entered continuation", () => {
+  const calls = [];
+  const sandbox = {
+    state: {
+      pendingActionContext: { action: "apartment_companion", actionContext: { companionIdol: "藤田琴音" } },
+      lastStory: "此前的公寓对话",
+      selectedChoiceText: "old",
+      selectedChoiceRating: "old",
+      pendingOptionTexts: ["1", "2", "3", "4"],
+      pendingOptionMinutes: [10, 10, 10, 10],
+      eventMode: "choice_prompt",
+      choiceStep: 1
+    },
+    advanceFreeModeTime: (minutes) => calls.push(["advance", minutes]),
+    appendEveningJournalActivity: (title, detail) => calls.push(["journal", title, detail]),
+    saveState: () => calls.push("save"),
+    scanStorytellerNotificationAtCheckpoint: (trigger, options) => calls.push(["scan", trigger, options]),
+    render: () => calls.push("render"),
+    renderProducerApartmentStage: () => calls.push("render-apartment"),
+    closeVnChoicesOverlay: () => calls.push("close-choices"),
+    requestNextApartmentCompanionOptions: (text) => calls.push(["request-next", text]),
+    showToast: (...args) => calls.push(["toast", ...args])
+  };
+  vm.runInNewContext(`${readFunction("handleApartmentCompanionCustomChoice")}; this.choose = handleApartmentCompanionCustomChoice;`, sandbox);
+
+  sandbox.choose("  今天辛苦了，想再聊一会儿  ");
+
+  assert.ok(sandbox.state.lastStory.includes("今天辛苦了，想再聊一会儿"));
+  assert.equal(sandbox.state.pendingOptionTexts.length, 0);
+  assert.equal(sandbox.state.pendingOptionMinutes.length, 0);
+  assert.deepEqual(calls[0], ["advance", 10]);
+  assert.ok(calls.some((call) => Array.isArray(call) && call[0] === "journal" && call[2].includes("今天辛苦了")));
+  assert.ok(calls.some((call) => Array.isArray(call) && call[0] === "scan" && call[1] === "time_advance"));
+  assert.deepEqual(calls.at(-1), ["request-next", "今天辛苦了，想再聊一会儿"]);
+  assert.equal(calls.some((call) => Array.isArray(call) && call[0] === "toast"), false);
+});
+
+test("apartment companion custom choice rejects blank input without state writes", () => {
+  const calls = [];
+  const sandbox = {
+    state: { lastStory: "unchanged" },
+    showToast: (...args) => calls.push(args),
+    advanceFreeModeTime: () => calls.push("forbidden")
+  };
+  vm.runInNewContext(`${readFunction("handleApartmentCompanionCustomChoice")}; this.choose = handleApartmentCompanionCustomChoice;`, sandbox);
+
+  sandbox.choose("   ");
+
+  assert.equal(sandbox.state.lastStory, "unchanged");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "还没有内容");
+});
+
+test("apartment companion continuation prompt includes the current custom action", () => {
+  const sandbox = {
+    state: {
+      idol: "藤田琴音",
+      boundCharacter: { name: "藤田琴音" },
+      freeMode: { clockMinutes: 1200 }
+    },
+    idols: { 藤田琴音: { styles: { companion: "嘴硬但认真回应" } } },
+    FREE_MODE_MAP_NIGHT_START_MINUTES: 1200,
+    canonicalIdolName: (name) => name,
+    getAffinityStageLine: () => "好感阶段",
+    getFreeModeRelationshipScore: () => 50,
+    getCurrentAffinityIdolName: () => "藤田琴音",
+    formatFreeModeDayLabel: () => "学园第 2 天",
+    formatFreeModeClock: () => "20:00",
+    buildProducerPromptSection: () => "制作人设定",
+    summarizeMapExploreContext: () => "此前摘要",
+    galgameRenderContract: () => "输出契约",
+    buildChoiceHardRules: () => "选项规则"
+  };
+  vm.runInNewContext(`${readFunction("buildApartmentCompanionChatPrompt")}; this.build = buildApartmentCompanionChatPrompt;`, sandbox);
+
+  const prompt = sandbox.build("藤田琴音", "训练复盘", {
+    continuation: true,
+    producerAction: "今天辛苦了，想再聊一会儿"
+  });
+
+  assert.match(prompt, /制作人本轮自定义输入：今天辛苦了，想再聊一会儿/);
+  assert.match(prompt, /优先回应这次输入/);
 });
 
 test("map option time tags parse with 15 minute fallback", () => {

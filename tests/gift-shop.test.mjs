@@ -47,16 +47,35 @@ test("gift shop gives gifts and consumes inventory", () => {
   const key = shop.buildRecipientKey("idol", "花海佑芽");
   const result = shop.giveGift(state, "cookie_box", key);
   assert.equal(result.ok, true);
-  assert.equal(result.affinity, 4);
+  assert.equal(result.affinity, 8);
   assert.equal(result.recipient.name, "花海佑芽");
   assert.equal(shop.getInventoryCount(state, "cookie_box"), 0);
 });
 
-test("npc gifts use reduced affinity gain", () => {
+test("gift shop catalog uses doubled affinity values", () => {
+  const shop = loadGiftShop();
+  assert.deepEqual(
+    Array.from(shop.GIFT_CATALOG, ({ id, affinity }) => [id, affinity]),
+    [
+      ["muscle_patch", 2],
+      ["bottled_tea", 4],
+      ["study_sticker", 4],
+      ["pudding_cup", 6],
+      ["fan_badge", 6],
+      ["cookie_box", 8],
+      ["star_hairpin", 10],
+      ["throat_tea", 10],
+      ["memory_album", 12],
+      ["limited_plush", 16]
+    ]
+  );
+});
+
+test("npc gifts receive the same full affinity gain as idol gifts", () => {
   const shop = loadGiftShop();
   const item = shop.getCatalogItem("memory_album");
-  assert.equal(shop.getGiftAffinityGain(item, "idol"), 6);
-  assert.equal(shop.getGiftAffinityGain(item, "npc"), 4);
+  assert.equal(shop.getGiftAffinityGain(item, "idol"), 12);
+  assert.equal(shop.getGiftAffinityGain(item, "npc"), 12);
 });
 
 test("app wires student store shop entry and gift overlay", () => {

@@ -34,6 +34,44 @@
     return result;
   }
 
+  function normalizeStyleMix(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const heroic = Number(value.heroic);
+    const romance = Number(value.romance);
+    const kaibunsho = Number(value.kaibunsho);
+    if (![heroic, romance, kaibunsho].every((item) => (
+      Number.isInteger(item) && item >= 0 && item <= 100 && item % 5 === 0
+    ))) return null;
+    if (heroic + romance + kaibunsho !== 100 || kaibunsho !== 0) return null;
+    return { heroic, romance, kaibunsho };
+  }
+
+  function normalizeStyleThread(value, expectedWeight) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const status = value.status === "active" || value.status === "dormant" ? value.status : "";
+    const weight = boundedInteger(value.weight, -1);
+    const focusPressureIds = boundedTextList(value.focusPressureIds, 8, 160);
+    const dramaticQuestion = boundedText(value.dramaticQuestion, 240);
+    const narrativeGoals = boundedTextList(value.narrativeGoals, 6, 180);
+    const dormantReason = boundedText(value.dormantReason, 160);
+    if (!status || weight !== expectedWeight || !focusPressureIds || !narrativeGoals) return null;
+    if (status === "active" && (!dramaticQuestion || dormantReason)) return null;
+    if (status === "dormant" && (dramaticQuestion || narrativeGoals.length || !dormantReason)) return null;
+    return { status, weight, focusPressureIds, dramaticQuestion, narrativeGoals, dormantReason };
+  }
+
+  function normalizeStyleThreads(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value) || value.kaibunsho !== null) return null;
+    const heroicWeight = Number(value.heroic?.weight);
+    const romanceWeight = Number(value.romance?.weight);
+    if (![heroicWeight, romanceWeight].every((item) => (
+      Number.isInteger(item) && item >= 0 && item <= 100 && item % 5 === 0
+    )) || heroicWeight + romanceWeight !== 100) return null;
+    const heroic = normalizeStyleThread(value.heroic, heroicWeight);
+    const romance = normalizeStyleThread(value.romance, romanceWeight);
+    return heroic && romance ? { heroic, romance, kaibunsho: null } : null;
+  }
+
   function emptySignals() {
     return { facts: [], playerChoices: [], observations: [], hooksCreated: [], hooksResolved: [] };
   }
@@ -64,6 +102,8 @@
   function normalizeActiveJob(value, options = {}) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
     const interrupted = options.recoverInterrupted !== false && (value.status === "generating" || value.status === "validating");
+    const styleMix = normalizeStyleMix(value.styleMix);
+    const styleMode = value.styleMode === "styled" && styleMix ? "styled" : "legacy";
     return {
       jobId: boundedText(value.jobId, 160),
       requestId: interrupted ? "" : boundedText(value.requestId, 160),
@@ -72,6 +112,9 @@
       dayKey: boundedText(value.dayKey, 120),
       baseDirectorRevision: boundedInteger(value.baseDirectorRevision),
       baseChronicleRevision: boundedInteger(value.baseChronicleRevision),
+      styleMode,
+      styleMix: styleMode === "styled" ? styleMix : null,
+      styleMixRevision: styleMode === "styled" ? boundedInteger(value.styleMixRevision) : null,
       status: interrupted ? "retryable_failed" : boundedText(value.status, 40) || "prepared",
       reason: interrupted ? "page_reloaded" : boundedText(value.reason, 120),
       attempts: boundedInteger(value.attempts),
@@ -161,7 +204,7 @@
     const tone = boundedText(value.tone, 120);
     const summary = boundedText(value.summary, 320);
     if (!dayKey || !tone || !summary) return null;
-    return {
+    const base = {
       dayKey,
       tone,
       summary,
@@ -170,6 +213,12 @@
       narrativeGoals: boundedTextList(value.narrativeGoals, 6, 180),
       avoid: boundedTextList(value.avoid, 6, 180)
     };
+    const styleAware = value.styleMixRevision != null || value.styleThreads != null;
+    if (!styleAware) return { ...base, styleMixRevision: null, styleThreads: null };
+    const styleMixRevision = boundedInteger(value.styleMixRevision, -1);
+    const styleThreads = normalizeStyleThreads(value.styleThreads);
+    if (styleMixRevision < 0 || !styleThreads) return null;
+    return { ...base, styleMixRevision, styleThreads };
   }
   function ensureDirectorShape(value, options = {}) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
