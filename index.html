@@ -194,6 +194,31 @@
           </div>
         </div>
       </section>
+
+      <section class="select-panel is-hidden" id="sandboxApiPanel" aria-label="沙盒次 API 设置">
+        <div class="panel-head">
+          <div>
+            <p class="ui-kicker">World Setup</p>
+            <h2>次 API 设置</h2>
+          </div>
+          <svg><use href="#icon-settings"></use></svg>
+        </div>
+        <div class="producer-form sandbox-api-form">
+          <label class="world-engine-toggle" for="sandboxApiEnabled">
+            <span><strong>启用次 API</strong><small>用于每日世界层、委托与 Director 推演</small></span>
+            <input id="sandboxApiEnabled" type="checkbox">
+          </label>
+          <label class="world-engine-field" for="sandboxApiBaseUrl"><span>接口地址</span><input id="sandboxApiBaseUrl" type="text" placeholder="https://api.openai.com/v1" spellcheck="false"></label>
+          <label class="world-engine-field" for="sandboxApiModel"><span>模型</span><input id="sandboxApiModel" type="text" placeholder="gpt-4o-mini" spellcheck="false"></label>
+          <label class="world-engine-field" for="sandboxApiKey"><span>API Key（仅存浏览器本地）</span><input id="sandboxApiKey" type="password" placeholder="sk-..." spellcheck="false" autocomplete="off"></label>
+          <p id="sandboxApiStatus" class="world-engine-settings-status">可测试连接，也可暂不填写。</p>
+          <div class="sandbox-api-actions">
+            <button id="sandboxApiTestBtn" type="button" class="confirm-idol-btn secondary-action">测试连接</button>
+            <button id="sandboxApiSkipBtn" type="button" class="confirm-idol-btn secondary-action">暂不填写</button>
+            <button id="sandboxApiContinueBtn" type="button" class="confirm-idol-btn">保存并继续</button>
+          </div>
+        </div>
+      </section>
     </section>
 
     <section class="game-stage is-hidden" id="gameStage" aria-label="初星育成主界面">

@@ -3631,6 +3631,10 @@
     };
     state.sandbox.openingComplete = Boolean(state.sandbox.openingComplete);
     state.sandbox.inviteComplete = Boolean(state.sandbox.inviteComplete);
+    state.sandbox.apiSetupPending = Boolean(state.sandbox.apiSetupPending);
+    state.sandbox.pendingIdol = state.sandbox.pendingIdol
+      ? canonicalIdolName(state.sandbox.pendingIdol)
+      : "";
     state.sandbox.scoutTargetIdol = state.sandbox.scoutTargetIdol
       ? canonicalIdolName(state.sandbox.scoutTargetIdol)
       : null;
@@ -5273,6 +5277,7 @@
       secondaryApiDebug.lastMessage = ok
         ? `测试成功：收到 ${text.length} 字回复`
         : `测试失败：${payload?.error || "无有效回复"}`;
+      updateSandboxApiTestStatus(secondaryApiDebug.lastMessage);
       renderSecondaryApiDebug();
       showToast(ok ? "次 API 测试成功" : "次 API 测试失败", ok ? `收到 ${text.length} 字有效回复，详见调试日志。` : `${payload?.error || "无有效回复"}`, ok ? "info" : "warn");
       return;
@@ -5544,11 +5549,11 @@
 
   function runSecondaryApiTest() {
     const cfg = getSecondaryApiConfig();
-    if (!cfg.baseUrl || !cfg.model) { showToast("无法测试", "请先填写接口地址与模型后再测试。", "warn"); return; }
+    if (!cfg.baseUrl || !cfg.model) { showToast("无法测试", "请先填写接口地址与模型后再测试。", "warn"); return false; }
     const prompt = "这是一次连接测试。请只回复一行中文：初星次API连接正常。";
     const requestId = createSecondaryRequestId("test");
     const dispatch = acquireSecondaryEntryDispatch("test", requestId);
-    if (!dispatch.ok) return;
+    if (!dispatch.ok) return false;
     secondaryApiDebug.lastMessage = "测试请求发送中…";
     renderSecondaryApiDebug();
     const sent = requestHostSecondaryPromptSend(prompt, dispatch.owner, { allowDisabled: true });
@@ -5557,7 +5562,9 @@
       secondaryApiDebug.lastMessage = "测试未发出：接口地址或模型缺失。";
       renderSecondaryApiDebug();
       showToast("测试未发出", "接口地址或模型缺失，请检查配置。", "warn");
+      return false;
     }
+    return true;
   }
   function saveWorldEngineApiSettings() {
     saveSecondaryApiSettings({
@@ -10633,7 +10640,10 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     normalizeBootFlowState();
     syncProducerApartmentState();
     renderLaunchStage();
-    if (shouldShowSelectionStage()) renderIdols();
+    if (shouldShowSelectionStage()) {
+      renderIdols();
+      restorePendingSandboxApiSetup();
+    }
     renderShellMode();
     ensureIdolListRendered();
     if (!state.idol) return;
@@ -10910,11 +10920,109 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     document.getElementById("prodSettingsInput").value = state.producer?.settings || "";
   }
 
+  function updateSandboxApiTestStatus(message) {
+    const status = document.getElementById("sandboxApiStatus");
+    if (status) status.textContent = String(message || "可测试连接，也可暂不填写。");
+  }
+
+  function populateSandboxApiSetupForm() {
+    const config = getSecondaryApiConfig();
+    const enabled = document.getElementById("sandboxApiEnabled");
+    const baseUrl = document.getElementById("sandboxApiBaseUrl");
+    const model = document.getElementById("sandboxApiModel");
+    const key = document.getElementById("sandboxApiKey");
+    if (enabled) enabled.checked = config.enabled;
+    if (baseUrl) baseUrl.value = config.baseUrl;
+    if (model) model.value = config.model;
+    if (key) key.value = config.apiKey;
+    updateSandboxApiTestStatus(config.enabled
+      ? `次 API 已启用${config.apiKey ? " · Key 已保存" : " · 未保存 Key"}`
+      : "可测试连接，也可暂不填写。");
+  }
+
+  function openSandboxApiSetupPanel(idolName) {
+    const canonical = canonicalIdolName(idolName);
+    if (!canonical) return false;
+    selectedIdol = canonical;
+    state.sandbox = { ...(state.sandbox || {}), apiSetupPending: true, pendingIdol: canonical };
+    document.getElementById("selectPanel")?.classList.add("is-hidden");
+    document.getElementById("producerPanel")?.classList.add("is-hidden");
+    document.getElementById("sandboxApiPanel")?.classList.remove("is-hidden");
+    const kicker = document.getElementById("selectKicker");
+    const title = document.getElementById("selectTitle");
+    const desc = document.getElementById("selectDesc");
+    const confirmContainer = document.getElementById("selectConfirmContainer");
+    if (kicker) kicker.textContent = "Sandbox World Setup";
+    if (title) title.textContent = "配置次 API";
+    if (desc) desc.textContent = `为 ${canonical} 的沙盒世界设置生成接口，也可以暂不填写。`;
+    if (confirmContainer) {
+      confirmContainer.style.display = "none";
+      confirmContainer.classList.remove("is-visible");
+    }
+    populateSandboxApiSetupForm();
+    return true;
+  }
+
+  function restorePendingSandboxApiSetup() {
+    if (!isSandboxLaunch() || !state.sandbox?.apiSetupPending) return false;
+    return openSandboxApiSetupPanel(state.sandbox?.pendingIdol);
+  }
+
+  function readSandboxApiSetupForm() {
+    return {
+      enabled: Boolean(document.getElementById("sandboxApiEnabled")?.checked),
+      baseUrl: String(document.getElementById("sandboxApiBaseUrl")?.value || "").trim(),
+      model: String(document.getElementById("sandboxApiModel")?.value || "").trim(),
+      apiKey: String(document.getElementById("sandboxApiKey")?.value || "").trim()
+    };
+  }
+
+  function saveSandboxApiSetupForm(enabledOverride) {
+    const form = readSandboxApiSetupForm();
+    saveSecondaryApiSettings({
+      ...form,
+      enabled: enabledOverride === undefined ? form.enabled : Boolean(enabledOverride)
+    });
+    return form;
+  }
+
+  function finishSandboxApiSetup() {
+    const idol = canonicalIdolName(state.sandbox?.pendingIdol);
+    if (!idol) {
+      showToast("无法继续", "担当偶像信息已丢失，请返回重新选择。", "warn");
+      return false;
+    }
+    state.sandbox = { ...(state.sandbox || {}), apiSetupPending: false, pendingIdol: "" };
+    saveState("sandbox.api_setup_complete");
+    startSandboxInviteStory(idol);
+    return true;
+  }
+
+  function continueSandboxApiSetup() {
+    saveSandboxApiSetupForm();
+    return finishSandboxApiSetup();
+  }
+
+  function skipSandboxApiSetup() {
+    saveSandboxApiSetupForm(false);
+    return finishSandboxApiSetup();
+  }
+
+  function testSandboxApiConnection() {
+    saveSandboxApiSetupForm();
+    updateSandboxApiTestStatus("测试请求发送中…");
+    const sent = runSecondaryApiTest();
+    if (!sent) updateSandboxApiTestStatus("测试未发出，请检查接口地址、模型或当前请求状态。");
+    return sent;
+  }
+
   function openProducerSetupPanel() {
     const selectPanel = document.getElementById("selectPanel");
     const producerPanel = document.getElementById("producerPanel");
+    const sandboxApiPanel = document.getElementById("sandboxApiPanel");
     if (selectPanel) selectPanel.classList.add("is-hidden");
     if (producerPanel) producerPanel.classList.remove("is-hidden");
+    if (sandboxApiPanel) sandboxApiPanel.classList.add("is-hidden");
 
     const copy = getProducerSetupCopy(selectedIdol);
     const kicker = document.getElementById("selectKicker");
@@ -10934,8 +11042,10 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   function restoreIdolSelectionPanel() {
     const selectPanel = document.getElementById("selectPanel");
     const producerPanel = document.getElementById("producerPanel");
+    const sandboxApiPanel = document.getElementById("sandboxApiPanel");
     if (selectPanel) selectPanel.classList.remove("is-hidden");
     if (producerPanel) producerPanel.classList.add("is-hidden");
+    if (sandboxApiPanel) sandboxApiPanel.classList.add("is-hidden");
 
     const kicker = document.getElementById("selectKicker");
     const title = document.getElementById("selectTitle");
@@ -22387,20 +22497,25 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       if (selectPanel) selectPanel.classList.remove("is-hidden");
       if (producerPanel) producerPanel.classList.add("is-hidden");
 
-      if (isSandboxLaunch()) {
-        startSandboxInviteStory(selectedIdol);
-        saveState();
-        showToast("档案已保存", `制作人档案已确认，前往学园接触 ${selectedIdol}。`, "gold");
-        return;
-      }
+          if (isSandboxLaunch()) {
+            state.sandbox = { ...(state.sandbox || {}), apiSetupPending: true, pendingIdol: selectedIdol };
+            saveState("sandbox.api_setup_pending");
+            openSandboxApiSetupPanel(selectedIdol);
+            showToast("档案已保存", "请设置沙盒世界使用的次 API，或暂不填写。", "gold");
+            return;
+          }
 
       state.launchMode = "produce";
       applyIdolPreset(selectedIdol, true);
       startOpeningStory("签署合约");
       saveState();
       showToast("合约签署完成", `制作人与 ${selectedIdol} 的专属育成正式开启！`, "gold");
+      });
     });
-  });
+
+  document.getElementById("sandboxApiTestBtn")?.addEventListener("click", testSandboxApiConnection);
+  document.getElementById("sandboxApiSkipBtn")?.addEventListener("click", skipSandboxApiSetup);
+  document.getElementById("sandboxApiContinueBtn")?.addEventListener("click", continueSandboxApiSetup);
 
   document.querySelectorAll("[data-modal]").forEach((button) => {
     button.addEventListener("click", () => openModal(button.dataset.modal));

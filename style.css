@@ -4323,6 +4323,53 @@ p {
   background: rgba(0, 0, 0, 0.05) !important;
 }
 
+.sandbox-api-form {
+  align-content: start;
+}
+
+.sandbox-api-form .world-engine-field,
+.sandbox-api-form .world-engine-toggle {
+  margin: 0;
+}
+
+.sandbox-api-form .world-engine-settings-status {
+  min-height: 32px;
+  margin: 2px 0 0;
+}
+
+.sandbox-api-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.sandbox-api-actions .confirm-idol-btn {
+  min-width: 0;
+  margin: 0;
+  padding: 12px 10px;
+}
+
+.sandbox-api-actions #sandboxApiContinueBtn {
+  grid-column: 1 / -1;
+}
+
+.sandbox-api-actions .secondary-action {
+  border: 1px solid rgba(111, 102, 128, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+}
+
+@media (max-width: 620px) {
+  .sandbox-api-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .sandbox-api-actions #sandboxApiContinueBtn {
+    grid-column: auto;
+  }
+}
+
 /* Wipe Transition Styles */
 .wipe-transition {
   position: fixed;
