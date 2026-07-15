@@ -14,6 +14,28 @@ function loadObservationApi() {
   return context.globalThis.HatsuWorldStorytellerObservations;
 }
 
+function readFunction(name) {
+  const start = appSource.indexOf(`function ${name}(`);
+  assert.notEqual(start, -1, `${name} must exist`);
+  const bodyStart = appSource.indexOf("{", start);
+  let depth = 0;
+  let quote = "";
+  let escaped = false;
+  for (let index = bodyStart; index < appSource.length; index += 1) {
+    const char = appSource[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = "";
+      continue;
+    }
+    if (char === '"' || char === "'" || char === "`") quote = char;
+    else if (char === "{") depth += 1;
+    else if (char === "}" && --depth === 0) return appSource.slice(start, index + 1);
+  }
+  throw new Error(`Could not parse ${name}`);
+}
+
 test("app wires a bounded Storyteller observation state without starting a model request", () => {
   assert.match(appSource, /storyteller/);
   assert.match(appSource, /recordStorytellerObservation/);
@@ -155,4 +177,42 @@ test("manual current-day replan never activates pending style settings", () => {
   const start = appSource.indexOf("function requestManualWorldDirectorRecalculation");
   const end = appSource.indexOf("function maybeFollowWorldDirectorAfterPublicWorld", start);
   assert.doesNotMatch(appSource.slice(start, end), /activateStorytellerStyleMixForDay/);
+});
+
+test("sandbox first day creates a Storyteller plan only for the static world path", () => {
+  function execute(worldTickMode) {
+    const calls = [];
+    const context = {
+      state: { idol: "藤田琴音", freeMode: { world: {} } },
+      FREE_MODE_DAY_START_MINUTES: 480,
+      ensureFreeModeTimeDefaults: () => calls.push("defaults"),
+      HatsuTasks: {
+        syncSandboxMacroPhase: () => calls.push("sync-phase"),
+        isSandboxTasksActive: () => false
+      },
+      HatsuWorld: { campusBehavior: { getIdolCampusSlot: () => null } },
+      runFreeModeWorldDailyTick: () => { calls.push("daily-tick"); return worldTickMode; },
+      ensureStorytellerPlanForCheckpoint: (trigger) => calls.push(`ensure-plan:${trigger}`),
+      document: { body: { classList: { add: () => calls.push("body-class") } } },
+      saveState: () => calls.push("save"),
+      render: () => calls.push("render"),
+      getHatsuWorldHelpers: () => ({}),
+      getWorldMapLocation: () => null,
+      formatCampusDayLabel: () => "学园第 1 天",
+      formatFreeModeClock: () => "08:00",
+      showToast: () => calls.push("toast")
+    };
+    context.globalThis = context;
+    vm.runInNewContext(`${readFunction("enterSandboxCampusAfterOpening")}; this.enter = enterSandboxCampusAfterOpening;`, context);
+    context.enter();
+    return calls;
+  }
+
+  const staticCalls = execute("static");
+  assert.equal(staticCalls.filter((item) => item === "ensure-plan:day_change").length, 1);
+  assert.ok(staticCalls.indexOf("daily-tick") < staticCalls.indexOf("ensure-plan:day_change"));
+  assert.ok(staticCalls.indexOf("ensure-plan:day_change") < staticCalls.indexOf("save"));
+
+  const secondaryCalls = execute("secondary");
+  assert.equal(secondaryCalls.some((item) => item.startsWith("ensure-plan:")), false);
 });

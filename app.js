@@ -11260,7 +11260,10 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       facilityKind: null,
       facilityLocationId: null
     };
-    runFreeModeWorldDailyTick();
+    const worldTickMode = runFreeModeWorldDailyTick();
+    if (worldTickMode !== "secondary" && typeof ensureStorytellerPlanForCheckpoint === "function") {
+      ensureStorytellerPlanForCheckpoint("day_change");
+    }
     if (globalThis.HatsuTasks?.isSandboxTasksActive(state)) {
       globalThis.HatsuTasks.syncSideQuestDay(state);
     }
