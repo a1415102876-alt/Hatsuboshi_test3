@@ -27,8 +27,52 @@ test("director state starts with the minimal persisted shape", () => {
   const api = loadDirectorState();
   assert.deepEqual(normalize(api.defaultDirectorState()), {
     schemaVersion: 1, enabled: true, directorRevision: 0, chronicleRevision: 0, chronicleDigests: [],
-    dailyDirection: null, pressures: [], activeJob: null, dirty: false, lastAppliedJobId: "", receipts: []
+    dailyDirection: null, pressures: [], characterIntents: [], activeJob: null, dirty: false, lastAppliedJobId: "", receipts: []
   });
+});
+
+test("character intents migrate, normalize to a bounded shape, and discard narrative payloads", () => {
+  const api = loadDirectorState();
+  assert.deepEqual(normalize(api.ensureDirectorShape({ pressures: [] })).characterIntents, []);
+  const normalized = normalize(api.ensureDirectorShape({
+    characterIntents: [{
+      intentId: "intent:a:day-2", dayKey: "day-2", saveScope: "scope-a", actorId: "idol:a",
+      targetIds: ["producer", "producer"], goal: "Ask about tomorrow's lesson", motive: "Keep a promise visible",
+      urgency: "normal", visibility: "private", preferredChannels: ["phone", "phone"],
+      sourcePressureIds: ["pressure:a"], sourceRefs: ["d1"], publicPostDraft: "", expiresDayKey: "day-2",
+      prompt: "secret", result: "already happened"
+    }]
+  }));
+  assert.deepEqual(normalized.characterIntents, [{
+    intentId: "intent:a:day-2", dayKey: "day-2", saveScope: "scope-a", actorId: "idol:a",
+    targetIds: ["producer"], goal: "Ask about tomorrow's lesson", motive: "Keep a promise visible",
+    urgency: "normal", visibility: "private", preferredChannels: ["phone"],
+    sourcePressureIds: ["pressure:a"], sourceRefs: ["d1"], publicPostDraft: "", expiresDayKey: "day-2"
+  }]);
+});
+
+test("director patch commits character intents atomically", () => {
+  const api = loadDirectorState();
+  const intent = {
+    intentId: "intent:a:day-2", dayKey: "day-2", saveScope: "scope-a", actorId: "idol:a",
+    targetIds: ["producer"], goal: "Send a short update", motive: "Maintain contact", urgency: "low",
+    visibility: "private", preferredChannels: ["phone"], sourcePressureIds: [], sourceRefs: [],
+    publicPostDraft: "", expiresDayKey: "day-2"
+  };
+  const patch = {
+    jobId: "job-1", saveScope: "scope-a", trigger: "day_change", baseDirectorRevision: 0, baseChronicleRevision: 0,
+    dailyDirection: { dayKey: "day-2", tone: "steady", summary: "Keep the day moving", focusActorIds: [], focusPressureIds: [], narrativeGoals: [], avoid: [] },
+    pressures: [], characterIntents: [intent], receipt: { jobId: "job-1", createdAt: 1 }
+  };
+  const state = { freeMode: { world: { director: api.defaultDirectorState() } } };
+  assert.equal(api.applyDirectorPatch(state, patch).applied, true);
+  assert.deepEqual(normalize(state.freeMode.world.director.characterIntents), [intent]);
+
+  const invalidState = { freeMode: { world: { director: api.defaultDirectorState() } } };
+  assert.deepEqual(normalize(api.applyDirectorPatch(invalidState, { ...patch, characterIntents: [{ ...intent, urgency: "immediate" }] })), {
+    applied: false, reason: "invalid_patch_payload"
+  });
+  assert.deepEqual(normalize(invalidState.freeMode.world.director.characterIntents), []);
 });
 
 test("accepted digest commits once and marks the director dirty", () => {

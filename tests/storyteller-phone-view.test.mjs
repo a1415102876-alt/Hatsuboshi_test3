@@ -99,13 +99,49 @@ test("event audit merges current and recent candidates with budget and channel c
     moderate: { used: 1, total: 3 },
     major: { used: 0, total: 0 }
   });
-  assert.deepEqual(audit.channels, { attach: 2, invite: 1 });
+  assert.deepEqual(audit.channels, { attach: 2, invite: 1, phone: 0, sns: 0 });
   assert.equal(audit.attachEvents.length, 2);
   assert.deepEqual(audit.attachEvents.map((row) => row.timeLabel), ["11:00", "10:00"]);
   assert.deepEqual(audit.attachEvents.map((row) => row.statusLabel), ["已过期", "叙事已完成"]);
   assert.match(audit.attachEvents[0].skeletonLabel, /天气变化|现场光线变化/);
   assert.deepEqual(audit.attachEvents[1].actorLabels, ["藤田琴音"]);
   assert.doesNotMatch(JSON.stringify(audit), /SECRET|prompt|saveScope|requestId|leaseId|definitionId|incidentId|sourceTurnId|planId/);
+});
+
+test("event audit lists proactive channels and unread state without private motive or IDs", () => {
+  const api = loadApi();
+  const source = {
+    plan: {
+      planId: "plan-secret", dayKey: "live+2", saveScope: "scope-secret", status: "committed", pacing: "normal",
+      categoryWeights: {}, severityBudget: { minor: 4, moderate: 3, major: 0 }, diversity: {}
+    },
+    initiative: {
+      candidates: [
+        {
+          incidentId: "initiative:secret-a", intentId: "intent:secret-a", origin: "character_intent",
+          planId: "plan-secret", saveScope: "scope-secret", dayKey: "live+2", sourceTurnId: "intent:secret-a",
+          status: "pending", channel: "phone", category: "visitor", severity: "minor", archetypeId: "character_initiative",
+          actorIds: ["idol:A"], targetIds: ["producer"], locationId: "online",
+          delivery: { goal: "Ask about tomorrow's practice", motive: "PRIVATE MOTIVE", visibility: "private", unread: true }
+        },
+        {
+          incidentId: "initiative:secret-b", intentId: "intent:secret-b", origin: "character_intent",
+          planId: "plan-secret", saveScope: "scope-secret", dayKey: "live+2", sourceTurnId: "intent:secret-b",
+          status: "resolved", channel: "sns", category: "opportunity", severity: "minor", archetypeId: "character_initiative",
+          actorIds: ["idol:B"], targetIds: [], locationId: "online",
+          delivery: { goal: "Share a public update", motive: "PRIVATE SNS MOTIVE", visibility: "public", unread: false }
+        }
+      ]
+    }
+  };
+  const audit = JSON.parse(JSON.stringify(api.buildViewModel(source, {
+    currentDayKey: "live+2", currentSaveScope: "scope-secret", resolveActorLabel: (id) => id.replace(/^idol:/, "")
+  }).eventAudit));
+  assert.deepEqual(audit.channels, { attach: 0, invite: 0, phone: 1, sns: 1 });
+  assert.equal(audit.initiativeEvents.length, 2);
+  assert.equal(audit.unreadPhoneCount, 1);
+  assert.match(audit.initiativeEvents[0].summary, /practice|update/);
+  assert.doesNotMatch(JSON.stringify(audit), /PRIVATE|secret|incidentId|intentId|sourceTurnId|saveScope|planId/);
 });
 
 test("event audit maps live attach states and public empty reasons", () => {

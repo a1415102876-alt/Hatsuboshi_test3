@@ -286,6 +286,27 @@ test("candidate normalization strips secrets and bounds identifiers", () => {
   assert.equal("state" in candidate, false);
 });
 
+test("candidate normalization preserves bounded character-intent delivery metadata", () => {
+  const { normalizeIncidentCandidate } = loadApi();
+  const candidate = JSON.parse(JSON.stringify(normalizeIncidentCandidate({
+    incidentId: "initiative:a", planId: "plan-a", saveScope: "scope-a", dayKey: "day-2",
+    sourceTurnId: "intent:a", fingerprint: "initiative|a|phone", category: "visitor", severity: "minor",
+    archetypeId: "character_initiative", actorIds: ["idol:a"], targetIds: ["producer"], locationId: "producer_apartment",
+    modifierIds: [], channel: "phone", pressureIds: [], sourceRefs: [], resolutionMode: "observe", status: "pending",
+    origin: "character_intent", intentId: "intent:a", delivery: {
+      goal: "Send a message", motive: "Stay in contact", urgency: "normal", visibility: "private",
+      publicPostDraft: "", unread: true, prompt: "SECRET"
+    }
+  })));
+  assert.equal(candidate.origin, "character_intent");
+  assert.equal(candidate.intentId, "intent:a");
+  assert.deepEqual(candidate.delivery, {
+    goal: "Send a message", motive: "Stay in contact", urgency: "normal", visibility: "private",
+    publicPostDraft: "", unread: true, relationshipRole: "known", relationshipStage: "", contextSummaries: []
+  });
+  assert.equal(JSON.stringify(candidate).includes("SECRET"), false);
+});
+
 test("candidate transitions require exact ownership and valid lifecycle edges", () => {
   const { selectIncidentCandidate, transitionIncidentCandidate } = loadApi();
   const pending = selectIncidentCandidate({ ...context(), catalog: [definition()] }).candidate;

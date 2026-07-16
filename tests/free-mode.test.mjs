@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const source = readFileSync(new URL("../app.js", import.meta.url), "utf8");
@@ -118,6 +118,7 @@ test("manual time advancement refreshes the producer apartment state", () => {
 
 test("sandbox scout prompt handles wrong location as clue search", () => {
   const sandbox = {
+    FREE_MODE_OUTING_LOCATION_ID: "free_outing",
     state: { idol: "月村手毬", boundCharacter: { name: "初星学园" } },
     globalThis: {},
     getWorldMapLocation(id) {
@@ -139,7 +140,9 @@ test("sandbox scout prompt handles wrong location as clue search", () => {
     summarizeMapExploreContext() { return "（暂无上文）"; },
     buildMapExplorePlayRules() { return "连续选项探索。"; },
     galgameRenderContract() { return "渲染规则。"; },
-    buildMapExploreChoiceOutputBlock() { return "输出规则。"; }
+    buildMapExploreChoiceOutputBlock() { return "输出规则。"; },
+    isChinaHomeScoutBedroomActive() { return false; },
+    getActiveFreeModeOutingFacility() { return null; }
   };
   sandbox.globalThis = sandbox;
   sandbox.HatsuTasks = { getScoutQuestId: () => "scout_temari" };
@@ -230,6 +233,18 @@ test("school entrance supports off-campus outing with preset destinations", () =
   assert.doesNotMatch(readFunction("confirmFreeModeOutingDestination"), /settleAction\("outing"/);
 });
 
+test("China scout can leave campus only to enter the Kuramoto bedroom", () => {
+  assert.match(source, /function isChinaHomeScoutActive\(/);
+  assert.match(readFunction("isSandboxOffCampusExitAtEntrance"), /isChinaHomeScoutActive/);
+  assert.match(readFunction("confirmFreeModeOutingDestination"), /isChinaHomeScoutActive/);
+  assert.match(readFunction("confirmFreeModeOutingDestination"), /venue\.id !== "china_home"/);
+  assert.match(readFunction("confirmFreeModeOutingDestination"), /facilityId: "bedroom"/);
+  assert.match(readFunction("confirmFreeModeOutingDestination"), /selectedIdol: "仓本千奈"/);
+  assert.match(readFunction("buildFreeModeOutingExplorePrompt"), /buildSandboxScoutExplorePrompt/);
+  assert.match(readFunction("handleFreeModeOutingIdolAction"), /isChinaHomeScoutBedroomActive/);
+  assert.match(readFunction("handleFreeModeOutingIdolAction"), /startFreeModeOutingFacilityExplore/);
+});
+
 test("sandbox First Live rules normalize challenge state and calculate tiered average rates", () => {
   const sandbox = { globalThis: {} };
   vm.runInNewContext(`${readFunction("defaultSandboxFirstLiveChallenge")}; ${readFunction("normalizeSandboxFirstLiveChallenge")}; ${readFunction("getSandboxFirstLiveContributionRate")}; ${readFunction("calculateSandboxFirstLiveSuccessRate")}; this.api = { defaultSandboxFirstLiveChallenge, normalizeSandboxFirstLiveChallenge, getSandboxFirstLiveContributionRate, calculateSandboxFirstLiveSuccessRate };`, sandbox);
@@ -276,6 +291,16 @@ test("sandbox map exposes stage and dormitory with dedicated entry actions", () 
   assert.match(readFunction("getHybridFacilityKind"), /campus_stage/);
   assert.match(readFunction("updateMapLocationEntryActions"), /firstLive|student_dormitory|rest/);
   assert.match(html, /mapLocationEnterFacilityBtn/);
+});
+
+test("dormitory and campus stage use their dedicated scene backgrounds", () => {
+  assert.equal(existsSync(new URL("../assets/scenes/Dorm.png", import.meta.url)), true);
+  assert.equal(existsSync(new URL("../assets/scenes/Big_Stage.png", import.meta.url)), true);
+  assert.match(source, /student_dormitory:\s*"\.\/assets\/scenes\/Dorm\.png"/);
+  assert.match(source, /campus_stage:\s*"\.\/assets\/scenes\/Big_Stage\.png"/);
+  assert.match(source, /id:\s*"student_dormitory"[^\n]+image:\s*"\.\/assets\/scenes\/Dorm\.png"/);
+  assert.match(source, /id:\s*"campus_stage"[^\n]+image:\s*"\.\/assets\/scenes\/Big_Stage\.png"/);
+  assert.match(readFunction("getSceneBackground"), /WORLD_MAP_LOCATION_SCENES\[state\.freeMode\.facilityLocationId\]/);
 });
 
 test("student dormitory rest is available throughout map hours and uses two hours", () => {
@@ -357,6 +382,18 @@ test("sandbox First Live prompt and parser require both live blocks", () => {
   assert.equal(valid.pre.includes("登台前"), true);
   assert.equal(valid.post.includes("演出后"), true);
   assert.equal(sandbox.api.extractSandboxFirstLiveNarrative("【live_pre开始】只有前半段。 【live_pre结束】"), null);
+});
+
+test("ordinary replies do not crash the sandbox First Live route when no harness turn exists", () => {
+  const sandbox = {
+    state: { harness: { activeTurn: null } },
+    pendingAiRequestId: "request-current",
+    activeInboundPrimaryChannelLeaseId: "lease-current",
+    isPrimaryModelLeaseCurrent: () => true
+  };
+  vm.runInNewContext(`${readFunction("isCurrentSandboxFirstLiveReply")}; this.isCurrentReply = isCurrentSandboxFirstLiveReply;`, sandbox);
+
+  assert.equal(sandbox.isCurrentReply("request-current"), false);
 });
 
 test("sandbox First Live accepted reply opens the pre-live stage before the post-live stage", () => {

@@ -1,6 +1,6 @@
 ﻿import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const source = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
@@ -45,7 +45,7 @@ test("shopping mall outing opens an entrance scene with facility guide", () => {
 
   assert.match(readFunction("confirmFreeModeOutingDestination"), /getFreeModeOutingVenueByDestination/);
   assert.match(readFunction("confirmFreeModeOutingDestination"), /openFreeModeOutingScene/);
-  assert.match(readFunction("renderFreeModeOutingSceneIdols"), /resolveIdolStandeeSrc/);
+  assert.match(readFunction("renderFreeModeOutingSceneIdols"), /resolvePortraitForSpeaker/);
   assert.match(readFunction("renderFreeModeOutingSceneDialogue"), /freeModeOutingSpeechBubble/);
   assert.match(readFunction("renderFreeModeOutingSceneDialogue"), /freeModeOutingDialogueBar/);
   assert.match(readFunction("handleFreeModeOutingIdolAction"), /requestFreeModeOutingSceneDialogue/);
@@ -86,6 +86,53 @@ test("shopping street outing opens a full venue scene with daily-life facilities
   assert.match(source, /id: "cake_shop"/);
   assert.match(source, /name: "甜品店"/);
   assert.match(source, /Cake_Shop\.png/);
+});
+
+test("Kuramoto home outing uses a gate, front hall, and bedroom venue", () => {
+  assert.match(source, /\{ name: "仓本家", description:/);
+  assert.match(source, /china_home:\s*\{/);
+  assert.match(source, /stationId: "china_home"/);
+  assert.match(source, /entranceFacilityId: "gate"/);
+  assert.match(source, /id: "gate"/);
+  assert.match(source, /id: "front_hall"/);
+  assert.match(source, /id: "bedroom"/);
+  assert.match(source, /sceneName: "仓本家大门"/);
+  assert.match(source, /sceneName: "仓本家前厅"/);
+  assert.match(source, /sceneName: "千奈卧室"/);
+  assert.match(source, /id: "gate",[\s\S]*?image: "\.\/assets\/scenes\/kuramoto_house\.png"/);
+  assert.match(source, /id: "front_hall",[\s\S]*?image: "\.\/assets\/scenes\/kuramoto_front\.png"/);
+  assert.match(source, /id: "bedroom",[\s\S]*?image: "\.\/assets\/scenes\/Kuramoto_Bedroom\.png"/);
+  [
+    "../assets/scenes/kuramoto_house.png",
+    "../assets/scenes/kuramoto_front.png",
+    "../assets/scenes/Kuramoto_Bedroom.png"
+  ].forEach((path) => assert.equal(existsSync(new URL(path, import.meta.url)), true, `${path} must exist`));
+  assert.match(source, /function isChinaHomeScoutBedroomActive\(/);
+  assert.match(readFunction("buildSandboxScoutExplorePrompt"), /FREE_MODE_OUTING_LOCATION_ID/);
+  assert.match(readFunction("isChinaHomeScoutBedroomActive"), /facilityId === "bedroom"/);
+  assert.match(html, /data-outing-idol-action="china_scout_talk"[^>]*>和千奈搭话<\/button>/);
+  assert.match(style, /\.outing-idol-scout-talk\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
+  assert.match(source, /id: "front_hall",[\s\S]*?residentCharacters: \["冰渡香名江"\]/);
+  const bedroom = source.match(/\{\s*id: "bedroom",[\s\S]*?\n        \}/)?.[0] || "";
+  assert.doesNotMatch(bedroom, /residentCharacters/);
+});
+
+test("outing scenes render assigned idols and facility resident NPCs through one portrait resolver", () => {
+  assert.match(source, /function getFreeModeOutingSceneCharacters\(/);
+  assert.match(readFunction("getFreeModeOutingSceneCharacters"), /residentCharacters/);
+  assert.match(readFunction("getFreeModeOutingSceneCharacters"), /isChinaHomeScoutBedroomActive/);
+  assert.match(readFunction("renderFreeModeOutingSceneIdols"), /getFreeModeOutingSceneCharacters/);
+  assert.match(readFunction("renderFreeModeOutingSceneIdols"), /resolvePortraitForSpeaker/);
+  assert.match(readFunction("renderFreeModeOutingSceneIdols"), /applyResolvedPortraitToImage/);
+  assert.match(readFunction("openFreeModeOutingIdolActionMenu"), /data-outing-idol-action="status"/);
+  assert.match(readFunction("openFreeModeOutingIdolActionMenu"), /isChinaHomeScoutBedroomActive/);
+  assert.match(readFunction("openFreeModeOutingIdolActionMenu"), /standardButtons/);
+  assert.match(readFunction("openFreeModeOutingIdolActionMenu"), /scoutTalkButton/);
+  assert.match(readFunction("handleFreeModeOutingIdolAction"), /action === "china_scout_talk"/);
+  assert.match(readFunction("handleFreeModeOutingIdolAction"), /closeFreeModeOutingIdolActionMenu\(\)/);
+  assert.match(readFunction("handleFreeModeOutingIdolAction"), /startFreeModeOutingFacilityExplore\("chat"\)/);
+  assert.match(readFunction("buildFreeModeOutingSceneDialoguePrompt"), /当前互动角色/);
+  assert.match(readFunction("buildFreeModeOutingSceneDialoguePrompt"), /isIdol/);
 });
 test("shopping mall outing scene uses the fullscreen page and shared wipe transition", () => {
   assert.equal(stripeCount, 6);

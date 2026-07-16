@@ -94,6 +94,21 @@ test("sandbox scout phase ends after scout_temari completes", () => {
   assert.notEqual(liveCampus.slots["月村手毬"]?.source, "sandbox_scout");
 });
 
+test("China scout presence points to the Kuramoto bedroom", () => {
+  const campus = loadWorldModules().campusBehavior;
+  const helpers = {
+    isSandboxLaunch: () => true,
+    isSandboxScoutPhase: () => true,
+    canonicalIdolName: (name) => name,
+    getDayKey: () => "scout+1"
+  };
+  const resolved = campus.resolveCampusDay({ idol: "仓本千奈", launchMode: "sandbox" }, helpers);
+  assert.equal(campus.getScoutTargetLocation("仓本千奈", helpers), "china_home");
+  assert.equal(resolved.slots["仓本千奈"].locationId, "china_home");
+  assert.equal(resolved.slots["仓本千奈"].facilityId, "bedroom");
+  assert.equal(resolved.slots["仓本千奈"].interactable, true);
+});
+
 test("app.js wires world engine, broadcast app and prompt injection", () => {
   assert.match(appSource, /freeMode\.world/);
   assert.match(appSource, /isSandboxScoutActive/);

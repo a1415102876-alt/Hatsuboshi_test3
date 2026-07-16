@@ -27,6 +27,7 @@
     <symbol id="icon-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l3 3"/></symbol>
     <symbol id="icon-close" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
     <symbol id="icon-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></symbol>
+    <symbol id="icon-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></symbol>
     <symbol id="icon-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></symbol>
     <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
     <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
@@ -286,7 +287,7 @@
 
       <section class="score-band" aria-label="能力值">
         <button id="phoneLaunchBtn" class="phone-launch-btn" type="button" aria-label="打开小手机">
-          <span class="phone-launch-icon"><svg aria-hidden="true"><use href="#icon-phone"></use></svg></span>
+          <span class="phone-launch-icon"><svg aria-hidden="true"><use href="#icon-phone"></use></svg><span id="phoneUnreadBadge" class="phone-unread-badge" hidden></span></span>
           <span class="phone-launch-label">手机</span>
         </button>
         <div id="statMeters" class="stat-meters"></div>
@@ -337,6 +338,11 @@
           <span>委托</span>
           <span id="freeModeSideQuestBadge" class="free-mode-side-quest-badge"></span>
         </button>
+        <button id="freeModeEventBtn" class="free-mode-event-btn" type="button" hidden aria-label="打开外部事件收件箱">
+          <svg aria-hidden="true"><use href="#icon-bell"></use></svg>
+          <span>事件</span>
+          <span id="freeModeEventBadge" class="free-mode-event-badge" hidden></span>
+        </button>
         <button id="freeModeBagBtn" class="free-mode-bag-btn" type="button" hidden aria-label="打开礼物背包">
           <span>背包</span>
           <span id="freeModeBagBadge" class="free-mode-bag-badge"></span>
@@ -386,6 +392,10 @@
         <span id="apartmentCompanionStandeeLabel" class="apartment-companion-standee-label"></span>
       </button>
       <div class="producer-apartment-hotspots" aria-label="夜间行动">
+        <button id="apartmentDoorbellBtn" class="apartment-hotspot is-accent is-doorbell" type="button" hidden title="门外有人来访。">
+          <span class="apartment-hotspot-kicker">Doorbell</span>
+          <strong>查看来访</strong>
+        </button>
         <button id="apartmentSleepBtn" class="apartment-hotspot is-primary is-bed" type="button" title="结束今天，从 08:00 开始新的学园日程。">
           <span class="apartment-hotspot-kicker">Rest</span>
           <strong>上床睡觉</strong>
@@ -636,6 +646,21 @@
         <button id="harnessRecoveryAbandonBtn" class="event-button secondary" type="button">放弃叙事恢复</button>
         <button id="harnessRecoveryRetryBtn" class="event-button primary" type="button">重新生成叙事</button>
       </footer>
+    </article>
+  </section>
+
+  <section id="apartmentVisitorOverlay" class="event-overlay" hidden aria-label="公寓来访">
+    <article class="event-panel" role="dialog" aria-modal="true">
+      <header class="event-head">
+        <div><p class="ui-kicker">Apartment Doorbell</p><h2>门外有人</h2></div>
+        <button id="apartmentVisitorCloseBtn" class="icon-button" type="button" aria-label="关闭"><svg aria-hidden="true"><use href="#icon-close"></use></svg></button>
+      </header>
+      <p id="apartmentVisitorCopy" class="ai-prompt-note"></p>
+      <div class="event-actions">
+        <button id="apartmentVisitorAcceptBtn" class="event-button" type="button">接待</button>
+        <button id="apartmentVisitorDeferBtn" class="event-button secondary" type="button">稍后</button>
+        <button id="apartmentVisitorDeclineBtn" class="event-button secondary" type="button">婉拒</button>
+      </div>
     </article>
   </section>
 
@@ -1021,6 +1046,7 @@
           <button class="event-button secondary" type="button" data-outing-idol-action="invite">邀请同行</button>
           <button class="event-button secondary" type="button" data-outing-idol-action="ask">询问想去哪</button>
           <button class="event-button secondary" type="button" data-outing-idol-action="status">查看状态</button>
+          <button class="event-button primary outing-idol-scout-talk" type="button" data-outing-idol-action="china_scout_talk" hidden>和千奈搭话</button>
         </div>
       </div>
       <div id="freeModeOutingFacilityGuide" class="outing-facility-guide-modal" hidden>
@@ -1688,6 +1714,7 @@
   <script src="./world/storyteller/observations.js"></script>
   <script src="./world/storyteller/plan.js"></script>
   <script src="./world/storyteller/incidents.js"></script>
+  <script src="./world/storyteller/initiative.js"></script>
   <script src="./world/storyteller/notifications.js"></script>
   <script src="./world/storyteller/injection.js"></script>
   <script src="./world/storyteller/phone-view.js"></script>

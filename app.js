@@ -280,7 +280,8 @@
     "燕": "雨夜燕"
   };
   const vnStandees = {
-    "亚纱里老师": "./assets/novel-standees/asari-sensei.png"
+    "亚纱里老师": "./assets/novel-standees/asari-sensei.png",
+    "冰渡香名江": "./assets/novel-standees/Hiwatari-Kanae.png"
   };
   const residentNpcProfiles = {
     "亚纱里老师": {
@@ -368,7 +369,8 @@
     { name: "品牌旗舰店", description: "直播站台、代言日与连锁品牌宣传活动的现场。" },
     { name: "游乐园", description: "约会感、胆量与体力对比，适合关系推进。" },
     { name: "水族馆", description: "安静的展厅、蓝色水光和慢节奏对话，适合情绪沉淀。" },
-    { name: "体育中心", description: "校外综合运动设施，适合体能管理、康复与外包训练。" }
+    { name: "体育中心", description: "校外综合运动设施，适合体能管理、康复与外包训练。" },
+    { name: "仓本家", description: "仓本家的私人宅邸，可从大门进入并前往前厅或千奈卧室。" }
   ];
   const FREE_MODE_OUTING_DESTINATIONS = [
     ...outingDestinations
@@ -519,14 +521,14 @@
     },
     {
       id: "china_home",
-      name: "千奈家",
-      shortLabel: "千奈",
+      name: "仓本家",
+      shortLabel: "仓本",
       line: "home",
-      status: "locked",
+      status: "open",
       x: 66,
       y: 82,
-      description: "千奈相关的私宅地点。建议作为角色事件或特定任务解锁。",
-      pois: ["宅邸门前", "会客室", "庭院"]
+      description: "仓本家的私人宅邸，来访者从大门进入，前厅由香名江接待，内侧是千奈的卧室。",
+      pois: ["大门", "前厅", "千奈卧室"]
     }
   ];
   const FREE_MODE_OUTING_LOCATION_ID = "free_outing";
@@ -534,6 +536,7 @@
   const WORLD_MAP_LOCATION_SCENES = {
     school_entrance: "./assets/scenes/School_Entrance.png",
     club_room: "./assets/scenes/Student_Council.png",
+    campus_stage: "./assets/scenes/Big_Stage.png",
     auditorium: "./assets/scenes/Auditorium.png",
     outstage: "./assets/scenes/OutStage.png",
     playground: "./assets/scenes/Playground.png",
@@ -543,6 +546,7 @@
     special_education: "./assets/scenes/SpecialEducation_Detailed.png",
     producer_classroom: "./assets/scenes/Producer_Class.png",
     courtyard: "./assets/scenes/courtyard.png",
+    student_dormitory: "./assets/scenes/Dorm.png",
     dining_hall: "./assets/scenes/Dining.png",
     student_store: "./assets/scenes/Student Store.png",
     [FREE_MODE_OUTING_LOCATION_ID]: "./assets/scenes/campus.png"
@@ -675,6 +679,42 @@
           description: "商场里的服装店。成排衣架、试衣镜和当季陈列适合挑选私服、搭配舞台外形象，也容易聊到偶像对风格的偏好。"
         }
       ]
+    },
+    china_home: {
+      id: "china_home",
+      stationId: "china_home",
+      name: "仓本家",
+      entranceFacilityId: "gate",
+      facilities: [
+        {
+          id: "gate",
+          floor: "宅邸外",
+          name: "仓本家大门",
+          shortName: "大门",
+          sceneName: "仓本家大门",
+          image: "./assets/scenes/kuramoto_house.png",
+          description: "通往仓本家宅邸的正门。来访者需要先在这里说明来意，等待宅邸人员接待。"
+        },
+        {
+          id: "front_hall",
+          floor: "1F",
+          name: "仓本家前厅",
+          shortName: "前厅",
+          sceneName: "仓本家前厅",
+          image: "./assets/scenes/kuramoto_front.png",
+          residentCharacters: ["冰渡香名江"],
+          description: "用于迎接来客的宽敞前厅。这里安静而井然有序，是与宅邸人员交谈的主要场所。"
+        },
+        {
+          id: "bedroom",
+          floor: "居住区",
+          name: "千奈卧室",
+          shortName: "卧室",
+          sceneName: "千奈卧室",
+          image: "./assets/scenes/Kuramoto_Bedroom.png",
+          description: "千奈在仓本家中的私人卧室。陈设讲究，却保留着她天真而认真的个人气息。"
+        }
+      ]
     }
   };
   const FINAL_LIVE_DAY = 22;
@@ -691,7 +731,7 @@
   const WORLD_MAP_LOCATIONS = [
     { id: "school_entrance", name: "学园正门", shortLabel: "正门", description: "初星学园的入口。新生、访客与偶像们每天经过这里。", x: 52.8, y: 96.8, image: "./assets/MAP/School_Entrance.png" },
     { id: "club_room", name: "部室栋", shortLabel: "部室", description: "各社团与活动部室所在的楼栋；学生会办公室也在这里，公务与会议常在此进行。", x: 17.8, y: 39.6, image: "" },
-    { id: "campus_stage", name: "校内舞台", shortLabel: "舞台", description: "位于讲堂上方的校内演出场地，可在晚间举办 First Live。", x: 50.8, y: 22, image: "./assets/MAP/OutStage.png" },
+    { id: "campus_stage", name: "校内舞台", shortLabel: "舞台", description: "位于讲堂上方的校内演出场地，可在晚间举办 First Live。", x: 50.8, y: 22, image: "./assets/scenes/Big_Stage.png" },
     { id: "auditorium", name: "讲堂", shortLabel: "讲堂", description: "拥有圆顶的大型讲堂，学园重要集会与发表会在此举行。", x: 50.8, y: 33, image: "./assets/MAP/MeetingRoom.png" },
     { id: "outstage", name: "野外舞台", shortLabel: "野外", description: "学园右上角的公开舞台，适合排练、试演与小型演出。", x: 80.3, y: 13.7, image: "./assets/MAP/OutStage.png" },
     { id: "playground", name: "运动场", shortLabel: "操场", description: "带跑道与足球场的运动区，体能训练与户外练习的主要场地。", x: 26.3, y: 52.3, image: "./assets/MAP/PlayGround.png" },
@@ -701,7 +741,7 @@
     { id: "special_education", name: "特别教育栋", shortLabel: "特教", description: "集各种教育资源于一体，支撑学生从日常训练走向舞台表现的专业教学空间。", x: 90, y: 55, image: "./assets/MAP/SpecialEducation_Detailed.png" },
     { id: "producer_classroom", name: "制作人科教室", shortLabel: "P科", description: "培育担当偶像的专属教室，也是日常育成的主舞台。", x: 84.5, y: 93.9, image: "./assets/MAP/Producer_Classroom_Detailed.png" },
     { id: "courtyard", name: "中庭", shortLabel: "中庭", description: "氛围宁静祥和，是放松身心的好地方。", x: 81.8, y: 86.6, image: "./assets/scenes/courtyard.png" },
-    { id: "student_dormitory", name: "学生宿舍", shortLabel: "宿舍", description: "偶像科学生居住的宿舍，可在这里休息两小时恢复体力。", x: 87.2, y: 76, image: "" },
+    { id: "student_dormitory", name: "学生宿舍", shortLabel: "宿舍", description: "偶像科学生居住的宿舍，可在这里休息两小时恢复体力。", x: 87.2, y: 76, image: "./assets/scenes/Dorm.png" },
     { id: "dining_hall", name: "食堂", shortLabel: "食堂", description: "学园内的用餐区，午餐、点心与偶像们的日常闲聊常在这里发生。", x: 87.2, y: 86.4, image: "./assets/MAP/Dining.png" },
     { id: "student_store", name: "小卖部", shortLabel: "小卖", description: "贩卖零食、文具与小物件的校内商店，适合短暂停留与偶遇。", x: 92.8, y: 85.6, image: "./assets/MAP/Student Store.png" }
   ];
@@ -720,7 +760,14 @@
   const STUDENT_DORMITORY_REST_MINUTES = 120;
   const FIRST_LIVE_START_DEADLINE_MINUTES = 19 * 60;
   const FIRST_LIVE_ACTION_MINUTES = 180;
-  const SANDBOX_SELECTABLE_IDOLS = ["月村手毬", "藤田琴音", "花海咲季", "秦谷美铃", "筱泽广", "葛城莉莉娅"];
+  const SANDBOX_SELECTABLE_IDOL_FALLBACK = ["月村手毬", "藤田琴音", "花海咲季", "秦谷美铃", "筱泽广", "葛城莉莉娅", "仓本千奈"];
+
+  function getSandboxSelectableIdols() {
+    const configured = globalThis.HatsuTasks?.SANDBOX_SELECTABLE_IDOLS;
+    return Array.isArray(configured) && configured.length
+      ? configured
+      : SANDBOX_SELECTABLE_IDOL_FALLBACK;
+  }
   const SANDBOX_ASARI_OPENING_STORY = `【初星正文开始】
 <story>
 <narration>午后的制作人科教室里，黑板上还留着上一节课的字迹。</narration>
@@ -2373,7 +2420,9 @@
           lastObservedDayKey: "",
           plan: null,
           pendingCandidate: null,
+          activeConversation: null,
           recentCandidates: [],
+          initiative: globalThis.HatsuWorldStorytellerInitiative?.defaultInitiativeState?.() || null,
           receipts: [],
           lastPlanError: "",
           lastCandidateReason: "",
@@ -2437,6 +2486,7 @@
       threads: [],
       messages: {},
       friends: [],
+      initiativeContacts: [],
       isAwaitingReply: false,
       pendingRequestId: "",
       retryAvailable: false
@@ -3662,6 +3712,93 @@
     });
   }
 
+  function normalizeStorytellerEventConversation(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const status = ["generating", "awaiting_choice"].includes(value.status) ? value.status : "";
+    const bounded = (input, max) => String(input || "").replace(/\s+/g, " ").trim().slice(0, max);
+    const boundedList = (input, count, max) => Array.isArray(input)
+      ? input.map((item) => bounded(item, max)).filter(Boolean).slice(-count)
+      : [];
+    const result = {
+      incidentId: bounded(value.incidentId, 160),
+      planId: bounded(value.planId, 160),
+      saveScope: bounded(value.saveScope, 240),
+      dayKey: bounded(value.dayKey, 120),
+      sourceTurnId: bounded(value.sourceTurnId, 160),
+      turnId: bounded(value.turnId, 160),
+      status,
+      round: Math.max(0, Math.min(999, Number.isInteger(Number(value.round)) ? Number(value.round) : 0)),
+      storySegments: boundedList(value.storySegments, 8, 800),
+      summaries: boundedList(value.summaries, 8, 240),
+      choices: boundedList(value.choices, 4, 240),
+      selectedActions: boundedList(value.selectedActions, 8, 240),
+      lastRequestId: bounded(value.lastRequestId, 160),
+      lastMessageId: value.lastMessageId !== null
+        && value.lastMessageId !== undefined
+        && Number.isInteger(Number(value.lastMessageId))
+        && Number(value.lastMessageId) >= 0
+        ? Number(value.lastMessageId)
+        : null
+    };
+    if (
+      !result.incidentId
+      || !result.planId
+      || !result.saveScope
+      || !result.dayKey
+      || !result.sourceTurnId
+      || !result.turnId
+      || !result.status
+    ) return null;
+    if (result.status === "awaiting_choice" && result.choices.length !== 4) return null;
+    return result;
+  }
+
+  function getActiveStorytellerEventConversation() {
+    return normalizeStorytellerEventConversation(state.freeMode?.world?.storyteller?.activeConversation);
+  }
+
+  function isStorytellerEventConversationCurrent(conversation, candidate) {
+    const active = normalizeStorytellerEventConversation(conversation);
+    const normalizedCandidate = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(candidate);
+    return Boolean(
+      active
+      && normalizedCandidate
+      && active.incidentId === normalizedCandidate.incidentId
+      && active.planId === normalizedCandidate.planId
+      && active.saveScope === normalizedCandidate.saveScope
+      && active.dayKey === normalizedCandidate.dayKey
+      && active.sourceTurnId === normalizedCandidate.sourceTurnId
+    );
+  }
+
+  function clearStorytellerEventConversation() {
+    if (!state.freeMode?.world?.storyteller) return false;
+    state.freeMode.world.storyteller.activeConversation = null;
+    return true;
+  }
+
+  function reconcileStorytellerEventConversationSession() {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const conversation = getActiveStorytellerEventConversation();
+    if (!storyteller || !conversation) return false;
+    const candidate = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(storyteller.pendingCandidate);
+    if (!candidate || candidate.status !== "invited" || !isStorytellerEventConversationCurrent(conversation, candidate)) {
+      storyteller.activeConversation = null;
+      return false;
+    }
+    if (conversation.status !== "awaiting_choice") return false;
+    const turn = state.harness?.activeTurn;
+    if (!turn || turn.kind !== "storyteller_event" || turn.turnId !== conversation.turnId) return false;
+    state.harness.activeTurn = {
+      ...turn,
+      status: "awaiting_choice",
+      requestId: "",
+      sessionEpoch: runtimeSessionEpoch,
+      updatedAt: Date.now()
+    };
+    return true;
+  }
+
   function ensureStateShape(options = {}) {
     state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
     state.appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
@@ -3804,6 +3941,7 @@
     const planApi = globalThis.HatsuWorldStorytellerPlan;
     const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
     const observationApi = globalThis.HatsuWorldStorytellerObservations;
+    const initiativeApi = globalThis.HatsuWorldStorytellerInitiative;
     const currentStyleDayKey = getWorldFeedDayKey(state);
     const nextStyleDayKey = styleApi?.getNextDayKey?.(currentStyleDayKey) || "";
     state.freeMode.world.storyteller = {
@@ -3834,12 +3972,16 @@
       pendingCandidate: storyteller.pendingCandidate && incidentApi?.normalizeIncidentCandidate
         ? incidentApi.normalizeIncidentCandidate(storyteller.pendingCandidate)
         : null,
+      activeConversation: normalizeStorytellerEventConversation(storyteller.activeConversation),
       recentCandidates: Array.isArray(storyteller.recentCandidates) && incidentApi?.normalizeIncidentCandidate
         ? storyteller.recentCandidates
           .map((candidate) => incidentApi.normalizeIncidentCandidate(candidate))
           .filter(Boolean)
           .slice(-24)
         : [],
+      initiative: initiativeApi?.ensureInitiativeState
+        ? initiativeApi.ensureInitiativeState(storyteller.initiative)
+        : null,
       receipts: Array.isArray(storyteller.receipts)
         ? storyteller.receipts.filter((receipt) => receipt && typeof receipt === "object").slice(-40)
         : [],
@@ -3849,6 +3991,7 @@
         ? incidentApi.normalizeSelectionDiagnostic(storyteller.lastSelectionDiagnostic)
         : null
     };
+    reconcileStorytellerEventConversationSession();
     if (!state.freeMode.world.dailyGen || typeof state.freeMode.world.dailyGen !== "object") {
       state.freeMode.world.dailyGen = { dayKey: "", status: "idle", source: "", pendingRequestId: "" };
     } else {
@@ -3903,6 +4046,7 @@
       threads: [],
       messages: {},
       friends: [],
+      initiativeContacts: [],
       isAwaitingReply: false,
       pendingRequestId: "",
       retryAvailable: false,
@@ -3911,6 +4055,9 @@
     state.phoneChat.friends = Array.from(new Set((state.phoneChat.friends || [])
       .map((name) => canonicalIdolName(name))
       .filter((name) => name && idols[name] && name !== state.idol)));
+    state.phoneChat.initiativeContacts = Array.from(new Set((state.phoneChat.initiativeContacts || [])
+      .map((name) => canonicalIdolName(name))
+      .filter((name) => name && idols[name] && name !== state.idol))).slice(0, 24);
     if (!state.phoneChat.messages || typeof state.phoneChat.messages !== "object") {
       state.phoneChat.messages = {};
     }
@@ -3923,6 +4070,7 @@
       globalThis.HatsuTasks.ensureTasksShape(state);
     }
     normalizeSandboxIdolRoster();
+    ensureIdolInitiativesForToday({ persist: false, reason: "state_normalized" });
   }
 
   function finalizeConfirmedSandboxScouts(completedQuestIds) {
@@ -4056,6 +4204,9 @@
       }
       storyteller.plan = plan;
       storyteller.lastPlanError = "";
+      if (typeof ensureIdolInitiativesForToday === "function") {
+        ensureIdolInitiativesForToday({ persist: false, reason: "plan_committed" });
+      }
       saveState("storyteller.plan_committed");
       return { committed: true, reason: "committed", plan };
     } catch (error) {
@@ -4250,6 +4401,7 @@
       event: "notified", reason: trigger, dayKey, saveScope, createdAt: Date.now()
     }].slice(-40);
     saveState("storyteller.notification_notified");
+    if (typeof updateFreeModeEventButton === "function") updateFreeModeEventButton();
     return { notified: true, reason: "notified", candidate: storyteller.pendingCandidate };
   }
 
@@ -4397,82 +4549,6 @@
     return { resolved: true, reason: "resolved", candidate: transition.candidate };
   }
 
-  function settleStorytellerEventForReply(requestId, accepted, retry, isFinal) {
-    if (!accepted || retry || !isFinal || !requestId) {
-      return { resolved: false, reason: "reply_not_accepted_final" };
-    }
-    const turn = state.harness?.activeTurn;
-    const activeScope = String(activeHostSaveScope || activeStorageKey || "");
-    if (
-      !turn
-      || turn.kind !== "storyteller_event"
-      || turn.status !== "generating"
-      || turn.requestId !== requestId
-      || turn.sessionEpoch !== runtimeSessionEpoch
-      || !activeScope
-      || turn.saveScope !== activeScope
-      || !isHarnessTurnInActiveScope(turn, getHarnessRecoveryContext())
-      || !isPrimaryModelLeaseCurrent(requestId, activeInboundPrimaryChannelLeaseId)
-    ) return { resolved: false, reason: "turn_request_mismatch" };
-    const storyteller = state.freeMode?.world?.storyteller;
-    const incidentApi = globalThis.HatsuWorldStorytellerIncidents;
-    const notificationApi = globalThis.HatsuWorldStorytellerNotifications;
-    const candidate = incidentApi?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
-    const reference = turn.storytellerCandidateRef;
-    if (!storyteller || !candidate || !reference || candidate.status !== "invited") {
-      return { resolved: false, reason: "candidate_unavailable" };
-    }
-    const exactReference = candidate.incidentId === String(turn.incidentId || "")
-      && candidate.incidentId === String(reference.incidentId || "")
-      && candidate.planId === String(reference.planId || "")
-      && candidate.saveScope === String(reference.saveScope || "")
-      && candidate.dayKey === String(reference.dayKey || "")
-      && candidate.sourceTurnId === String(reference.sourceTurnId || "")
-      && candidate.saveScope === activeScope;
-    if (!exactReference) return { resolved: false, reason: "candidate_reference_mismatch" };
-    const transition = notificationApi?.transitionNotification?.(candidate, "resolve", {
-      saveScope: candidate.saveScope,
-      dayKey: candidate.dayKey,
-      planId: candidate.planId,
-      sourceTurnId: candidate.sourceTurnId
-    });
-    if (!transition?.ok) return { resolved: false, reason: transition?.reason || "invalid_transition" };
-    state.harness.activeTurn = {
-      ...turn,
-      status: "completed",
-      completedAt: Date.now(),
-      updatedAt: Date.now()
-    };
-    storyteller.recentCandidates = [
-      ...(Array.isArray(storyteller.recentCandidates)
-        ? storyteller.recentCandidates.filter((item) => item?.incidentId !== candidate.incidentId)
-        : []),
-      transition.candidate
-    ].slice(-24);
-    storyteller.recentFingerprints = [...new Set([
-      ...(Array.isArray(storyteller.recentFingerprints) ? storyteller.recentFingerprints : []),
-      transition.candidate.fingerprint
-    ].filter(Boolean))].slice(-24);
-    storyteller.receipts = [
-      ...(Array.isArray(storyteller.receipts) ? storyteller.receipts : []),
-      {
-        incidentId: transition.candidate.incidentId,
-        planId: transition.candidate.planId,
-        event: "resolved",
-        reason: "accepted_final",
-        dayKey: transition.candidate.dayKey,
-        saveScope: transition.candidate.saveScope,
-        sourceTurnId: transition.candidate.sourceTurnId,
-        createdAt: Date.now()
-      }
-    ].slice(-40);
-    storyteller.pendingCandidate = null;
-    storyteller.lastCandidateReason = "resolved";
-    recordHarnessTrace("turn.completed", { turnId: turn.turnId || "", requestId, action: "storyteller_event" });
-    debugHarnessEvent("turn.completed", { turnId: turn.turnId || "", requestId, action: "storyteller_event" });
-    return { resolved: true, reason: "resolved", candidate: transition.candidate };
-  }
-
   function expireStorytellerCandidateForTurn(turn, reason = "narrative_abandoned") {
     const storyteller = state.freeMode?.world?.storyteller;
     const api = globalThis.HatsuWorldStorytellerIncidents;
@@ -4568,6 +4644,7 @@
       }
     ].slice(-40);
     storyteller.pendingCandidate = null;
+    storyteller.activeConversation = null;
     storyteller.lastCandidateReason = boundedReason;
     return { abandoned: true, reason: "abandoned", candidate: transition.candidate };
   }
@@ -4851,15 +4928,162 @@
     return true;
   }
 
-  function getWorldDirectorHelpers() {
-    const idolNames = Object.keys(idols);
-    const knownCharacters = idolNames.map((name) => ({
-      id: "idol:" + name,
-      name,
-      relationshipStage: String(getAffinityStageThreshold(
-        state.freeMode?.relationships?.[name] ?? (name === state.idol ? state.trust : 0)
+  function getKnownInitiativeIdolNames() {
+    const known = new Set();
+    const assigned = globalThis.HatsuIdolRoster?.getAssignedIdols?.(state) || [];
+    assigned.forEach((name) => known.add(canonicalIdolName(name)));
+    if (state.idol) known.add(canonicalIdolName(state.idol));
+    (state.phoneChat?.friends || []).forEach((name) => known.add(canonicalIdolName(name)));
+    Object.keys(state.freeMode?.relationships || {}).forEach((name) => known.add(canonicalIdolName(name)));
+    return [...known].filter((name) => name && idols[name]).sort((left, right) => left.localeCompare(right));
+  }
+
+  function getKnownInitiativeCharacters() {
+    const assigned = new Set(globalThis.HatsuIdolRoster?.getAssignedIdols?.(state) || []);
+    const friends = new Set(state.phoneChat?.friends || []);
+    const director = state.freeMode?.world?.director || {};
+    const digests = Array.isArray(director.chronicleDigests) ? director.chronicleDigests : [];
+    const pressures = Array.isArray(director.pressures) ? director.pressures : [];
+    return getKnownInitiativeIdolNames().map((name) => {
+      const actorId = "idol:" + name;
+      const threadId = name === state.idol ? "idol" : `friend:${name}`;
+      const recentLineMessages = (Array.isArray(state.phoneChat?.messages?.[threadId]) ? state.phoneChat.messages[threadId] : [])
+        .slice(-4)
+        .map((message) => String(message?.text || "").replace(/\s+/g, " ").trim().slice(0, 180))
+        .filter(Boolean);
+      const actorDigests = digests.filter((digest) => Array.isArray(digest?.participants) && digest.participants.includes(actorId)).slice(-4);
+      const actorPressures = pressures.filter((pressure) => (
+        pressure?.status !== "resolved"
+        && (pressure?.actorId === actorId || (pressure?.targetIds || []).includes(actorId))
+      )).slice(-2);
+      const relationshipRole = name === state.idol
+        ? "responsible"
+        : assigned.has(name)
+          ? "assigned"
+          : friends.has(name)
+            ? "friend"
+            : "known";
+      return {
+        id: actorId,
+        name,
+        relationshipStage: String(getAffinityStageThreshold(
+          state.freeMode?.relationships?.[name] ?? (name === state.idol ? state.trust : 0)
+        )),
+        relationshipRole,
+        responsible: name === state.idol,
+        assigned: assigned.has(name),
+        known: true,
+        evidenceSummaries: [
+          ...actorDigests.map((digest) => digest.summary),
+          ...actorPressures.map((pressure) => pressure.sourceSummary)
+        ].map((summary) => String(summary || "").replace(/\s+/g, " ").trim().slice(0, 180)).filter(Boolean).slice(-4),
+        sourceRefs: actorDigests.map((digest) => String(digest.id || "")).filter(Boolean).slice(-8),
+        recentLineMessages
+      };
+    });
+  }
+
+  function enrichCharacterIntentContext(intent, character, director) {
+    const digests = Array.isArray(director?.chronicleDigests) ? director.chronicleDigests : [];
+    const pressures = Array.isArray(director?.pressures) ? director.pressures : [];
+    const sourceRefs = new Set(intent?.sourceRefs || []);
+    const pressureIds = new Set(intent?.sourcePressureIds || []);
+    const summaries = [
+      ...(character?.evidenceSummaries || []),
+      ...(character?.recentLineMessages || []),
+      ...digests.filter((digest) => sourceRefs.has(digest.id)).map((digest) => digest.summary),
+      ...pressures.filter((pressure) => pressureIds.has(pressure.id)).map((pressure) => pressure.sourceSummary)
+    ].map((summary) => String(summary || "").replace(/\s+/g, " ").trim().slice(0, 180)).filter(Boolean);
+    return {
+      ...intent,
+      relationshipRole: character?.relationshipRole || "known",
+      relationshipStage: character?.relationshipStage || "",
+      contextSummaries: [...new Set(summaries)].slice(-4)
+    };
+  }
+
+  function ensureIdolInitiativesForToday(options = {}) {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const director = state.freeMode?.world?.director;
+    const api = globalThis.HatsuWorldStorytellerInitiative;
+    const planApi = globalThis.HatsuWorldStorytellerPlan;
+    if (!storyteller || !api?.selectInitiativeCandidates || !api?.ensureInitiativeState) {
+      return { committed: false, reason: "initiative_module_unavailable", candidates: [] };
+    }
+    const dayKey = getWorldFeedDayKey();
+    const saveScope = getSecondaryChannelSaveScope();
+    const plan = storyteller.plan;
+    if (!dayKey || !saveScope || !planApi?.isCurrentStorytellerPlan?.(plan, dayKey, saveScope)) {
+      storyteller.initiative = api.ensureInitiativeState(storyteller.initiative, { dayKey, saveScope });
+      return { committed: false, reason: "current_plan_unavailable", candidates: [] };
+    }
+    const initiative = api.ensureInitiativeState(storyteller.initiative, { dayKey, saveScope });
+    const current = initiative.candidates.filter((candidate) => (
+      candidate.dayKey === dayKey
+      && candidate.saveScope === saveScope
+      && candidate.planId === plan.planId
+      && !["resolved", "expired", "abandoned"].includes(candidate.status)
+    ));
+    const replaceFallback = Boolean(options.replaceFallback)
+      && current.length
+      && current.every((candidate) => String(candidate.intentId || "").startsWith("fallback:"));
+    if (current.length && !replaceFallback) {
+      storyteller.initiative = initiative;
+      return { committed: false, reason: "current_initiatives_exist", candidates: current };
+    }
+    const characters = getKnownInitiativeCharacters();
+    const knownActorIds = ["producer", ...characters.map((character) => character.id)];
+    let intents = Array.isArray(director?.characterIntents)
+      ? director.characterIntents.filter((intent) => (
+        intent.dayKey === dayKey
+        && intent.saveScope === saveScope
+        && knownActorIds.includes(intent.actorId)
       ))
-    }));
+      : [];
+    const characterById = new Map(characters.map((character) => [character.id, character]));
+    intents = intents.map((intent) => enrichCharacterIntentContext(intent, characterById.get(intent.actorId), director));
+    if (!intents.length) {
+      intents = api.buildFallbackCharacterIntents({
+        dayKey,
+        saveScope,
+        characters,
+        pressures: Array.isArray(director?.pressures) ? director.pressures : []
+      });
+    }
+    const ordinaryCandidates = [
+      ...(storyteller.pendingCandidate ? [storyteller.pendingCandidate] : []),
+      ...(Array.isArray(storyteller.recentCandidates) ? storyteller.recentCandidates : [])
+    ];
+    const retained = replaceFallback
+      ? initiative.candidates.filter((candidate) => !current.some((item) => item.incidentId === candidate.incidentId))
+      : initiative.candidates;
+    const selected = api.selectInitiativeCandidates({
+      plan,
+      saveScope,
+      dayKey,
+      dayOrdinal: Math.max(0, Number(state.freeMode?.postLiveDay || state.day || 0)),
+      knownActorIds,
+      intents,
+      recentCandidates: [...ordinaryCandidates, ...retained],
+      recentFingerprints: [...(storyteller.recentFingerprints || []), ...(initiative.recentFingerprints || [])],
+      channelCooldowns: initiative.channelCooldowns,
+      maxCandidates: 2
+    });
+    storyteller.initiative = api.ensureInitiativeState({
+      ...initiative,
+      dayKey,
+      saveScope,
+      candidates: [...retained, ...selected.candidates].slice(-12),
+      recentFingerprints: [...initiative.recentFingerprints, ...selected.candidates.map((candidate) => candidate.fingerprint)].slice(-32)
+    }, { dayKey, saveScope });
+    if (typeof updatePhoneUnreadBadge === "function") updatePhoneUnreadBadge();
+    if (typeof syncIdolInitiativeSnsPosts === "function") syncIdolInitiativeSnsPosts({ persist: false });
+    if (options.persist !== false) saveState("storyteller.initiative_scheduled");
+    return { committed: selected.candidates.length > 0, reason: selected.reason, candidates: selected.candidates };
+  }
+
+  function getWorldDirectorHelpers() {
+    const knownCharacters = getKnownInitiativeCharacters();
     const locationId = String(state.freeMode?.activeLocationId || "");
     const scope = getSecondaryChannelSaveScope();
     return {
@@ -4991,7 +5215,7 @@
       return false;
     }
     try {
-      if (requestHostSecondaryPromptSend(prompt, dispatch.owner)) return true;
+      if (requestHostSecondaryPromptSend(prompt, dispatch.owner, { directorAttempt: director.activeJob.attempts })) return true;
     } catch (error) {
       // The exact owner is released below through the common retryable failure path.
     }
@@ -5106,12 +5330,19 @@
     director.activeJob = { ...job, status: "validating", reason: "" };
     saveState("director.validating");
     const api = globalThis.HatsuWorld?.directorApi;
-    const output = api?.parseDirectorResponse?.(text);
-    if (!output) return finishWorldDirectorAttempt(owner, { ok: false, reason: "parse_failed" });
+    const parsedResponse = api?.parseDirectorResponseDetailed?.(text)
+      || { ok: Boolean(api?.parseDirectorResponse?.(text)), reason: "parse_failed", output: api?.parseDirectorResponse?.(text) || null };
+    if (!parsedResponse.ok || !parsedResponse.output) {
+      return finishWorldDirectorAttempt(owner, { ok: false, reason: parsedResponse.reason || "parse_failed" });
+    }
+    const output = parsedResponse.output;
     const prepared = api?.prepareDirectorPatch?.(output, state, director.activeJob, getWorldDirectorHelpers());
     if (!prepared?.ok) return finishWorldDirectorAttempt(owner, { ok: false, reason: prepared?.reason || "validation_failed" });
     const applied = globalThis.HatsuWorld?.directorState?.applyDirectorPatch?.(state, prepared.patch);
     if (!applied?.applied) return finishWorldDirectorAttempt(owner, { ok: false, reason: applied?.reason || "commit_failed" });
+    if (typeof ensureIdolInitiativesForToday === "function") {
+      ensureIdolInitiativesForToday({ persist: false, replaceFallback: true, reason: "director_committed" });
+    }
     releaseSecondaryModelChannel(owner.jobId, owner.requestId, owner.saveScope, "completed");
     saveState("director.committed");
     renderSecondaryApiDebug();
@@ -5272,7 +5503,10 @@
     const apiConfig = getSecondaryApiConfig();
     if (owner?.kind === "world") apiConfig.maxTokens = Math.max(apiConfig.maxTokens, 2200);
     const allowDisabled = Boolean(options.allowDisabled);
-    if (owner?.kind === "director") apiConfig.maxTokens = Math.max(apiConfig.maxTokens, 3200);
+    if (owner?.kind === "director") {
+      const attempt = Math.max(1, Number(options.directorAttempt) || 1);
+      apiConfig.maxTokens = Math.max(apiConfig.maxTokens, attempt > 1 ? 12000 : 8000);
+    }
     if ((!apiConfig.enabled && !allowDisabled) || !apiConfig.baseUrl || !apiConfig.model) return false;
     const promptText = String(prompt || "").trim();
     if (!promptText || !isCurrentSecondaryReply(owner)) return false;
@@ -5399,6 +5633,7 @@
         return;
       }
       if (debugEvent) debugEvent.parseOk = true;
+      syncIdolInitiativeSnsPosts({ persist: false });
       // 次 API 未给出委托或委托不可用时，避免委托卡在“生成中”，用静态池补齐。
       let sideQuestFellBack = false;
       if (meta.includeSideQuests
@@ -7517,7 +7752,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   function isChoicePromptAction(action) {
-    return action === "outing" || action === "companion" || action === "intimacy" || action === "bond" || action === "map_location" || action === "apartment_companion";
+    return action === "outing" || action === "companion" || action === "intimacy" || action === "bond" || action === "map_location" || action === "apartment_companion" || action === "storyteller_event";
   }
 
   function isChoicePromptMode() {
@@ -7530,6 +7765,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
 
   function currentChoiceActionTitle() {
     if (isNsfwIntimacyActive()) return nsfwIntimacyActionTitle();
+    if (state.pendingActionContext?.action === "storyteller_event") return "初星世界事件";
     if (state.pendingActionContext?.action === "map_location") {
       const actionContext = state.pendingActionContext.actionContext || {};
       const location = resolveMapExploreLocation(actionContext.locationId, actionContext);
@@ -8086,6 +8322,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     "turn.prepared",
     "turn.settled",
     "turn.generating",
+    "turn.awaiting_choice",
     "turn.completed",
     "turn.completed_without_narrative",
     "turn.failed",
@@ -8379,7 +8616,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     return Boolean(
       turn
       && turn.sessionEpoch === currentSessionEpoch
-      && ["prepared", "settled", "generating"].includes(turn.status)
+      && ["prepared", "settled", "generating", "awaiting_choice"].includes(turn.status)
     );
   }
 
@@ -8573,6 +8810,25 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       showToast("无法恢复叙事", "当前恢复记录不属于这个存档，未发送任何请求。", "warn");
       return false;
     }
+    const storyteller = state.freeMode?.world?.storyteller;
+    const eventConversation = turn.kind === "storyteller_event"
+      ? getActiveStorytellerEventConversation()
+      : null;
+    const eventCandidate = turn.kind === "storyteller_event"
+      ? globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate)
+      : null;
+    if (turn.kind === "storyteller_event" && (
+      !storyteller
+      || !eventConversation
+      || eventConversation.status !== "generating"
+      || eventConversation.turnId !== turn.turnId
+      || !eventCandidate
+      || eventCandidate.status !== "invited"
+      || !isStorytellerEventConversationCurrent(eventConversation, eventCandidate)
+    )) {
+      showToast("无法恢复事件", "事件会话与当前存档不一致，未发送任何请求。", "warn");
+      return false;
+    }
     const prompt = resolveHarnessRecoveryPrompt(turn);
     if (!prompt) {
       showToast("无法恢复叙事", "原始行动提示词缺失或校验失败，未发送任何请求。", "warn");
@@ -8614,6 +8870,14 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       recoveryStartedAt: now,
       updatedAt: now
     };
+    if (turn.kind === "storyteller_event") {
+      storyteller.activeConversation = normalizeStorytellerEventConversation({
+        ...eventConversation,
+        status: "generating",
+        choices: [],
+        lastRequestId: requestId
+      });
+    }
     if (turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live" && state.sandbox?.firstLiveChallenge) {
       state.sandbox.firstLiveChallenge.status = "generating";
       if (state.sandbox.firstLiveChallenge.activeAttempt) {
@@ -9397,15 +9661,28 @@ ${buildChoiceOnlyExample()}`;
 
   function buildSandboxScoutExplorePrompt(locationId, options = {}) {
     const { continuation = false } = options;
-    const location = getWorldMapLocation(locationId);
+    const actionContext = options.actionContext || state.pendingActionContext?.actionContext || {};
+    const homeBedroomActive = locationId === FREE_MODE_OUTING_LOCATION_ID
+      && isChinaHomeScoutBedroomActive(actionContext);
+    const activeFacility = homeBedroomActive ? getActiveFreeModeOutingFacility(actionContext) : null;
+    const location = homeBedroomActive
+      ? {
+          id: FREE_MODE_OUTING_LOCATION_ID,
+          name: activeFacility?.sceneName || "千奈卧室",
+          description: activeFacility?.description || "仓本家中的千奈卧室。"
+        }
+      : getWorldMapLocation(locationId);
     if (!location) return "";
     const targetIdol = state.idol || "物色目标";
     const scoutQuestId = globalThis.HatsuTasks?.getScoutQuestId?.(state) || "scout_temari";
+    const scoutQuestBlock = globalThis.HatsuTasks?.buildSandboxScoutQuestPromptBlock?.(state) || "";
     const presenceLine = buildMapLocationPresenceLine(locationId, options);
-    const targetHere = getSandboxScoutTargetAtLocation(locationId) === targetIdol;
+    const targetHere = homeBedroomActive || getSandboxScoutTargetAtLocation(locationId) === targetIdol;
     const targetLocationId = globalThis.HatsuWorld?.campusBehavior?.getScoutTargetLocation?.(targetIdol, getHatsuWorldHelpers()) || "";
     const targetLocation = targetLocationId ? getWorldMapLocation(targetLocationId) : null;
-    const targetLocationName = targetLocation?.name || "\u76ee\u6807\u4eca\u5929\u6240\u5728\u5730\u70b9";
+    const targetLocationName = targetLocationId === "china_home"
+      ? "仓本家卧室"
+      : targetLocation?.name || "\u76ee\u6807\u4eca\u5929\u6240\u5728\u5730\u70b9";
     const targetPresentSceneInstruction = continuation
       ? `请承接下文摘要，写制作人继续留在 ${location.name}、与 ${targetIdol} 物色搭话的下一轮场景，并设计 4 个新的下一步行动选项。
 - 不要重复已经发生过的事件；从当前时间点自然续写。
@@ -9437,6 +9714,8 @@ ${summarizeMapExploreContext()}`
 ${presenceLine ? `\n${presenceLine}\n` : ""}${composeWorldSummaryBlock("map", locationId)}
 
 ${buildProducerPromptSection()}
+
+${scoutQuestBlock ? `${scoutQuestBlock}\n` : ""}
 
 ${sceneInstruction}
 ${scoutCompletionRule}
@@ -9558,6 +9837,9 @@ ${buildMapExploreChoiceOutputBlock({ includeRelationship: true })}`;
   }
 
   function buildFreeModeOutingExplorePrompt(options = {}) {
+    if (isChinaHomeScoutBedroomActive(options.actionContext)) {
+      return buildSandboxScoutExplorePrompt(FREE_MODE_OUTING_LOCATION_ID, options);
+    }
     const { continuation = false } = options;
     const actionContext = options.actionContext || state.pendingActionContext?.actionContext || {};
     const location = resolveMapExploreLocation(FREE_MODE_OUTING_LOCATION_ID, actionContext);
@@ -9631,6 +9913,9 @@ ${buildMapExploreChoiceOutputBlock({ includeRelationship: true })}`;
     const facility = getFreeModeOutingFacility(scene.venueId, scene.facilityId);
     if (!venue || !facility) return "";
     const idolName = scene.selectedIdol || canonicalIdolName(state.idol) || state.idol || "担当偶像";
+    const isIdol = Boolean(idols[canonicalIdolName(idolName) || idolName]);
+    const roleLabel = isIdol ? "担当偶像" : "当前互动角色";
+    const subjectLabel = isIdol ? "偶像" : "对方";
     const dayTimeLabel = isSandboxLaunch()
       ? formatCampusDayLabel() + " " + formatFreeModeClock()
       : formatFreeModeDayLabel() + " " + formatFreeModeClock();
@@ -9638,17 +9923,17 @@ ${buildMapExploreChoiceOutputBlock({ includeRelationship: true })}`;
     const actionLabel = normalizedCustomText
       ? "制作人主动提出自定义聊天内容，请围绕该内容回应。"
       : action === "ask"
-        ? "制作人询问偶像接下来想去哪里或想做什么。"
+        ? `制作人询问${subjectLabel}接下来想去哪里或想做什么。`
         : action === "invite"
-          ? "制作人确认与偶像继续同行。"
-          : "制作人与偶像在当前设施内轻松闲聊。";
+          ? `制作人确认与${subjectLabel}继续同行。`
+          : `制作人与${subjectLabel}在当前设施内轻松闲聊。`;
     return [
       "[初星育成系统：校外场景内对话]",
       "",
       "请为当前校外场景生成一小段即时互动，不要进入 VN，不要输出选项，不要写长篇剧情。",
-      "前端会把偶像台词显示在立绘旁气泡，把旁白和制作人台词显示在底部对话栏。",
+      "前端会把当前角色台词显示在立绘旁气泡，把旁白和制作人台词显示在底部对话栏。",
       "",
-      "担当偶像：" + idolName,
+      roleLabel + "：" + idolName,
       "当前时间：" + dayTimeLabel,
       "当前地点：" + (venue.name || "购物中心"),
       "当前设施：" + (facility.name || "设施"),
@@ -9665,7 +9950,7 @@ ${buildMapExploreChoiceOutputBlock({ includeRelationship: true })}`;
       "<idol>" + idolName + "的一句回应，60字以内。</idol>",
       "",
       "要求：",
-      "- 偶像台词要贴合角色，不要写成旁白。",
+      "- 当前角色台词要贴合角色，不要写成旁白。",
       "- 旁白和制作人不要混进 idol 标签。",
       "- 不要输出 option/time/选择项。",
       "- 不要使用 Markdown 列表。"
@@ -9701,6 +9986,7 @@ ${buildMapExploreChoiceOutputBlock({ includeRelationship: true })}`;
     const dayTimeLabel = isSandboxLaunch()
       ? `${formatCampusDayLabel()} ${formatFreeModeClock()}`
       : `${formatFreeModeDayLabel()} ${formatFreeModeClock()}`;
+    const personalQuestBlock = globalThis.HatsuTasks?.buildSandboxSideQuestPromptBlock?.(state, slot) || "";
     return `[初星育成系统：沙盒模式 · 委托现场]
 
 担当偶像：${state.idol}
@@ -9714,6 +10000,8 @@ ${getFreeModeAffinityStageLine(state.idol)}
 委托说明：${slot.desc}
 
 ${buildProducerPromptSection()}
+
+${personalQuestBlock ? `${personalQuestBlock}\n` : ""}
 
 请写制作人与担当偶像抵达 ${location.name}，正式开始执行该商业委托的现场开场，并设计 4 个制作人第一人称行动选项。
 - 这是外部商业委托现场，不是训练、课表或校园日常。
@@ -10386,6 +10674,55 @@ ${buildPhoneChatScenarioRules()}
 ${buildPhoneChatOutputContract(contactName)}`;
   }
 
+  function buildPhoneInitiativePrompt(candidate, threadId) {
+    const contactName = getPhoneThreadContactName(threadId);
+    const profile = idols[contactName] || {};
+    const relationshipRole = String(candidate?.delivery?.relationshipRole || "known");
+    const relationshipStage = String(candidate?.delivery?.relationshipStage || "");
+    const relationshipDescription = relationshipRole === "responsible"
+      ? "当前负责偶像；玩家是她当前负责的制作人"
+      : relationshipRole === "assigned"
+        ? "当前担当偶像之一，但不是当前负责对象；不要把玩家写成她当前负责的制作人"
+        : relationshipRole === "friend"
+          ? "LINE 好友；玩家不是对方的制作人"
+          : "普通认识；玩家不是对方的制作人";
+    const contextSummaries = (Array.isArray(candidate?.delivery?.contextSummaries)
+      ? candidate.delivery.contextSummaries
+      : []).map((summary) => String(summary || "").trim()).filter(Boolean).slice(-4);
+    const recentHistory = getPhoneThreadMessages(threadId).slice(-8).map((message) => {
+      const speaker = message?.sender === "producer" ? "玩家" : contactName;
+      return `${speaker}：${String(message?.text || "").trim()}`;
+    }).filter((line) => !line.endsWith("："));
+    return `[初星育成系统：偶像主动 LINE]
+
+当前聊天对象：${contactName}
+当前日期：${formatWorldFeedDayLabel()} ${formatPhoneClock()}
+双方关系身份（relationshipRole=${relationshipRole}）：${relationshipDescription}
+关系阶段（relationshipStage）：${relationshipStage || "尚未记录"}
+角色当前倾向：${candidate?.delivery?.goal || "就最近发生的事情主动联系玩家"}
+角色动机：${candidate?.delivery?.motive || "延续近期已经发生的交流"}
+紧迫度：${candidate?.delivery?.urgency || "normal"}
+
+可依据的近期前情（contextSummaries）：
+${contextSummaries.length ? contextSummaries.map((summary) => `- ${summary}`).join("\n") : "- 没有可用前情；不要虚构共同经历或制作人关系。"}
+
+最近聊天记录：
+${recentHistory.length ? recentHistory.join("\n") : "（尚无聊天记录）"}
+
+角色核心：
+${profile.core || "按初星学园偶像设定自然发挥。"}
+${buildProducerPromptSection()}
+
+规则：
+- 这是角色当前考虑采取的主动联系，不代表该行为此前已经发生。
+- 只生成 ${contactName} 主动发给玩家的第一批 LINE 消息，不替玩家回复或作决定。
+- 严格遵守双方关系身份；friend 或 known 时，玩家不是对方的制作人，不得以制作人担当关系为前提。
+- 可以分 1 到 3 条口语化短消息，不写成小说段落。
+- 不推进时间，不修改数值、任务、资源或关系状态。
+
+${buildPhoneChatOutputContract(contactName)}`;
+  }
+
   function buildPhoneAddFriendGreetingPrompt(friendName) {
     const profile = idols[friendName] || {};
     const scenarioLine = isSummaryRound()
@@ -10950,6 +11287,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     renderStatMeters();
     renderActionButtons();
     renderNotebook();
+    updatePhoneUnreadBadge();
   }
 
   function isFreeModeUnlocked() {
@@ -11030,6 +11368,21 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
 
   function isSandboxScoutActive() {
     return isSandboxScoutPhase();
+  }
+
+  function isChinaHomeScoutActive() {
+    if (!isSandboxLaunch() || !isSandboxScoutActive()) return false;
+    const target = canonicalIdolName(state.idol) || state.idol || "";
+    const locationId = globalThis.HatsuWorld?.campusBehavior?.getScoutTargetLocation?.(target, getHatsuWorldHelpers()) || "";
+    return target === "仓本千奈" && locationId === "china_home";
+  }
+
+  function isChinaHomeScoutBedroomActive(actionContext = state.pendingActionContext?.actionContext || {}) {
+    if (!isChinaHomeScoutActive()) return false;
+    const scene = state.freeMode?.outingScene || {};
+    const venueId = actionContext.outingVenueId || scene.venueId;
+    const facilityId = actionContext.outingFacilityId || scene.facilityId;
+    return venueId === "china_home" && facilityId === "bedroom";
   }
 
   function getSandboxScoutTargetAtLocation(locationId) {
@@ -12381,6 +12734,122 @@ ${idolLine}
     if (isProducerApartmentMorning()) return;
   }
 
+  function getApartmentInitiativeVisitorCandidate() {
+    if (!isProducerApartmentActive() || isApartmentCompanionSessionActive()) return null;
+    const minutes = Number(state.freeMode?.clockMinutes || 0);
+    if (minutes < 18 * 60 || minutes >= 23 * 60) return null;
+    const storyteller = state.freeMode?.world?.storyteller;
+    const api = globalThis.HatsuWorldStorytellerInitiative;
+    const planId = String(storyteller?.plan?.planId || "");
+    const dayKey = String(getWorldFeedDayKey() || "");
+    const saveScope = String(getSecondaryChannelSaveScope() || "");
+    if (!api?.ensureInitiativeState || !planId || !dayKey || !saveScope) return null;
+    const worldMinute = Math.max(0, Number(state.freeMode?.postLiveDay || state.day || 0)) * 1440 + minutes;
+    return api.ensureInitiativeState(storyteller.initiative).candidates.find((candidate) => (
+      candidate.channel === "invite"
+      && ["pending", "notified", "deferred"].includes(candidate.status)
+      && candidate.planId === planId
+      && candidate.dayKey === dayKey
+      && candidate.saveScope === saveScope
+      && (candidate.status !== "deferred" || worldMinute >= Number(candidate.delivery?.deferredUntilWorldMinute || 0))
+    )) || null;
+  }
+
+  function openApartmentVisitorOverlay() {
+    const candidate = getApartmentInitiativeVisitorCandidate();
+    if (!candidate) return false;
+    const idolName = canonicalIdolName(String(candidate.actorIds?.[0] || "").replace(/^idol:/, ""));
+    const copy = document.getElementById("apartmentVisitorCopy");
+    if (copy) copy.textContent = `${idolName} 正在门外，似乎想和你谈谈：${candidate.delivery?.goal || "临时来访"}`;
+    setElementHidden("apartmentVisitorOverlay", false);
+    return true;
+  }
+
+  function closeApartmentVisitorOverlay() {
+    setElementHidden("apartmentVisitorOverlay", true);
+  }
+
+  function transitionApartmentInitiative(action) {
+    const candidate = getApartmentInitiativeVisitorCandidate();
+    const storyteller = state.freeMode?.world?.storyteller;
+    const api = globalThis.HatsuWorldStorytellerInitiative;
+    if (!candidate || !storyteller || !api?.transitionInitiativeCandidate) return null;
+    const worldMinute = Math.max(0, Number(state.freeMode?.postLiveDay || state.day || 0)) * 1440 + Number(state.freeMode?.clockMinutes || 0);
+    const result = api.transitionInitiativeCandidate(storyteller.initiative, candidate.incidentId, action, {
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      planId: candidate.planId,
+      intentId: candidate.intentId,
+      deferredUntilWorldMinute: worldMinute + 60
+    });
+    if (!result.ok) return null;
+    storyteller.initiative = result.state;
+    return { candidate: result.candidate, previous: candidate };
+  }
+
+  function deferApartmentInitiativeVisitor() {
+    if (!transitionApartmentInitiative("defer")) return false;
+    closeApartmentVisitorOverlay();
+    saveState("storyteller.initiative_visit_deferred");
+    renderProducerApartmentStage();
+    return true;
+  }
+
+  function declineApartmentInitiativeVisitor() {
+    if (!transitionApartmentInitiative("decline")) return false;
+    closeApartmentVisitorOverlay();
+    saveState("storyteller.initiative_visit_declined");
+    renderProducerApartmentStage();
+    renderWorldEnginePhoneApp();
+    return true;
+  }
+
+  function acceptApartmentInitiativeVisitor() {
+    const candidate = getApartmentInitiativeVisitorCandidate();
+    if (!candidate || getPrimaryModelChannelOwner()) return false;
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "apartment_companion",
+      saveScope: candidate.saveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) return false;
+    const transitioned = transitionApartmentInitiative("accept");
+    if (!transitioned) {
+      releasePrimaryModelChannel(requestId, acquired.owner.channelLeaseId, "initiative_visit_transition_failed");
+      return false;
+    }
+    const idolName = canonicalIdolName(String(candidate.actorIds?.[0] || "").replace(/^idol:/, ""));
+    closeApartmentVisitorOverlay();
+    setApartmentCompanionIdol(idolName);
+    const started = beginApartmentCompanionChat(idolName, candidate.delivery?.goal || "临时来访", {
+      requestId,
+      channelLeaseId: acquired.owner.channelLeaseId,
+      initiative: {
+        candidateId: candidate.incidentId,
+        intentId: candidate.intentId,
+        saveScope: candidate.saveScope,
+        dayKey: candidate.dayKey,
+        planId: candidate.planId
+      }
+    });
+    if (!started) saveState("storyteller.initiative_visit_recovery");
+    return started;
+  }
+
+  function resolveApartmentInitiativeDelivery(actionContext) {
+    const identity = actionContext?.initiative;
+    const storyteller = state.freeMode?.world?.storyteller;
+    const api = globalThis.HatsuWorldStorytellerInitiative;
+    if (!identity || !storyteller || !api?.transitionInitiativeCandidate) return false;
+    const result = api.transitionInitiativeCandidate(storyteller.initiative, identity.candidateId, "resolve", identity);
+    if (!result.ok) return false;
+    storyteller.initiative = result.state;
+    renderWorldEnginePhoneApp();
+    return true;
+  }
+
   function renderProducerApartmentStage() {
     const stage = document.getElementById("producerApartmentStage");
     if (!stage) return;
@@ -12448,6 +12917,8 @@ ${idolLine}
           : `尚无好感度达到 ${INTIMACY_NSFW_UNLOCK_TRUST} 的偶像`;
       }
     }
+    const doorbellBtn = document.getElementById("apartmentDoorbellBtn");
+    if (doorbellBtn) doorbellBtn.hidden = !getApartmentInitiativeVisitorCandidate();
   }
 
   function renderApartmentInviteList() {
@@ -12664,16 +13135,17 @@ ${galgameRenderContract("choice")}
 ${buildChoiceHardRules({ phase1: true })}`;
   }
 
-  function beginApartmentCompanionChat(idolName, topic) {
+  function beginApartmentCompanionChat(idolName, topic, options = {}) {
     const targetIdol = canonicalIdolName(idolName);
-    if (!targetIdol || !idols[targetIdol]) return;
+    if (!targetIdol || !idols[targetIdol]) return false;
     const prompt = buildApartmentCompanionChatPrompt(targetIdol, topic);
     state.pendingActionContext = {
       action: "apartment_companion",
       actionContext: {
         mode: "chat",
         companionIdol: targetIdol,
-        companionTopic: topic
+        companionTopic: topic,
+        ...(options.initiative ? { initiative: { ...options.initiative } } : {})
       }
     };
     state.eventMode = "choice_prompt";
@@ -12683,7 +13155,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     state.pendingOptionMinutes = [];
     state.selectedChoiceText = "";
     state.selectedChoiceRating = "";
-    const requestId = createRequestId();
+    const requestId = String(options.requestId || createRequestId());
     pendingAiRequestId = requestId;
     state.lastPrompt = prompt;
     state.lastStory = `正在公寓与 ${targetIdol} 聊天...`;
@@ -12695,9 +13167,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const actionsEl = document.getElementById("eventActions");
     if (actionsEl) actionsEl.style.display = "none";
     openEventOverlay(`公寓 · ${targetIdol}`, buildAiWaitingResult(`公寓聊天：${topic}`), buildAiWaitingStory(`正在等待与 ${targetIdol} 的公寓聊天剧情...`));
-    if (!requestHostPromptSend(prompt, requestId)) {
+    if (!requestHostPromptSend(prompt, requestId, options.channelLeaseId ? {
+      channelLeaseId: options.channelLeaseId,
+      ownerKind: "apartment_companion"
+    } : undefined)) {
       openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制公寓聊天提示词后手动发送。");
+      return false;
     }
+    return true;
   }
 
   function closeApartmentCompanionSession() {
@@ -14004,6 +14481,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     updateWorldMapImage();
     applyWorldMapLayoutFit();
     renderWorldMapHotspots();
+    if (typeof updateFreeModeEventButton === "function") updateFreeModeEventButton();
     if (worldMapLayoutState.editorActive) return;
     const locationBadge = document.getElementById("freeModeLocationBadge");
     if (locationBadge) {
@@ -14352,7 +14830,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     return locationId === "school_entrance"
       && isSandboxLaunch()
       && isFreeModeActive()
-      && !isSandboxScoutActive()
+      && (!isSandboxScoutActive() || isChinaHomeScoutActive())
       && isFreeModeTravelAllowed();
   }
 
@@ -14550,34 +15028,45 @@ ${buildChoiceHardRules({ phase1: true })}`;
     renderFreeModeOutingFacilityGuide();
   }
 
-  function getFreeModeOutingSceneIdols() {
+  function getFreeModeOutingSceneCharacters() {
     const names = [];
+    const scene = state.freeMode?.outingScene || {};
+    const facility = getFreeModeOutingFacility(scene.venueId, scene.facilityId);
     const assigned = canonicalIdolName(state.idol) || state.idol || "";
-    if (assigned && idols[assigned]) names.push(assigned);
-    return names;
+    if (scene.visitMode !== "alone" && assigned && idols[assigned]) names.push(assigned);
+    if (isChinaHomeScoutBedroomActive()) names.push("仓本千奈");
+    (facility?.residentCharacters || []).forEach((name) => names.push(canonicalIdolName(name) || name));
+    return [...new Set(names)].filter((name) => idols[name] || vnStandees[name]);
   }
 
   function renderFreeModeOutingSceneIdols() {
     const list = document.getElementById("freeModeOutingSceneIdols");
     if (!list) return;
-    const selected = state.freeMode?.outingScene?.selectedIdol || canonicalIdolName(state.idol) || state.idol || "";
+    const characters = getFreeModeOutingSceneCharacters();
+    const scene = state.freeMode?.outingScene;
+    let selected = scene?.selectedIdol || canonicalIdolName(state.idol) || state.idol || "";
+    if (!characters.includes(selected)) {
+      selected = characters[0] || "";
+      if (scene) scene.selectedIdol = selected;
+    }
     list.innerHTML = "";
-    getFreeModeOutingSceneIdols().forEach((idolName) => {
-      const profile = idols[idolName] || {};
+    characters.forEach((characterName) => {
+      const profile = idols[characterName] || {};
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `outing-scene-idol${idolName === selected ? " is-selected" : ""}`;
-      button.dataset.outingIdol = idolName;
+      button.className = `outing-scene-idol${characterName === selected ? " is-selected" : ""}`;
+      button.dataset.outingIdol = characterName;
       button.style.setProperty("--idol-color", profile.theme || "#ec407a");
-      const standee = resolveIdolStandeeSrc(idolName);
       button.innerHTML = `
-        <img src="${escapePhoneText(standee || profile.avatar || "")}" alt="${escapePhoneText(idolName)}立绘" loading="lazy" decoding="async">
-        <span>${escapePhoneText(idolName)}</span>
+        <img alt="${escapePhoneText(characterName)}立绘" loading="lazy" decoding="async">
+        <span>${escapePhoneText(characterName)}</span>
       `;
-      button.querySelector("img")?.addEventListener("error", (event) => {
-        event.currentTarget.classList.add("is-missing");
-      });
-      button.addEventListener("click", () => openFreeModeOutingIdolActionMenu(idolName));
+      const image = button.querySelector("img");
+      const resolvedPortrait = resolvePortraitForSpeaker(characterName);
+      if (!resolvedPortrait.url || !applyResolvedPortraitToImage(image, resolvedPortrait)) {
+        image?.classList.add("is-missing");
+      }
+      button.addEventListener("click", () => openFreeModeOutingIdolActionMenu(characterName));
       list.appendChild(button);
     });
   }
@@ -14588,6 +15077,20 @@ ${buildChoiceHardRules({ phase1: true })}`;
     state.freeMode.outingScene.selectedIdol = canonical;
     const name = document.getElementById("freeModeOutingIdolActionName");
     if (name) name.textContent = canonical || "担当偶像";
+    const isIdol = Boolean(idols[canonical]);
+    const scoutTalkOnly = canonical === "仓本千奈" && isChinaHomeScoutBedroomActive();
+    const standardButtons = document.querySelectorAll('[data-outing-idol-action]:not([data-outing-idol-action="china_scout_talk"])');
+    const scoutTalkButton = document.querySelector('[data-outing-idol-action="china_scout_talk"]');
+    const statusButton = document.querySelector('[data-outing-idol-action="status"]');
+    const inviteButton = document.querySelector('[data-outing-idol-action="invite"]');
+    standardButtons.forEach((button) => {
+      button.hidden = scoutTalkOnly;
+    });
+    if (scoutTalkButton) scoutTalkButton.hidden = !scoutTalkOnly;
+    if (!scoutTalkOnly) {
+      if (statusButton) statusButton.hidden = !isIdol;
+      if (inviteButton) inviteButton.hidden = !isIdol;
+    }
     renderFreeModeOutingSceneIdols();
     setElementHidden("freeModeOutingIdolActionMenu", false);
   }
@@ -14783,6 +15286,16 @@ ${buildChoiceHardRules({ phase1: true })}`;
   }
 
   function handleFreeModeOutingIdolAction(action) {
+    if (action === "china_scout_talk") {
+      if (!isChinaHomeScoutBedroomActive()) return;
+      closeFreeModeOutingIdolActionMenu();
+      startFreeModeOutingFacilityExplore("chat");
+      return;
+    }
+    if (isChinaHomeScoutBedroomActive() && ["chat", "ask", "invite"].includes(action)) {
+      startFreeModeOutingFacilityExplore("chat");
+      return;
+    }
     if (action === "status") {
       const idolName = state.freeMode?.outingScene?.selectedIdol || state.idol || "担当偶像";
       const relation = getFreeModeRelationship(idolName);
@@ -14834,6 +15347,17 @@ ${buildChoiceHardRules({ phase1: true })}`;
       return;
     }
     const venue = getFreeModeOutingVenueByDestination(location);
+    if (isChinaHomeScoutActive()) {
+      if (!venue || venue.id !== "china_home") {
+        showToast("物色目标不在这里", "仓本千奈正在仓本家卧室等待来访。", "warn");
+        return;
+      }
+      openFreeModeOutingScene("china_home", "alone", {
+        facilityId: "bedroom",
+        selectedIdol: "仓本千奈"
+      });
+      return;
+    }
     if (venue) {
       openFreeModeOutingScene(venue.id, "with_idol");
       return;
@@ -15134,7 +15658,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     updateSelectVisual(null);
 
     Object.entries(idols).forEach(([name, profile]) => {
-      if (isSandboxLaunch() && !SANDBOX_SELECTABLE_IDOLS.includes(name)) return;
+      if (isSandboxLaunch() && !getSandboxSelectableIdols().includes(name)) return;
       const button = document.createElement("button");
       button.type = "button";
       button.id = `idol-${name}`;
@@ -16839,7 +17363,61 @@ ${buildChoiceHardRules({ phase1: true })}`;
   function ensureDailyBuzz() {
     if (!isPhoneWorldFeedUnlocked()) return [];
     ensurePhoneWorldFeedReady();
+    syncIdolInitiativeSnsPosts({ persist: false });
     return getBuzzState().items || [];
+  }
+
+  function syncIdolInitiativeSnsPosts(options = {}) {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const initiativeApi = globalThis.HatsuWorldStorytellerInitiative;
+    const buzzApi = globalThis.HatsuWorld?.buzzPool;
+    const buzz = state.freeMode?.world?.buzz;
+    const dayKey = String(getWorldFeedDayKey() || "");
+    const saveScope = String(getSecondaryChannelSaveScope() || "");
+    const planId = String(storyteller?.plan?.planId || "");
+    if (!storyteller || !buzz || !initiativeApi?.transitionInitiativeCandidate || !buzzApi?.buildBuzzPost || !dayKey || !saveScope || !planId) return 0;
+    if (!Array.isArray(buzz.items)) buzz.items = [];
+    const candidates = initiativeApi.ensureInitiativeState(storyteller.initiative).candidates.filter((candidate) => (
+      candidate.channel === "sns"
+      && candidate.status === "pending"
+      && candidate.delivery?.visibility === "public"
+      && candidate.delivery?.publicPostDraft
+      && candidate.dayKey === dayKey
+      && candidate.saveScope === saveScope
+      && candidate.planId === planId
+    ));
+    let published = 0;
+    for (const candidate of candidates) {
+      const postId = `initiative:${candidate.incidentId}`;
+      if (!buzz.items.some((item) => item?.id === postId)) {
+        const author = canonicalIdolName(String(candidate.actorIds?.[0] || "").replace(/^idol:/, ""));
+        buzz.items.push(buzzApi.buildBuzzPost({
+          id: postId,
+          dayKey,
+          author,
+          text: candidate.delivery.publicPostDraft,
+          category: "daily",
+          scope: "campus",
+          heat: candidate.delivery.urgency === "high" ? "high" : "normal",
+          source: "character_intent",
+          comments: 0,
+          reposts: 0,
+          timeLabel: "刚刚"
+        }));
+      }
+      const result = initiativeApi.transitionInitiativeCandidate(storyteller.initiative, candidate.incidentId, "resolve", {
+        saveScope: candidate.saveScope,
+        dayKey: candidate.dayKey,
+        planId: candidate.planId,
+        intentId: candidate.intentId
+      });
+      if (result.ok && buzz.items.some((item) => item?.id === postId)) {
+        storyteller.initiative = result.state;
+        published += 1;
+      }
+    }
+    if (published && options.persist !== false) saveState("storyteller.initiative_sns_published");
+    return published;
   }
 
   function getBuzzItemsForTab(tab = snsActiveTab) {
@@ -17416,7 +17994,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
   function renderWorldEngineEventBudget(audit) {
     const item = (label, value) => `<div><span>${label}</span><strong>${Number(value?.used) || 0}/${Number(value?.total) || 0}</strong></div>`;
     return `<section class="world-engine-event-budget">
-      <div class="world-engine-section-head"><span>今日事件预算</span><strong>Attach ${Number(audit?.channels?.attach) || 0} · Invite ${Number(audit?.channels?.invite) || 0}</strong></div>
+      <div class="world-engine-section-head"><span>今日事件预算</span><strong>Attach ${Number(audit?.channels?.attach) || 0} · Invite ${Number(audit?.channels?.invite) || 0} · LINE ${Number(audit?.channels?.phone) || 0} · SNS ${Number(audit?.channels?.sns) || 0}</strong></div>
       <div class="world-engine-event-budget-grid">
         ${item("轻微", audit?.budget?.minor)}
         ${item("中等", audit?.budget?.moderate)}
@@ -17464,16 +18042,34 @@ ${buildChoiceHardRules({ phase1: true })}`;
     </section>`;
   }
 
+  function renderWorldEngineInitiativeAudit(audit) {
+    const events = Array.isArray(audit?.initiativeEvents) ? audit.initiativeEvents : [];
+    if (!events.length) {
+      return `<section class="world-engine-attach-empty"><div class="world-engine-section-head"><span>今日偶像主动行为</span><strong>0</strong></div></section>`;
+    }
+    return `<section class="world-engine-attach-audit">
+      <div class="world-engine-section-head"><span>今日偶像主动行为</span><strong>${events.length}${audit.unreadPhoneCount ? ` · LINE 未读 ${Number(audit.unreadPhoneCount) || 0}` : ""}</strong></div>
+      <div class="world-engine-attach-list">${events.map((row) => `
+        <article class="world-engine-attach-row">
+          <div class="world-engine-attach-meta"><time>${escapePhoneText(row.channelLabel)}</time><strong>${escapePhoneText(row.statusLabel)}</strong></div>
+          <h2>${(row.actorLabels || []).map((item) => escapePhoneText(item)).join(" / ") || "未指定偶像"}</h2>
+          <p>${escapePhoneText(row.summary || "等待合适时机")}</p>
+        </article>`).join("")}</div>
+    </section>`;
+  }
+
   function renderWorldEngineEvents(model) {
     const audit = model.storyteller?.eventAudit || {
       budget: { minor: {}, moderate: {}, major: {} },
-      channels: { attach: 0, invite: 0 },
+      channels: { attach: 0, invite: 0, phone: 0, sns: 0 },
       attachEvents: [],
+      initiativeEvents: [],
       emptyReason: "当前计划尚未建立。"
     };
     return renderWorldEngineEventBudget(audit)
       + renderWorldEngineEventInbox(model.storyteller?.inbox)
-      + renderWorldEngineAttachAudit(audit);
+      + renderWorldEngineAttachAudit(audit)
+      + (typeof renderWorldEngineInitiativeAudit === "function" ? renderWorldEngineInitiativeAudit(audit) : "");
   }
 
   function transitionStorytellerInboxAction(action, options) {
@@ -17497,6 +18093,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const receipt = api.buildNotificationReceipt?.(receiptInput) || receiptInput;
     storyteller.receipts = [...(storyteller.receipts || []), receipt].slice(-40);
     saveState(`storyteller.notification_${action}`);
+    if (typeof updateFreeModeEventButton === "function") updateFreeModeEventButton();
     renderPhoneHome();
     renderWorldEnginePhoneApp();
     return true;
@@ -17536,7 +18133,408 @@ ${composeWorldSummaryBlock("produce", candidate?.locationId)}`;
       }) || "";
     return `${worldFacts}
 
-${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\n\n` : ""}${authorityContract ? `${authorityContract}\n\n` : ""}${outputContract("请写 700 字以内的完整独立事件正文，自然收束，不要输出选项，不要待续。")}`;
+${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\n\n` : ""}${authorityContract ? `${authorityContract}\n\n` : ""}请写当前事件的第一段对话，停在需要制作人回应的自然转折点，不要收束整个事件。
+
+${galgameRenderContract("choice")}
+${buildChoiceHardRules({ phase1: true })}
+- 四个选项都使用制作人第一人称，方向要有明显差异。
+- 【初星正文结束】后用 <sum> 写 1-2 句本轮剧情小结，供下一轮保持前情。
+- 不推进时间，不修改数值、资源、关系或任务。
+
+${buildChoiceOnlyExample()}`;
+  }
+
+  function commitStorytellerEventRoundReply(requestId, payload, summary, messageId) {
+    requestId = String(requestId || "");
+    payload = payload && typeof payload === "object" ? payload : {};
+    const story = String(payload.story || "").trim();
+    const choices = Array.isArray(payload.options)
+      ? payload.options.map((item) => String(item || "").trim().slice(0, 240)).filter(Boolean).slice(0, 4)
+      : [];
+    const turn = state.harness?.activeTurn;
+    const storyteller = state.freeMode?.world?.storyteller;
+    const candidate = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    const conversation = normalizeStorytellerEventConversation(storyteller?.activeConversation);
+    const activeScope = String(activeHostSaveScope || activeStorageKey || "");
+    if (
+      !requestId
+      || !story
+      || choices.length !== 4
+      || !turn
+      || turn.kind !== "storyteller_event"
+      || turn.status !== "generating"
+      || turn.requestId !== requestId
+      || turn.sessionEpoch !== runtimeSessionEpoch
+      || !activeScope
+      || turn.saveScope !== activeScope
+      || !isHarnessTurnInActiveScope(turn, getHarnessRecoveryContext())
+      || !isPrimaryModelLeaseCurrent(requestId, activeInboundPrimaryChannelLeaseId)
+      || !candidate
+      || candidate.status !== "invited"
+      || !conversation
+      || conversation.status !== "generating"
+      || conversation.turnId !== turn.turnId
+      || conversation.lastRequestId !== requestId
+      || !isStorytellerEventConversationCurrent(conversation, candidate)
+    ) return { accepted: false, reason: "event_round_mismatch" };
+    const boundedSummary = String(summary || "").replace(/\s+/g, " ").trim().slice(0, 240);
+    const nextConversation = normalizeStorytellerEventConversation({
+      ...conversation,
+      status: "awaiting_choice",
+      round: conversation.round + 1,
+      storySegments: [...conversation.storySegments, story],
+      summaries: [...conversation.summaries, boundedSummary].filter(Boolean),
+      choices,
+      lastMessageId: Number.isInteger(Number(messageId)) && Number(messageId) >= 0 ? Number(messageId) : conversation.lastMessageId
+    });
+    if (!nextConversation) return { accepted: false, reason: "event_round_invalid" };
+    storyteller.activeConversation = nextConversation;
+    state.harness.activeTurn = {
+      ...turn,
+      status: "awaiting_choice",
+      updatedAt: Date.now()
+    };
+    state.pendingActionContext = {
+      action: "storyteller_event",
+      actionContext: { incidentId: candidate.incidentId, turnId: turn.turnId }
+    };
+    state.eventMode = "choice_prompt";
+    state.choiceStep = 1;
+    state.pendingOptionTexts = [...choices];
+    state.pendingOptionMinutes = [];
+    state.lastStory = nextConversation.storySegments.join("\n\n");
+    recordHarnessTrace("turn.awaiting_choice", { turnId: turn.turnId || "", requestId, action: "storyteller_event" });
+    debugHarnessEvent("turn.awaiting_choice", { turnId: turn.turnId || "", requestId, action: "storyteller_event" });
+    return { accepted: true, reason: "awaiting_choice", conversation: nextConversation };
+  }
+
+  function isStorytellerEventConversationChoiceActive() {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const conversation = getActiveStorytellerEventConversation();
+    const candidate = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    return Boolean(
+      conversation
+      && conversation.status === "awaiting_choice"
+      && candidate?.status === "invited"
+      && isStorytellerEventConversationCurrent(conversation, candidate)
+    );
+  }
+
+  function buildStorytellerEventContinuationPrompt(conversation, selectedAction) {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const candidate = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    const active = normalizeStorytellerEventConversation(conversation);
+    if (!active || !candidate || !isStorytellerEventConversationCurrent(active, candidate)) return "";
+    const location = getWorldMapLocation(candidate.locationId);
+    const summaries = active.summaries.slice(-4).map((item) => `- ${item}`).join("\n");
+    const storySegments = active.storySegments.slice(-2).join("\n\n");
+    return `[初星世界事件：连续对话]
+
+当前日期：${active.dayKey}
+当前时间：${formatFreeModeClock()}
+当前地点：${location?.name || "学园"}
+当前担当：${state.idol || "未指定"}
+事件已进行轮数：${active.round}
+
+前情小结：
+${summaries || "（暂无小结）"}
+
+最近剧情：
+${storySegments || "（暂无正文）"}
+
+制作人的本轮回应：
+${String(selectedAction || "").trim().slice(0, 240)}
+
+请继续同一事件和同一话题，只写这一轮产生的后续，不要另起事件，不要擅自结束整段对话。
+${galgameRenderContract("choice")}
+${buildChoiceHardRules({ phase1: true })}
+- 四个 option 都是制作人下一步可采取的第一人称回应，方向要有明显差异。
+- 【初星正文结束】后用 <sum> 写 1-2 句本轮剧情小结。
+- 不推进时间，不输出 relationship_update，不修改数值、资源、关系或任务。
+
+${buildChoiceOnlyExample()}`;
+  }
+
+  function requestNextStorytellerEventRound(selectedAction) {
+    const actionText = String(selectedAction || "").replace(/\s+/g, " ").trim().slice(0, 240);
+    const storyteller = state.freeMode?.world?.storyteller;
+    const conversation = getActiveStorytellerEventConversation();
+    const candidate = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    const turn = state.harness?.activeTurn;
+    const activeScope = String(activeHostSaveScope || activeStorageKey || "");
+    if (
+      !actionText
+      || !conversation
+      || conversation.status !== "awaiting_choice"
+      || !candidate
+      || candidate.status !== "invited"
+      || !isStorytellerEventConversationCurrent(conversation, candidate)
+      || !turn
+      || turn.kind !== "storyteller_event"
+      || turn.status !== "awaiting_choice"
+      || turn.turnId !== conversation.turnId
+      || turn.saveScope !== activeScope
+      || !isHarnessTurnInActiveScope(turn, getHarnessRecoveryContext())
+    ) return false;
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "storyteller_event",
+      turnId: conversation.turnId,
+      saveScope: conversation.saveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "storyteller_event" });
+      return false;
+    }
+    const prompt = buildStorytellerEventContinuationPrompt(conversation, actionText);
+    const captured = captureHarnessGenerationPrompt(prompt);
+    if (!prompt || captured.generationPromptStatus !== "captured") {
+      releasePrimaryModelChannel(requestId, acquired.owner.channelLeaseId, "event_prompt_rejected");
+      return false;
+    }
+    const nextConversation = normalizeStorytellerEventConversation({
+      ...conversation,
+      status: "generating",
+      choices: [],
+      selectedActions: [...conversation.selectedActions, actionText],
+      lastRequestId: requestId
+    });
+    if (!nextConversation) {
+      releasePrimaryModelChannel(requestId, acquired.owner.channelLeaseId, "event_conversation_invalid");
+      return false;
+    }
+    storyteller.activeConversation = nextConversation;
+    state.harness.activeTurn = {
+      ...turn,
+      ...captured,
+      status: "generating",
+      requestId,
+      requestIds: appendHarnessRequestId(turn.requestIds, requestId),
+      sessionEpoch: runtimeSessionEpoch,
+      updatedAt: Date.now()
+    };
+    state.pendingActionContext = {
+      action: "storyteller_event",
+      actionContext: { incidentId: candidate.incidentId, turnId: conversation.turnId }
+    };
+    state.eventMode = "choice_prompt";
+    state.choiceStep = 1;
+    state.pendingOptionTexts = [];
+    state.pendingOptionMinutes = [];
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = prompt;
+    state.lastStory = [...conversation.storySegments, `<narration>▶ 制作人的回应：${actionText}</narration>`].join("\n\n");
+    recordHarnessTrace("turn.generating", { turnId: conversation.turnId, requestId, action: "storyteller_event" });
+    saveState("storyteller.event_round_generating");
+    closeVnChoicesOverlay();
+    openEventOverlay("初星世界事件", "正在生成下一轮对话", buildChoicePendingDisplayStory(state.lastStory, ""));
+    const sent = requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "storyteller_event",
+      turnId: conversation.turnId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) {
+      returnHarnessRecoveryAttemptToPending(requestId, "send_failed");
+      saveState("harness.storyteller_event_send_failed");
+      return false;
+    }
+    return true;
+  }
+
+  function handleStorytellerEventChoiceSelection(index) {
+    const conversation = getActiveStorytellerEventConversation();
+    return requestNextStorytellerEventRound(conversation?.choices?.[index] || "");
+  }
+
+  function handleStorytellerEventCustomChoice(rawText) {
+    const text = String(rawText || "").trim();
+    if (!text) {
+      showToast("还没有内容", "请输入想说的话或想采取的行动。", "warn");
+      return false;
+    }
+    return requestNextStorytellerEventRound(text);
+  }
+
+  function commitStorytellerEventConversationDigest(conversation, candidate, summary) {
+    const api = globalThis.HatsuWorld?.directorState;
+    const director = state.freeMode?.world?.director;
+    if (!api?.commitChronicleDigest || !director || !conversation?.lastRequestId || !summary) return false;
+    const evidence = {
+      facts: [],
+      playerChoices: conversation.selectedActions.slice(-8),
+      observations: [summary],
+      hooksCreated: [],
+      hooksResolved: []
+    };
+    const result = api.commitChronicleDigest(director, {
+      id: `digest:event:${candidate.incidentId}:${conversation.lastRequestId}`.slice(0, 160),
+      dayKey: candidate.dayKey,
+      timeKey: formatFreeModeClock(),
+      locationId: candidate.locationId,
+      participants: [...new Set([...(candidate.actorIds || []), ...(candidate.targetIds || [])])],
+      summary,
+      actionType: "storyteller_event",
+      evidenceQuality: "structured",
+      signals: evidence,
+      sourceTurnId: conversation.turnId,
+      sourceRequestId: conversation.lastRequestId,
+      sourceMessageId: conversation.lastMessageId,
+      committedAt: Date.now()
+    });
+    return Boolean(result?.committed);
+  }
+
+  function requestStorytellerEventChronicleUpdate(conversation, summary) {
+    if (!Number.isInteger(conversation?.lastMessageId) || conversation.lastMessageId < 0 || !summary) return false;
+    requestChronicleUpdate(`<sum>${summary}</sum>`, "", "", conversation.lastMessageId);
+    return true;
+  }
+
+  function endStorytellerEventConversation() {
+    const storyteller = state.freeMode?.world?.storyteller;
+    const conversation = getActiveStorytellerEventConversation();
+    const candidate = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(storyteller?.pendingCandidate);
+    const turn = state.harness?.activeTurn;
+    const activeScope = String(activeHostSaveScope || activeStorageKey || "");
+    if (
+      !storyteller
+      || !conversation
+      || conversation.status !== "awaiting_choice"
+      || !candidate
+      || candidate.status !== "invited"
+      || !isStorytellerEventConversationCurrent(conversation, candidate)
+      || !turn
+      || turn.kind !== "storyteller_event"
+      || turn.status !== "awaiting_choice"
+      || turn.turnId !== conversation.turnId
+      || turn.saveScope !== activeScope
+    ) return false;
+    const transition = globalThis.HatsuWorldStorytellerNotifications?.transitionNotification?.(candidate, "resolve", {
+      saveScope: candidate.saveScope,
+      dayKey: candidate.dayKey,
+      planId: candidate.planId,
+      sourceTurnId: candidate.sourceTurnId
+    });
+    if (!transition?.ok) return false;
+    const finalSummary = [...conversation.summaries, ...conversation.storySegments.slice(-2)]
+      .join(" ").replace(/\s+/g, " ").trim().slice(0, 600);
+    state.harness.activeTurn = { ...turn, status: "completed", completedAt: Date.now(), updatedAt: Date.now() };
+    storyteller.recentCandidates = [
+      ...(Array.isArray(storyteller.recentCandidates)
+        ? storyteller.recentCandidates.filter((item) => item?.incidentId !== candidate.incidentId)
+        : []),
+      transition.candidate
+    ].slice(-24);
+    storyteller.recentFingerprints = [...new Set([
+      ...(Array.isArray(storyteller.recentFingerprints) ? storyteller.recentFingerprints : []),
+      transition.candidate.fingerprint
+    ].filter(Boolean))].slice(-24);
+    storyteller.receipts = [
+      ...(Array.isArray(storyteller.receipts) ? storyteller.receipts : []),
+      {
+        incidentId: transition.candidate.incidentId,
+        planId: transition.candidate.planId,
+        event: "resolved",
+        reason: "player_ended_topic",
+        dayKey: transition.candidate.dayKey,
+        saveScope: transition.candidate.saveScope,
+        sourceTurnId: transition.candidate.sourceTurnId,
+        createdAt: Date.now()
+      }
+    ].slice(-40);
+    storyteller.pendingCandidate = null;
+    storyteller.lastCandidateReason = "resolved";
+    recordStorytellerObservation({
+      sourceKind: "resolved_candidate",
+      requestId: conversation.lastRequestId,
+      turnId: conversation.turnId,
+      dayKey: candidate.dayKey,
+      category: candidate.category,
+      severity: candidate.severity,
+      archetypeId: candidate.archetypeId,
+      actionId: "storyteller_event",
+      locationId: candidate.locationId,
+      participantIds: [...new Set([...(candidate.actorIds || []), ...(candidate.targetIds || [])])],
+      fingerprint: candidate.fingerprint,
+      pressureCount: (candidate.pressureIds || []).length,
+      styleId: candidate.styleId,
+      operatorIds: candidate.operatorIds
+    }, activeScope);
+    commitStorytellerEventConversationDigest(conversation, transition.candidate, finalSummary);
+    requestStorytellerEventChronicleUpdate(conversation, finalSummary);
+    clearStorytellerEventConversation();
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    state.pendingActionContext = null;
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    state.pendingOptionMinutes = [];
+    recordHarnessTrace("turn.completed", { turnId: turn.turnId || "", requestId: conversation.lastRequestId, action: "storyteller_event" });
+    saveState("storyteller.event_conversation_resolved");
+    closeVnChoicesOverlay();
+    hideVnCustomChoicePanel();
+    setElementHidden("eventOverlay", true);
+    if (typeof updateFreeModeEventButton === "function") updateFreeModeEventButton();
+    render();
+    renderPhoneHome();
+    renderWorldEnginePhoneApp();
+    return true;
+  }
+
+  function resumeActiveStorytellerEventConversation() {
+    const conversation = getActiveStorytellerEventConversation();
+    const candidate = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(
+      state.freeMode?.world?.storyteller?.pendingCandidate
+    );
+    if (!conversation || !candidate || !isStorytellerEventConversationCurrent(conversation, candidate)) return false;
+    if (conversation.status === "awaiting_choice") {
+      state.pendingActionContext = {
+        action: "storyteller_event",
+        actionContext: { incidentId: candidate.incidentId, turnId: conversation.turnId }
+      };
+      state.eventMode = "choice_prompt";
+      state.choiceStep = 1;
+      state.pendingOptionTexts = [...conversation.choices];
+      state.pendingOptionMinutes = [];
+      state.lastStory = conversation.storySegments.join("\n\n");
+      openEventOverlay("初星世界事件", "请选择回应，或结束话题", state.lastStory);
+      return true;
+    }
+    const turn = state.harness?.activeTurn;
+    if (turn?.kind === "storyteller_event" && turn.status === "recovery_required") {
+      openHarnessRecoveryOverlay(turn);
+      return true;
+    }
+    openEventOverlay("初星世界事件", "正在等待下一轮对话", buildAiWaitingStory("事件对话正在生成。"));
+    return true;
+  }
+
+  function hasPendingExternalStorytellerEvent(candidate = state.freeMode?.world?.storyteller?.pendingCandidate) {
+    const normalized = globalThis.HatsuWorldStorytellerIncidents?.normalizeIncidentCandidate?.(candidate);
+    if (!normalized || normalized.channel !== "invite" || !["notified", "deferred"].includes(normalized.status)) return false;
+    return normalized.dayKey === getWorldFeedDayKey()
+      && normalized.saveScope === getSecondaryChannelSaveScope();
+  }
+
+  function updateFreeModeEventButton() {
+    const button = document.getElementById("freeModeEventBtn");
+    const badge = document.getElementById("freeModeEventBadge");
+    if (!button) return;
+    button.hidden = !isFreeModeActive() || isHybridFacilityActive() || worldMapLayoutState.editorActive;
+    if (badge) badge.hidden = !hasPendingExternalStorytellerEvent();
+  }
+
+  function openExternalStorytellerEventShortcut() {
+    if (resumeActiveStorytellerEventConversation()) return true;
+    openPhoneOverlay();
+    openPhoneWorldEngineApp();
+    setWorldEnginePhoneTab("events");
+    return true;
   }
 
   function dispatchAcceptedStorytellerCandidate(rawCandidate) {
@@ -17595,11 +18593,30 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       return false;
     }
     storyteller.pendingCandidate = transition.candidate;
+    storyteller.activeConversation = normalizeStorytellerEventConversation({
+      incidentId: transition.candidate.incidentId,
+      planId: transition.candidate.planId,
+      saveScope: transition.candidate.saveScope,
+      dayKey: transition.candidate.dayKey,
+      sourceTurnId: transition.candidate.sourceTurnId,
+      turnId,
+      status: "generating",
+      round: 0,
+      storySegments: [],
+      summaries: [],
+      choices: [],
+      selectedActions: [],
+      lastRequestId: requestId,
+      lastMessageId: null
+    });
+    if (typeof updateFreeModeEventButton === "function") updateFreeModeEventButton();
     const prompt = buildStorytellerIndependentEventPrompt(transition.candidate);
     const captured = captureHarnessGenerationPrompt(prompt);
     if (captured.generationPromptStatus !== "captured") {
       state.harness.activeTurn = null;
       storyteller.pendingCandidate = candidate;
+      storyteller.activeConversation = null;
+      if (typeof updateFreeModeEventButton === "function") updateFreeModeEventButton();
       releasePrimaryModelChannel(requestId, acquired.owner.channelLeaseId, "event_prompt_rejected");
       return false;
     }
@@ -18079,10 +19096,52 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     return interactionCharacters.filter((name) => !taken.has(name) && idols[name]);
   }
 
+  function getPhoneInitiativeCandidates() {
+    const api = globalThis.HatsuWorldStorytellerInitiative;
+    const initiative = state.freeMode?.world?.storyteller?.initiative;
+    const planId = String(state.freeMode?.world?.storyteller?.plan?.planId || "");
+    const saveScope = String(getSecondaryChannelSaveScope() || "");
+    const dayKey = String(getWorldFeedDayKey() || "");
+    if (!api?.getUnreadPhoneInitiatives || !initiative || !planId || !saveScope || !dayKey) return [];
+    return api.getUnreadPhoneInitiatives(initiative).filter((candidate) => (
+      candidate.planId === planId && candidate.saveScope === saveScope && candidate.dayKey === dayKey
+    ));
+  }
+
+  function getPhoneInitiativeCandidateForThread(threadId) {
+    const contactName = getPhoneThreadContactName(threadId);
+    if (!contactName) return null;
+    return getPhoneInitiativeCandidates().find((candidate) => (
+      canonicalIdolName(String(candidate.actorIds?.[0] || "").replace(/^idol:/, "")) === contactName
+    )) || null;
+  }
+
+  function getPhoneInitiativeUnreadCount() {
+    return getPhoneInitiativeCandidates().length;
+  }
+
+  function updatePhoneUnreadBadge() {
+    const badge = document.getElementById("phoneUnreadBadge");
+    if (!badge) return 0;
+    const count = getPhoneInitiativeUnreadCount();
+    badge.hidden = count <= 0;
+    badge.textContent = count > 9 ? "9+" : String(count || "");
+    badge.setAttribute("aria-label", count > 0 ? `LINE 有 ${count} 条新消息` : "");
+    return count;
+  }
+
   function buildPhoneThreadDefinitions() {
     const idolName = state.idol;
     const profile = idols[idolName] || {};
-    const friendThreads = (state.phoneChat?.friends || []).map((friendName) => {
+    const proactiveNames = getPhoneInitiativeCandidates().map((candidate) => canonicalIdolName(String(candidate.actorIds?.[0] || "").replace(/^idol:/, "")));
+    const savedFriendNames = new Set(state.phoneChat?.friends || []);
+    const friendNames = [...new Set([
+      ...(state.phoneChat?.friends || []),
+      ...(state.phoneChat?.initiativeContacts || []),
+      ...proactiveNames
+    ])]
+      .filter((name) => name && name !== idolName && idols[name]);
+    const friendThreads = friendNames.map((friendName) => {
       const friendProfile = idols[friendName] || {};
       return {
         id: phoneFriendThreadId(friendName),
@@ -18092,7 +19151,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
         type: "direct",
         pinned: false,
         writable: true,
-        subtitle: "好友"
+        subtitle: savedFriendNames.has(friendName) ? "好友" : "临时会话"
       };
     });
     return [
@@ -18122,7 +19181,8 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
   function getPhoneThreadPreview(threadId) {
     const messages = getPhoneThreadMessages(threadId);
     const last = messages[messages.length - 1];
-    return last ? String(last.text || "") : "暂无消息";
+    if (last) return String(last.text || "");
+    return getPhoneInitiativeCandidateForThread(threadId) ? "有一条新消息" : "暂无消息";
   }
 
   function getPhoneThreadTime(threadId) {
@@ -18134,7 +19194,8 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
   function getPhoneUnreadCount(threadId) {
     const thread = getPhoneThreadDefinition(threadId);
     if (!thread || thread.type !== "direct") return 0;
-    return getPhoneThreadMessages(threadId).filter((message) => message.sender === "idol" && !message.read).length;
+    const messageCount = getPhoneThreadMessages(threadId).filter((message) => message.sender === "idol" && !message.read).length;
+    return messageCount + (getPhoneInitiativeCandidateForThread(threadId) ? 1 : 0);
   }
 
   function renderPhoneStatusBar() {
@@ -18145,6 +19206,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
   function renderPhoneChatList() {
     const list = document.getElementById("phoneChatList");
     if (!list) return;
+    updatePhoneUnreadBadge();
 
     const threads = buildPhoneThreadDefinitions();
     const pinned = threads.filter((thread) => thread.pinned);
@@ -18338,7 +19400,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     }
   }
 
-  function startPhoneChatLineDelivery(threadId, lines) {
+  function startPhoneChatLineDelivery(threadId, lines, onComplete) {
     clearPhoneChatDelivery();
     const queue = lines.map((line) => String(line || "").trim()).filter(Boolean);
     if (!queue.length) {
@@ -18366,6 +19428,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
         phoneChatDeliveryTimer = null;
         setPhoneChatTyping(false);
         setPhoneChatComposerEnabled(true);
+        if (typeof onComplete === "function") onComplete();
       }, PHONE_CHAT_LINE_DELAY_MS);
     };
 
@@ -18374,14 +19437,14 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
 
   function sendPhoneChatToHost(userMessage, threadId = "idol", dispatch) {
     dispatch = dispatch && typeof dispatch === "object" ? dispatch : {};
-    const prompt = buildPhoneChatPrompt(userMessage, threadId);
+    const prompt = String(dispatch.prompt || buildPhoneChatPrompt(userMessage, threadId));
     const requestId = String(dispatch.requestId || createRequestId());
     let channelLeaseId = String(dispatch.channelLeaseId || "");
     if (!channelLeaseId) {
       const acquired = tryAcquirePrimaryModelChannel({
         requestId,
         ownerKind: "phone_chat",
-        saveScope: activeHostSaveScope,
+        saveScope: String(dispatch.saveScope || activeHostSaveScope || ""),
         sessionEpoch: runtimeSessionEpoch
       });
       if (!acquired.ok) {
@@ -18390,7 +19453,9 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       }
       channelLeaseId = acquired.owner.channelLeaseId;
     }
-    state.activeStoryNode = { type: "phonechat", threadId, mode: "chat", ready: false };
+    state.activeStoryNode = dispatch.storyNode && typeof dispatch.storyNode === "object"
+      ? { ...dispatch.storyNode, type: "phonechat", threadId, ready: false }
+      : { type: "phonechat", threadId, mode: "chat", ready: false };
     state.lastPrompt = prompt;
     state.phoneChat.isAwaitingReply = true;
     state.phoneChat.pendingRequestId = requestId;
@@ -18411,6 +19476,66 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       openAiPromptOverlay("当前页面未连接 SillyTavern。请复制私聊提示词后手动发送。");
       return false;
     }
+    return true;
+  }
+
+  function dispatchPhoneInitiativeForThread(threadId) {
+    const candidate = getPhoneInitiativeCandidateForThread(threadId);
+    if (!candidate || isPhoneChatBusy()) return false;
+    const requestId = createRequestId();
+    if (!isSillyTavernHost()) {
+      state.lastPrompt = buildPhoneInitiativePrompt(candidate, threadId);
+      openAiPromptOverlay("当前页面未连接 SillyTavern；主动消息仍保持未读，可稍后重试。");
+      return false;
+    }
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "phone_chat",
+      saveScope: candidate.saveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) return false;
+    return sendPhoneChatToHost("", threadId, {
+      requestId,
+      channelLeaseId: acquired.owner.channelLeaseId,
+      saveScope: candidate.saveScope,
+      prompt: buildPhoneInitiativePrompt(candidate, threadId),
+      storyNode: {
+        mode: "initiative",
+        candidateId: candidate.incidentId,
+        intentId: candidate.intentId,
+        saveScope: candidate.saveScope,
+        dayKey: candidate.dayKey,
+        planId: candidate.planId
+      }
+    });
+  }
+
+  function resolvePhoneInitiativeDelivery(node) {
+    if (!node || node.mode !== "initiative") return false;
+    const storyteller = state.freeMode?.world?.storyteller;
+    const api = globalThis.HatsuWorldStorytellerInitiative;
+    if (!storyteller || !api?.transitionInitiativeCandidate) return false;
+    const candidate = (storyteller.initiative?.candidates || []).find((item) => item.incidentId === node.candidateId);
+    const contactName = canonicalIdolName(String(candidate?.actorIds?.[0] || "").replace(/^idol:/, ""));
+    const result = api.transitionInitiativeCandidate(storyteller.initiative, node.candidateId, "resolve", {
+      saveScope: node.saveScope,
+      dayKey: node.dayKey,
+      planId: node.planId,
+      intentId: node.intentId
+    });
+    if (!result.ok) return false;
+    storyteller.initiative = result.state;
+    if (contactName && contactName !== state.idol && !(state.phoneChat.friends || []).includes(contactName)) {
+      state.phoneChat.initiativeContacts = Array.from(new Set([
+        ...(state.phoneChat.initiativeContacts || []),
+        contactName
+      ])).slice(-24);
+    }
+    updatePhoneUnreadBadge();
+    renderPhoneChatList();
+    renderWorldEnginePhoneApp();
+    saveState("storyteller.initiative_phone_resolved");
     return true;
   }
 
@@ -18492,8 +19617,11 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     state.phoneChat.pendingRequestId = "";
     state.phoneChat.retryAvailable = false;
     if (state.activeStoryNode?.type === "phonechat") state.activeStoryNode.ready = true;
-    const threadId = state.activeStoryNode?.threadId || "idol";
-    startPhoneChatLineDelivery(threadId, parsed.lines);
+    const completedNode = state.activeStoryNode?.type === "phonechat" ? { ...state.activeStoryNode } : null;
+    const threadId = completedNode?.threadId || "idol";
+    startPhoneChatLineDelivery(threadId, parsed.lines, () => {
+      if (completedNode?.mode === "initiative") resolvePhoneInitiativeDelivery(completedNode);
+    });
     sendAiReplyAck(requestId, true, false);
     saveState();
     updatePhoneChatRetryUi();
@@ -18572,7 +19700,8 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     }
 
     state.phoneChat.friends.push(friendName);
-    state.phoneChat.messages[threadId] = [];
+    state.phoneChat.initiativeContacts = (state.phoneChat.initiativeContacts || []).filter((name) => name !== friendName);
+    if (!Array.isArray(state.phoneChat.messages[threadId])) state.phoneChat.messages[threadId] = [];
     saveState();
     closePhoneAddFriendView();
     openPhoneThread(threadId);
@@ -18623,6 +19752,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       setPhoneChatTyping(true);
       setPhoneChatComposerEnabled(false);
     }
+    if (!isPhoneChatBusy()) dispatchPhoneInitiativeForThread(threadId);
     if (thread.writable && !isPhoneChatBusy()) input?.focus();
   }
 
@@ -19314,6 +20444,10 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       const mapActionContext = state.pendingActionContext.actionContext || {};
       return getMapLocationSceneBackground(mapActionContext);
     }
+    if (isHybridFacilityActive()) {
+      const facilityScene = WORLD_MAP_LOCATION_SCENES[state.freeMode.facilityLocationId];
+      if (facilityScene) return facilityScene;
+    }
 
     const node = state.activeStoryNode;
     if (node) {
@@ -19714,6 +20848,10 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       handleApartmentCompanionCustomChoice(customText);
       return;
     }
+    if (isStorytellerEventConversationChoiceActive() && isChoicePromptMode()) {
+      handleStorytellerEventCustomChoice(customText);
+      return;
+    }
     showToast("当前不可用", "此处暂不支持自定义输入。", "warn");
   }
 
@@ -19776,6 +20914,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     container.innerHTML = "";
     const nsfwMode = isNsfwIntimacyActive();
     const eveningGoHome = isEveningGoHomeActive();
+    const eventConversation = isStorytellerEventConversationChoiceActive();
     const hasOptionChoices = (isChoicePromptMode() && state.pendingOptionTexts?.length === 4) || (eveningGoHome && state.pendingOptionTexts?.length >= 2);
     const showMapReturnOnly = isMapLocationExploreActive()
       && state.eventMode === "none"
@@ -19785,6 +20924,8 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     if (titleEl) {
       titleEl.textContent = eveningGoHome
         ? "请选择今晚的安排"
+        : eventConversation
+          ? "选择回应（可自定义或结束话题）"
         : nsfwMode
           ? "选择下一步（可自定义或结束）"
           : "请做出你的选择";
@@ -19834,7 +20975,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       appendMapLocationControlButtons(container);
     }
 
-    if (nsfwMode || (isMapLocationExploreActive() && hasOptionChoices) || (isApartmentCompanionSessionActive() && hasOptionChoices)) {
+    if (nsfwMode || eventConversation || (isMapLocationExploreActive() && hasOptionChoices) || (isApartmentCompanionSessionActive() && hasOptionChoices)) {
       const customBtn = document.createElement("button");
       customBtn.className = "vn-choice-btn vn-choice-btn-custom";
       customBtn.type = "button";
@@ -19849,6 +20990,15 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       endBtn.type = "button";
       endBtn.textContent = "结束";
       endBtn.onclick = () => handleNsfwIntimacyEndChoice();
+      container.appendChild(endBtn);
+    }
+
+    if (eventConversation) {
+      const endBtn = document.createElement("button");
+      endBtn.className = "vn-choice-btn vn-choice-btn-end";
+      endBtn.type = "button";
+      endBtn.textContent = "结束话题";
+      endBtn.onclick = () => endStorytellerEventConversation();
       container.appendChild(endBtn);
     }
 
@@ -21308,7 +22458,8 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
   function isCurrentSandboxFirstLiveReply(requestId) {
     const turn = state.harness?.activeTurn;
     return Boolean(
-      (turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live")
+      turn
+      && (turn.kind === "sandbox_first_live" && turn.action === "sandbox_first_live")
       && turn.status === "generating"
       && turn.requestId === requestId
       && pendingAiRequestId === requestId
@@ -21487,6 +22638,10 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
 
   function handleChoiceSelection(index) {
     if (!state.pendingActionContext) return;
+    if (state.pendingActionContext.action === "storyteller_event") {
+      handleStorytellerEventChoiceSelection(index);
+      return;
+    }
     if (state.pendingActionContext.action === "evening_go_home") {
       handleEveningGoHomeChoice(index);
       return;
@@ -21671,7 +22826,11 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     if (isCurrentStorytellerEventReply(requestId)) {
       const replyCandidates = collectAiReplyCandidates(text, rawText, renderedText);
       const source = selectAiReplySource(text, rawText, renderedText);
-      const reply = extractReplyText(replyCandidates);
+      const choicePayload = replyCandidates
+        .map((candidate) => extractChoicePayload(candidate))
+        .find((payload) => payload.story && payload.options.length === 4)
+        || extractChoicePayload(source);
+      const reply = choicePayload.story || extractReplyText(replyCandidates);
       recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
       if (!isFinal) {
         const storyEl = document.getElementById("eventStory");
@@ -21680,7 +22839,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
         sendAiReplyAck(requestId, true, false, false);
         return;
       }
-      if (!reply || reply.replace(/\s+/g, "").length < 12 || isJunkReply(reply)) {
+      if (!reply || choicePayload.options.length !== 4 || reply.replace(/\s+/g, "").length < 12 || isJunkReply(reply)) {
         if (returnHarnessRecoveryAttemptToPending(requestId, "invalid_reply")) {
           pendingAiRequestId = "";
           state.pendingAiRequestId = "";
@@ -21691,7 +22850,20 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
         sendAiReplyAck(requestId, false, false);
         return;
       }
-      commitStorytellerEventReply(requestId, reply, rawText, renderedText, text, messageId);
+      const summary = extractSumFromReplySource(rawText, renderedText, text) || reply.replace(/\s+/g, " ").trim().slice(0, 240);
+      const committed = commitStorytellerEventRoundReply(requestId, choicePayload, summary, messageId);
+      if (!committed.accepted) {
+        sendAiReplyAck(requestId, false, false);
+        return;
+      }
+      pendingAiRequestId = "";
+      state.pendingAiRequestId = "";
+      saveState("storyteller.event_round_accepted");
+      render();
+      renderPhoneHome();
+      renderWorldEnginePhoneApp();
+      openEventOverlay("初星世界事件", "请选择回应，或结束话题", reply);
+      sendAiReplyAck(requestId, true, false, true, { preSettled: true });
       return;
     }
     if (isCurrentSandboxFirstLiveReply(requestId)) {
@@ -21869,6 +23041,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
           if (relationshipSummary) {
             state.lastDebug = `公寓聊天好感度已更新：${relationshipSummary}`;
           }
+          resolveApartmentInitiativeDelivery(state.pendingActionContext?.actionContext);
         }
         if (state.pendingActionContext?.action === "map_location") {
           markHarnessMapExploreTurn("completed", {}, requestId);
@@ -22216,27 +23389,6 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
       && isHarnessTurnInActiveScope(turn, getHarnessRecoveryContext())
       && isPrimaryModelLeaseCurrent(requestId, activeInboundPrimaryChannelLeaseId)
     );
-  }
-
-  function commitStorytellerEventReply(requestId, reply, rawText, renderedText, text, messageId) {
-    const candidateSettlement = settleStorytellerEventForReply(requestId, true, false, true);
-    if (!candidateSettlement.resolved) {
-      sendAiReplyAck(requestId, false, false);
-      return false;
-    }
-    const observationResult = recordAcceptedFinalStorytellerObservation(requestId, candidateSettlement);
-    preparePendingDirectorDigestCandidate(true, requestId, rawText, renderedText, text, messageId);
-    requestChronicleUpdate(rawText, renderedText, text, messageId);
-    pendingAiRequestId = "";
-    state.pendingAiRequestId = "";
-    state.lastStory = reply;
-    saveState(observationResult.recorded ? "storyteller.event_resolved_observed" : "storyteller.event_resolved");
-    render();
-    renderPhoneHome();
-    renderWorldEnginePhoneApp();
-    openEventOverlay("初星世界事件", "事件叙事已完成", reply);
-    sendAiReplyAck(requestId, true, false, true, { preSettled: true });
-    return true;
   }
 
   function sendAiReplyAck(requestId, accepted, retry, isFinal = true, options) {
@@ -23104,6 +24256,11 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
   document.getElementById("apartmentDaySummaryBtn")?.addEventListener("click", openFreeModeEveningSummary);
   document.getElementById("apartmentPhoneBtn")?.addEventListener("click", openPhoneOverlay);
   document.getElementById("apartmentInviteBtn")?.addEventListener("click", openApartmentInviteOverlay);
+  document.getElementById("apartmentDoorbellBtn")?.addEventListener("click", openApartmentVisitorOverlay);
+  document.getElementById("apartmentVisitorCloseBtn")?.addEventListener("click", closeApartmentVisitorOverlay);
+  document.getElementById("apartmentVisitorAcceptBtn")?.addEventListener("click", acceptApartmentInitiativeVisitor);
+  document.getElementById("apartmentVisitorDeferBtn")?.addEventListener("click", deferApartmentInitiativeVisitor);
+  document.getElementById("apartmentVisitorDeclineBtn")?.addEventListener("click", declineApartmentInitiativeVisitor);
   document.getElementById("apartmentInviteCancelBtn")?.addEventListener("click", closeApartmentInviteOverlay);
   document.getElementById("apartmentInviteOverlay")?.addEventListener("click", (event) => {
     if (event.target.id === "apartmentInviteOverlay") closeApartmentInviteOverlay();
@@ -23195,6 +24352,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${eventPrompt ? `${eventPrompt}\
     if (event.target.id === "freeModeEntryOverlay") closeFreeModeEntryOverlay(true);
   });
   document.getElementById("freeModePhoneBtn")?.addEventListener("click", openPhoneOverlay);
+  document.getElementById("freeModeEventBtn")?.addEventListener("click", openExternalStorytellerEventShortcut);
   document.getElementById("freeModeAffinityBtn")?.addEventListener("click", openAffinityOverlay);
   document.getElementById("affinityPrevIdolBtn")?.addEventListener("click", () => cycleViewedAffinityIdol(-1));
   document.getElementById("affinityNextIdolBtn")?.addEventListener("click", () => cycleViewedAffinityIdol(1));

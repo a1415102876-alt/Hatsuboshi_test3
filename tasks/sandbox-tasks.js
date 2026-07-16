@@ -77,6 +77,26 @@
       conflict: "在偶像科教室旁边的走廊接触葛城莉莉娅并邀请她成为担当",
       category: "scout"
     },
+    scout_china: {
+      title: "担当物色：仓本千奈",
+      conflict: "确认仓本家委托背后的本人意愿，并邀请仓本千奈亲自选择成为担当",
+      category: "scout"
+    },
+    china_main_01: {
+      title: "解决担当面对的矛盾：亲自选择",
+      conflict: "让千奈从爷爷安排的委托对象，转为亲口选择制作人的正式担当",
+      category: "conflict"
+    },
+    china_main_02: {
+      title: "解决担当面对的矛盾：不甘休的基础",
+      conflict: "让千奈在训练落后、失败和想过放弃之后，仍凭自己的意志回来继续",
+      category: "conflict"
+    },
+    china_main_03: {
+      title: "解决担当面对的矛盾：优势与成果",
+      conflict: "与千奈确认家世、外表和教养的使用边界，并通过宣传委托拿出真实成果",
+      category: "conflict"
+    },
     lilja_main_01: {
       title: "解决担当面对的矛盾：自信的起点",
       conflict: "让莉莉娅从零基础的混乱训练中聚焦声乐，并通过录像复盘看见自己正在进步",
@@ -191,6 +211,7 @@
   const MISUZU_PERSONAL_IDS = ["misuzu_main_01", "misuzu_main_02", "misuzu_main_03"];
   const HIRO_PERSONAL_IDS = ["hiro_main_01", "hiro_main_02", "hiro_main_03"];
   const LILJA_PERSONAL_IDS = ["lilja_main_01", "lilja_main_02", "lilja_main_03"];
+  const CHINA_PERSONAL_IDS = ["china_main_01", "china_main_02", "china_main_03"];
 
   const SANDBOX_IDOL_QUEST_PACKS = {
     "月村手毬": {
@@ -216,6 +237,10 @@
     "葛城莉莉娅": {
       scoutId: "scout_lilja",
       personalIds: LILJA_PERSONAL_IDS
+    },
+    "仓本千奈": {
+      scoutId: "scout_china",
+      personalIds: CHINA_PERSONAL_IDS
     }
   };
   const SANDBOX_SELECTABLE_IDOLS = Object.keys(SANDBOX_IDOL_QUEST_PACKS);
@@ -451,7 +476,8 @@
     "outstage_full_song",
     "part_time_cancelled",
     "praise_kotone",
-    "full_rest"
+    "full_rest",
+    "china_advantage_boundary"
   ];
 
   const QUEST_FLAG_NOTICE = {
@@ -460,7 +486,8 @@
     outstage_full_song: "已记录野外舞台完整试唱",
     part_time_cancelled: "已确认琴音取消快餐店打工",
     praise_kotone: "已记录一次对琴音的夸奖",
-    full_rest: "已记录一次充分休息"
+    full_rest: "已记录一次充分休息",
+    china_advantage_boundary: "已确认千奈使用自身优势的边界"
   };
 
   const CAMPUS_MAX_PER_DAY = 3;
@@ -495,6 +522,10 @@
     }
     if (id === "kotone_main_03") {
       flags.rest_sessions = 0;
+    }
+    if (id === "china_main_03") {
+      flags.advantage_boundary_confirmed = false;
+      flags.publicity_commission_completed = false;
     }
     return { id, status, step: 0, flags };
   }
@@ -533,6 +564,7 @@
         scout_misuzu: defaultMainQuest("scout_misuzu", "locked"),
         scout_hiro: defaultMainQuest("scout_hiro", "locked"),
         scout_lilja: defaultMainQuest("scout_lilja", "locked"),
+        scout_china: defaultMainQuest("scout_china", "locked"),
         temari_main_01: defaultMainQuest("temari_main_01"),
         temari_main_02: defaultMainQuest("temari_main_02"),
         temari_main_03: defaultMainQuest("temari_main_03"),
@@ -550,7 +582,10 @@
         hiro_main_03: defaultMainQuest("hiro_main_03"),
         lilja_main_01: defaultMainQuest("lilja_main_01"),
         lilja_main_02: defaultMainQuest("lilja_main_02"),
-        lilja_main_03: defaultMainQuest("lilja_main_03")
+        lilja_main_03: defaultMainQuest("lilja_main_03"),
+        china_main_01: defaultMainQuest("china_main_01"),
+        china_main_02: defaultMainQuest("china_main_02"),
+        china_main_03: defaultMainQuest("china_main_03")
       },
       side: defaultSideState(),
       campus: { dayKey: "", usedCount: 0, maxPerDay: CAMPUS_MAX_PER_DAY, log: [] }
@@ -608,6 +643,14 @@
     }
     if (id === "kotone_main_03" && !Number.isFinite(Number(quest.flags.rest_sessions))) {
       quest.flags.rest_sessions = 0;
+    }
+    if (id === "china_main_03") {
+      if (quest.flags.advantage_boundary_confirmed === undefined) {
+        quest.flags.advantage_boundary_confirmed = false;
+      }
+      if (quest.flags.publicity_commission_completed === undefined) {
+        quest.flags.publicity_commission_completed = false;
+      }
     }
     const allowed = ["locked", "active", "completed"];
     if (!allowed.includes(quest.status)) quest.status = status;
@@ -761,6 +804,7 @@
     if (flagId === "part_time_cancelled") return markPartTimeCancelled(state);
     if (flagId === "praise_kotone") return recordPraiseKotone(state, 1);
     if (flagId === "full_rest") return recordKotoneRestSession(state, 1);
+    if (flagId === "china_advantage_boundary") return markChinaAdvantageBoundary(state);
     return false;
   }
 
@@ -805,6 +849,7 @@
       const kotone01 = state.tasks.main.kotone_main_01;
       const kotone02 = state.tasks.main.kotone_main_02;
       const kotone03 = state.tasks.main.kotone_main_03;
+      const china03 = state.tasks.main.china_main_03;
       let changed = false;
       if (id === "outstage_full_song" && temari01?.status === "active" && !temari01.flags.outstage_full_song) {
         changed = true;
@@ -824,6 +869,10 @@
       if (id === "full_rest" && kotone03?.status === "active") {
         changed = true;
       }
+      if (id === "china_advantage_boundary" && china03?.status === "active"
+        && !china03.flags.advantage_boundary_confirmed) {
+        changed = true;
+      }
       if (!changed) return;
       if (applyQuestFlag(state, id)) {
         if (id === "outstage_full_song") completions.push("temari_main_01");
@@ -838,6 +887,9 @@
         }
         if (id === "full_rest" && evaluateKotoneMain03(state)) {
           completions.push("kotone_main_03");
+        }
+        if (id === "china_advantage_boundary" && evaluateChinaMain03(state)) {
+          completions.push("china_main_03");
         }
       }
       if (QUEST_FLAG_NOTICE[id]) notices.push(QUEST_FLAG_NOTICE[id]);
@@ -1033,7 +1085,41 @@
       else if (sessions > 0 || Number(state.stamina) >= Math.floor(t.staminaMin * 0.8)) kotone03.step = 1;
       else kotone03.step = 0;
     }
+    const china03 = state.tasks.main.china_main_03;
+    if (china03?.status === "active") {
+      const boundary = Boolean(china03.flags.advantage_boundary_confirmed);
+      const publicity = Boolean(china03.flags.publicity_commission_completed);
+      china03.step = boundary && publicity ? 3 : boundary || publicity ? 2 : 0;
+    }
     syncAsariStageQuestSteps(state);
+  }
+
+  function buildSandboxScoutQuestPromptBlock(state) {
+    if (!isSandboxTasksActive(state) || getScoutQuestId(state) !== "scout_china") return "";
+    return `【千奈物色课题 · 亲自选择】
+事实边界：仓本千奈的爷爷通过学园长向制作人提出了担当委托，但千奈本人不是一件被转交的委托物。
+剧情必须让制作人坦白这层委托关系，并直接询问：即使没有爷爷的委托，千奈是否仍愿意建立担当关系、让制作人成为自己的制作人。
+完成条件：千奈在知道真相后，以本人意愿明确选择制作人；不要把家族安排写成她的答案。
+确认时按以下顺序连续输出：
+【初星任务完成】scout_china
+【初星任务完成】china_main_01
+同一轮不再输出 option/time。`;
+  }
+
+  function isChinaPublicitySideQuest(slot) {
+    const text = `${slot?.title || ""} ${slot?.desc || ""}`;
+    return slot?.locationId === "photo_studio"
+      || /杂志|摄影|拍摄|宣传照|品牌视觉|模特/.test(text);
+  }
+
+  function buildSandboxSideQuestPromptBlock(state, slot) {
+    const responsibleIdol = String(state?.sandbox?.responsibleIdol || state?.idol || "").trim();
+    if (!isSandboxTasksActive(state) || responsibleIdol !== "仓本千奈" || !isChinaPublicitySideQuest(slot)) return "";
+    if (state.tasks?.main?.china_main_03?.status !== "active") return "";
+    return `【千奈个人课题 · 优势与成果】
+千奈可以承认家世、外表和教养都是自己真实拥有的优势，但不能把优待冒充为歌舞实力。
+让她与制作人守住已经商定的使用边界，在杂志、摄影或宣传工作中以准备、沟通和现场表现拿出真实成果。
+委托成败与任务进度由前端结算；正文不得自行输出 china_main_03 完成标签。`;
   }
   function buildSandboxMainQuestPromptBlock(state, locationId) {
     if (!isSandboxTasksActive(state) || !state.sandbox?.inviteComplete) return "";
@@ -1248,6 +1334,37 @@ ${hiroLine}
 完成时请在正文末尾输出【初星任务完成】hiro_main_03（或 <quest_complete id="hiro_main_03" />），不要提前宣布课题完成。`
       );
     }
+    const china01 = state.tasks.main.china_main_01;
+    if (china01?.status === "active") {
+      blocks.push(
+        `【千奈个人课题 · 亲自选择】
+仓本家的委托只能解释相遇，不能代替千奈本人的决定。制作人需要坦白爷爷委托的真相，并确认即使没有这份委托，她是否仍愿意选择这段担当关系。
+完成条件：千奈理解真相后亲口以本人意愿选择制作人。
+完成时请在正文末尾输出【初星任务完成】china_main_01（或 <quest_complete id="china_main_01" />）。`
+      );
+    }
+    const china02 = state.tasks.main.china_main_02;
+    if (china02?.status === "active") {
+      const trainingLocations = ["idol_classroom", "gymnasium", "playground", "special_education", "producer_classroom"];
+      const trainingLine = trainingLocations.includes(locationId)
+        ? `本地点可以推进课题。必须完整呈现：千奈在基础训练中明显落后或失败，身体撑不住甚至倒下；她坦白自己想过放弃；但离开后仍因不甘心而主动回来继续。满足全部三步后，才可输出【初星任务完成】china_main_02（或 <quest_complete id="china_main_02" />）。`
+        : "当前地点不适合结算基础训练课题。可以提到训练压力，但不得输出 china_main_02 完成标签。";
+      blocks.push(
+        `【千奈个人课题 · 不甘休的基础】
+千奈的基础能力落后不是一句自嘲就能带过；重点是失败与放弃念头之后，她仍以自己的意志回来继续，而不是突然展现天赋。
+${trainingLine}`
+      );
+    }
+    const china03 = state.tasks.main.china_main_03;
+    if (china03?.status === "active") {
+      blocks.push(
+        `【千奈个人课题 · 优势与成果】
+千奈无需否认家世、外表和教养，但要与制作人明确边界：只在必要时使用必要的部分，不把优待包装成歌舞实力。
+当前进度：${progressHint(state, "china_main_03")}
+若本轮已经明确谈妥这条边界，可输出【初星任务标记】china_advantage_boundary。
+宣传成果只能通过成功完成杂志、摄影、宣传照、品牌视觉或模特类委托，由前端权威记录；不要直接输出 china_main_03 完成标签。`
+      );
+    }
     return blocks.join("\n\n");
   }
 
@@ -1383,6 +1500,24 @@ ${hiroLine}
     return completeMainQuest(state, "kotone_main_03");
   }
 
+  function evaluateChinaMain03(state) {
+    const quest = state.tasks.main.china_main_03;
+    if (quest?.status !== "active") return false;
+    if (!quest.flags.advantage_boundary_confirmed) return false;
+    if (!quest.flags.publicity_commission_completed) return false;
+    return completeMainQuest(state, "china_main_03");
+  }
+
+  function markChinaAdvantageBoundary(state) {
+    if (!isSandboxTasksActive(state)) return false;
+    ensureTasksShape(state);
+    const quest = state.tasks.main.china_main_03;
+    if (quest?.status !== "active") return false;
+    quest.flags.advantage_boundary_confirmed = true;
+    evaluateChinaMain03(state);
+    return true;
+  }
+
   function evaluateTemariMain01(state) {
     const quest = state.tasks.main.temari_main_01;
     if (quest.status !== "active") return false;
@@ -1427,6 +1562,7 @@ ${hiroLine}
     if (evaluateKotoneMain01(state)) completed.push("kotone_main_01");
     if (evaluateKotoneMain02(state)) completed.push("kotone_main_02");
     if (evaluateKotoneMain03(state)) completed.push("kotone_main_03");
+    if (evaluateChinaMain03(state)) completed.push("china_main_03");
     completed.push(...evaluateAsariStageQuests(state));
     syncMainQuestSteps(state);
     return [...new Set(completed)];
@@ -1782,13 +1918,27 @@ ${hiroLine}
     if (slot.tag === "diet" && SIDE_HEALTHY_MEAL_TIERS.includes(tier)) {
       healthyMealRecorded = Boolean(recordHealthyMeal(state, 1));
     }
+    let chinaPublicityRecorded = false;
+    let chinaQuestCompleted = false;
+    const china03 = state.tasks.main.china_main_03;
+    if (responsibleIdol === "仓本千奈"
+      && china03?.status === "active"
+      && ["pass_low", "pass", "perfect"].includes(tier)
+      && isChinaPublicitySideQuest(slot)) {
+      china03.flags.publicity_commission_completed = true;
+      chinaPublicityRecorded = true;
+      chinaQuestCompleted = evaluateChinaMain03(state);
+    }
+    syncMainQuestSteps(state);
     return {
       ok: true,
       slotIndex: index,
       tier,
       reward,
       slot: { ...slot },
-      healthyMealRecorded
+      healthyMealRecorded,
+      chinaPublicityRecorded,
+      chinaQuestCompleted
     };
   }
 
@@ -1828,6 +1978,9 @@ ${hiroLine}
     if (id === "kotone_main_03") {
       const t = THRESHOLDS.kotone_main_03;
       return `充分休息 ${Number(quest.flags.rest_sessions) || 0}/${t.restSessionsMin} 次 · 体力 ${Number(state.stamina) || 0}/${t.staminaMin}`;
+    }
+    if (id === "china_main_03") {
+      return `优势使用边界 ${quest.flags.advantage_boundary_confirmed ? "已确认" : "未确认"} · 宣传委托成果 ${quest.flags.publicity_commission_completed ? "已取得" : "未取得"}`;
     }
     if (meta.category === "relationship") {
       return `好感度 ${getCurrentIdolRelationshipScore(state)}/${meta.trustTarget} · 达成后开放对应羁绊课题复盘`;
@@ -1910,6 +2063,7 @@ ${hiroLine}
       scout_misuzu: "担当确认，亚纱里老师阶段课题已解锁",
       scout_hiro: "担当确认，亚纱里老师阶段课题已解锁",
       scout_lilja: "担当确认，亚纱里老师阶段课题已解锁",
+      scout_china: "担当确认，亚纱里老师阶段课题已解锁",
       temari_main_01: "课题完成：舞台唱完",
       temari_main_02: "课题完成：和美铃和好",
       temari_main_03: "课题完成：饮食与体态",
@@ -1927,7 +2081,10 @@ ${hiroLine}
       hiro_main_03: "课题完成：每天在一起的约定",
       lilja_main_01: "课题完成：自信的起点",
       lilja_main_02: "课题完成：自信的表达",
-      lilja_main_03: "课题完成：自信的见证"
+      lilja_main_03: "课题完成：自信的见证",
+      china_main_01: "课题完成：亲自选择",
+      china_main_02: "课题完成：不甘休的基础",
+      china_main_03: "课题完成：优势与成果"
     };
     return map[id] || `任务完成：${MAIN_QUEST_META[id]?.title || id}`;
   }
@@ -1942,6 +2099,7 @@ ${hiroLine}
     MISUZU_PERSONAL_IDS,
     HIRO_PERSONAL_IDS,
     LILJA_PERSONAL_IDS,
+    CHINA_PERSONAL_IDS,
     THRESHOLDS,
     CAMPUS_MAX_PER_DAY,
     SIDE_SLOTS_PER_DAY,
@@ -1977,6 +2135,7 @@ ${hiroLine}
     getActiveSideQuest,
     getActiveSideQuestAtLocation,
     applySideQuestTier,
+    isChinaPublicitySideQuest,
     activateScoutQuest,
     activateScoutQuestForIdol,
     beginSecondIdolScout,
@@ -1997,6 +2156,8 @@ ${hiroLine}
     applyQuestFlagsFromReply,
     processSandboxMainQuestMapChoice,
     buildSandboxMainQuestPromptBlock,
+    buildSandboxScoutQuestPromptBlock,
+    buildSandboxSideQuestPromptBlock,
     syncMainQuestSteps,
     evaluateNumericMainQuests,
     markOutstageFullSong,
@@ -2006,6 +2167,7 @@ ${hiroLine}
     recordKotoneRestSession,
     onSandboxRestSettled,
     recordHealthyMeal,
+    markChinaAdvantageBoundary,
     getTaskPanelSnapshot,
     getQuestCompleteToast
   };

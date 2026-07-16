@@ -6,6 +6,10 @@
   const MAX_SUMMARY_LENGTH = 100;
   const MAX_SIGNAL_ITEMS = 3;
   const MAX_SIGNAL_LENGTH = 160;
+  const MAX_CHARACTER_INTENTS = 8;
+  const INTENT_URGENCIES = new Set(["low", "normal", "high"]);
+  const INTENT_VISIBILITIES = new Set(["private", "public"]);
+  const INTENT_CHANNELS = new Set(["phone", "sns", "invite"]);
   const SIGNAL_KEYS = ["facts", "playerChoices", "observations", "hooksCreated", "hooksResolved"];
 
   function clone(value) {
@@ -92,6 +96,7 @@
       chronicleDigests: [],
       dailyDirection: null,
       pressures: [],
+      characterIntents: [],
       activeJob: null,
       dirty: false,
       lastAppliedJobId: "",
@@ -220,6 +225,46 @@
     if (styleMixRevision < 0 || !styleThreads) return null;
     return { ...base, styleMixRevision, styleThreads };
   }
+
+  function normalizeCharacterIntent(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const intentId = boundedText(value.intentId, 160);
+    const dayKey = boundedText(value.dayKey, 120);
+    const saveScope = boundedText(value.saveScope, 240);
+    const actorId = boundedText(value.actorId, 120);
+    const targetIds = boundedTextList(value.targetIds, 8, 120);
+    const goal = boundedText(value.goal, 240);
+    const motive = boundedText(value.motive, 240);
+    const urgency = boundedText(value.urgency, 20);
+    const visibility = boundedText(value.visibility, 20);
+    const preferredChannels = boundedTextList(value.preferredChannels, 3, 20);
+    const sourcePressureIds = boundedTextList(value.sourcePressureIds, 8, 160);
+    const sourceRefs = boundedTextList(value.sourceRefs, 8, 160);
+    const publicPostDraft = value.publicPostDraft == null || value.publicPostDraft === ""
+      ? ""
+      : boundedText(value.publicPostDraft, 280);
+    const expiresDayKey = boundedText(value.expiresDayKey, 120);
+    if (!intentId || !dayKey || !saveScope || !actorId || !targetIds || !goal || !motive || !expiresDayKey) return null;
+    if (!INTENT_URGENCIES.has(urgency) || !INTENT_VISIBILITIES.has(visibility) || !preferredChannels?.length) return null;
+    if (preferredChannels.some((channel) => !INTENT_CHANNELS.has(channel)) || !sourcePressureIds || !sourceRefs) return null;
+    if (preferredChannels.includes("sns") && (visibility !== "public" || !publicPostDraft)) return null;
+    return {
+      intentId,
+      dayKey,
+      saveScope,
+      actorId,
+      targetIds: [...new Set(targetIds)],
+      goal,
+      motive,
+      urgency,
+      visibility,
+      preferredChannels: [...new Set(preferredChannels)],
+      sourcePressureIds: [...new Set(sourcePressureIds)],
+      sourceRefs: [...new Set(sourceRefs)],
+      publicPostDraft,
+      expiresDayKey
+    };
+  }
   function ensureDirectorShape(value, options = {}) {
     const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const defaults = defaultDirectorState();
@@ -228,6 +273,9 @@
       : [];
     const pressures = Array.isArray(source.pressures)
       ? source.pressures.map(normalizePressure).filter(Boolean)
+      : [];
+    const characterIntents = Array.isArray(source.characterIntents)
+      ? source.characterIntents.map(normalizeCharacterIntent).filter(Boolean).slice(0, MAX_CHARACTER_INTENTS)
       : [];
     const receipts = Array.isArray(source.receipts)
       ? source.receipts.map(normalizeReceipt).filter(Boolean).slice(-MAX_RECEIPTS)
@@ -240,6 +288,7 @@
       chronicleDigests: digests,
       dailyDirection: normalizeDailyDirection(source.dailyDirection),
       pressures,
+      characterIntents,
       activeJob: normalizeActiveJob(source.activeJob, options),
       dirty: Boolean(source.dirty),
       lastAppliedJobId: boundedText(source.lastAppliedJobId, 160),
@@ -281,7 +330,17 @@
     ) return { applied: false, reason: "stale_patch" };
     const dailyDirection = normalizeDailyDirection(patch.dailyDirection);
     const pressures = Array.isArray(patch.pressures) ? patch.pressures.map(normalizePressure).filter(Boolean) : null;
-    if (!dailyDirection || !pressures || pressures.length !== patch.pressures.length) {
+    const characterIntents = Array.isArray(patch.characterIntents)
+      ? patch.characterIntents.map(normalizeCharacterIntent).filter(Boolean)
+      : null;
+    if (
+      !dailyDirection
+      || !pressures
+      || pressures.length !== patch.pressures.length
+      || !characterIntents
+      || characterIntents.length !== patch.characterIntents.length
+      || characterIntents.length > MAX_CHARACTER_INTENTS
+    ) {
       return { applied: false, reason: "invalid_patch_payload" };
     }
     const nextRevision = current.directorRevision + 1;
@@ -299,6 +358,7 @@
       directorRevision: nextRevision,
       dailyDirection,
       pressures,
+      characterIntents,
       activeJob: current.activeJob?.jobId === patch.jobId
         ? { ...current.activeJob, requestId: "", status: "committed", reason: "" }
         : current.activeJob,
@@ -317,6 +377,7 @@
     commitChronicleDigest,
     makePressureSignature,
     normalizePressure,
+    normalizeCharacterIntent,
     applyDirectorPatch
   };
 })(typeof globalThis !== "undefined" ? globalThis : window);

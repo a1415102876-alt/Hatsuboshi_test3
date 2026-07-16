@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import vm from "node:vm";
 
 const stSource = readFileSync(new URL("../st.html", import.meta.url), "utf8");
 function readFunction(functionName) {
@@ -286,6 +287,42 @@ test("transactional helper waits after an empty return but exits on an exact emp
   assert.match(lateWait, /Promise\.race\(\[\s*endedPromise,\s*timeoutPromise\s*\]\)/);
   assert.match(fnSource, /endedWithoutText = !normalizedText/);
   assert.doesNotMatch(lateWait, /1500/);
+});
+
+test("transactional helper commits with its explicit lease after host state changes", async () => {
+  const committed = [];
+  const chat = [];
+  const context = {
+    getContext: () => ({ eventSource: null, chat }),
+    createSilentChatMessage: async (role, text, requestId) => {
+      chat.push({ is_user: role === "user", mes: text, extra: { hatsuRequestId: requestId } });
+      return chat.length - 1;
+    },
+    persistChatSilently: async () => {},
+    rollbackSilentUserMessage: () => {},
+    extractReplyTextFromGenerated: (value) => String(value || "").trim(),
+    isGenerationEndedPayloadForRequest: () => false,
+    normalizeGenerationEndedText: () => null,
+    isGeneratedTextCompatibleWithPrompt: () => true,
+    postCommittedReply: (...args) => committed.push(args),
+    setTimeout: (callback) => { callback(); return 0; },
+    Promise
+  };
+  vm.runInNewContext([
+    readFunction("runTransactionalViaTavernHelper").replace(/^function /, "async function "),
+    "this.runTransactional = runTransactionalViaTavernHelper;"
+  ].join("\n"), context);
+
+  await context.runTransactional(
+    { generate: async () => "<story>current reply</story>" },
+    "current prompt",
+    "request-current",
+    "lease-current"
+  );
+
+  assert.equal(committed.length, 1);
+  assert.equal(committed[0][0], "request-current");
+  assert.equal(committed[0][2].channelLeaseId, "lease-current");
 });
 
 test("silent chat creation forwards optional attempt metadata to exact floor stamping", () => {

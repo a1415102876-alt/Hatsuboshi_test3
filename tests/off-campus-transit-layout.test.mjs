@@ -32,3 +32,10 @@ test("home branch renders below the main off-campus transit line", () => {
   assert.equal(sakiHome.y, chinaHome.y, "home stations should share a horizontal branch");
   assert.ok(chinaHome.x > sakiHome.x, "china home should sit to the right of saki home");
 });
+
+test("Kuramoto home is an open residential station", () => {
+  const station = source.match(/\{\s*id: "china_home",[\s\S]*?\n    \}/)?.[0] || "";
+  assert.match(station, /name: "仓本家"/);
+  assert.match(station, /status: "open"/);
+  assert.doesNotMatch(station, /status: "locked"/);
+});

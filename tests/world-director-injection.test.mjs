@@ -82,6 +82,19 @@ function directorState() {
         direction: "negative", visibility: "implicit", dramaticNeed: "暂停", escalationConditions: [], reliefConditions: [], status: "suspended"
       }
     ],
+    characterIntents: [
+      {
+        intentId: "intent:focus", dayKey: "day-2", saveScope: "scope-a", actorId: "producer",
+        targetIds: ["producer"], goal: "Ask whether the producer remembers the lesson promise",
+        motive: "She wants reassurance before committing", urgency: "normal", visibility: "private",
+        preferredChannels: ["phone"], sourcePressureIds: ["p-focus"], sourceRefs: ["digest-1"], publicPostDraft: "", expiresDayKey: "day-2"
+      },
+      {
+        intentId: "intent:unrelated", dayKey: "day-2", saveScope: "scope-a", actorId: "idol:b",
+        targetIds: [], goal: "Unrelated private action", motive: "Must stay out", urgency: "low", visibility: "private",
+        preferredChannels: ["phone"], sourcePressureIds: [], sourceRefs: [], publicPostDraft: "", expiresDayKey: "day-2"
+      }
+    ],
     activeJob: null,
     dirty: false,
     lastAppliedJobId: "job-3",
@@ -116,6 +129,10 @@ test("narrative block is bounded, private, and treats direction as guidance rath
   assert.match(block, /不得修改.*数值.*时间/);
   assert.match(block, /不得替玩家创造选择/);
   assert.match(block, /确认制作人是否可靠/);
+  assert.match(block, /current inclination/i);
+  assert.match(block, /not an accomplished action/i);
+  assert.match(block, /Ask whether the producer remembers the lesson promise/);
+  assert.doesNotMatch(block, /Unrelated private action/);
   for (const secret of ["无关私密证据", "不应泄露", "SECRET RECEIPT", "digest-1", "job-3"]) {
     assert.equal(block.includes(secret), false);
   }

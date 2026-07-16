@@ -231,6 +231,7 @@ test("current-session ordinary turn is a global single-flight lock", () => {
   assert.equal(isHarnessTurnBlocking({ status: "prepared", sessionEpoch: "s1", actionKey: "rest" }, "s1"), true);
   assert.equal(isHarnessTurnBlocking({ status: "generating", sessionEpoch: "s1", actionKey: "lesson" }, "s1"), true);
   assert.equal(isHarnessTurnBlocking({ status: "settled", sessionEpoch: "s1", actionKey: "rest" }, "s1"), true);
+  assert.equal(isHarnessTurnBlocking({ status: "awaiting_choice", sessionEpoch: "s1", kind: "storyteller_event" }, "s1"), true);
   assert.equal(isHarnessTurnBlocking({ status: "generating", sessionEpoch: "old" }, "s1"), false);
   assert.equal(isHarnessTurnBlocking({ status: "completed", sessionEpoch: "s1" }, "s1"), false);
   assert.equal(isHarnessTurnBlocking({ status: "completed_without_narrative", sessionEpoch: "s1" }, "s1"), false);

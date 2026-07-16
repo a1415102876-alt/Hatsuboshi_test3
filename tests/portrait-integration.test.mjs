@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
@@ -89,6 +89,11 @@ test("speaker resolver preserves built-in VN portraits for non-idol NPCs", () =>
   assert.equal(sandbox.api.resolvePortraitForSpeaker("未知老师").url, "");
 });
 
+test("Kanae has a built-in NPC standee", () => {
+  assert.match(appSource, /"冰渡香名江": "\.\/assets\/novel-standees\/Hiwatari-Kanae\.png"/);
+  assert.equal(existsSync(new URL("../assets/novel-standees/Hiwatari-Kanae.png", import.meta.url)), true);
+});
+
 test("resolved portrait applies source transform and fallback metadata", () => {
   const sandbox = loadIntegration();
   const image = fakeImage();
@@ -120,9 +125,9 @@ test("VN and apartment standees use the unified portrait resolver", () => {
   assert.match(apartment, /applyResolvedPortraitToImage/);
 });
 
-test("portrait resolver remains limited to two approved render sites", () => {
+test("portrait resolver remains limited to VN, apartment, and outing scene render sites", () => {
   const calls = appSource.match(/resolvePortraitForSpeaker\((?!speaker\))/g) || [];
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.doesNotMatch(readFunction("renderPhoneHome"), /resolvePortraitForSpeaker/);
   assert.doesNotMatch(readFunction("renderWorldMap"), /resolvePortraitForSpeaker/);
 });

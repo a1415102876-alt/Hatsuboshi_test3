@@ -10,7 +10,12 @@
   const PRESSURE_DIRECTIONS = new Set(["negative", "slightly_negative", "mixed", "slightly_positive", "positive"]);
   const PRESSURE_VISIBILITY = new Set(["private", "implicit", "visible", "public"]);
   const MAX_PRESSURE_OPERATIONS = 8;
+  const MAX_CHARACTER_INTENTS = 8;
   const PRESSURE_OPERATION_KEYS = new Set(["action", "pressureId", "type", "theme", "actorId", "targetIds", "scopeKey", "sourceRefs", "sourceSummary", "stage", "intensity", "direction", "visibility", "dramaticNeed", "escalationConditions", "reliefConditions"]);
+  const CHARACTER_INTENT_KEYS = new Set(["intentId", "dayKey", "saveScope", "actorId", "targetIds", "goal", "motive", "urgency", "visibility", "preferredChannels", "sourcePressureIds", "sourceRefs", "publicPostDraft", "expiresDayKey"]);
+  const INTENT_URGENCIES = new Set(["low", "normal", "high"]);
+  const INTENT_VISIBILITIES = new Set(["private", "public"]);
+  const INTENT_CHANNELS = new Set(["phone", "sns", "invite"]);
 
   function clone(value) {
     return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -71,7 +76,9 @@
       knownCharacters: clone(Array.isArray(knownCharacters) ? knownCharacters.slice(0, 24).map((item) => ({
         id: text(item?.id, 120),
         name: text(item?.name, 120),
-        relationshipStage: text(item?.relationshipStage, 80)
+        relationshipStage: text(item?.relationshipStage, 80),
+        assigned: Boolean(item?.assigned),
+        known: Boolean(item?.known)
       })).filter((item) => item.id) : []),
       publicWorldSummary: text(helpers.composePublicWorldSummary?.(state), 1600),
       recentSceneStats: clone(helpers.getRecentSceneStats?.(state) || {})
@@ -87,7 +94,8 @@
         "baseDirectorRevision",
         "baseChronicleRevision",
         "dailyDirection",
-        "pressureOperations"
+        "pressureOperations",
+        "characterIntents"
       ],
       dailyDirection: {
         dayKey: "required; must exactly equal input.dayKey",
@@ -117,6 +125,25 @@
           dramaticNeed: "required string; maximum 240 characters",
           escalationConditions: "array; maximum 5; each item maximum 180 characters",
           reliefConditions: "array; maximum 5; each item maximum 180 characters"
+        }
+      },
+      characterIntents: {
+        maxItems: 8,
+        itemShape: {
+          intentId: "required stable ID; maximum 160 characters",
+          dayKey: "must exactly equal input.dayKey",
+          saveScope: "must exactly equal input.saveScope",
+          actorId: "known character ID with known=true",
+          targetIds: "array of known actor IDs; maximum 8",
+          goal: "current short-term inclination; maximum 240 characters",
+          motive: "current motive only; maximum 240 characters",
+          urgency: ["low", "normal", "high"],
+          visibility: ["private", "public"],
+          preferredChannels: ["phone", "sns", "invite"],
+          sourcePressureIds: "array of existing pressure IDs; maximum 8",
+          sourceRefs: "array of input chronicle digest IDs; maximum 8",
+          publicPostDraft: "required and maximum 280 characters when sns is preferred; otherwise empty is allowed",
+          expiresDayKey: "required day key; maximum 120 characters"
         }
       }
     };
@@ -165,7 +192,8 @@
           }
         } : {})
       },
-      pressureOperations: []
+      pressureOperations: [],
+      characterIntents: []
     };
     const styleRules = styled
       ? "[Style contract]\nEcho styleMixRevision and both configured weights exactly. Keep Heroic and Romance as separate threads. Use dormant when legal material is unavailable. Do not invent Pressure IDs, actors, locations, choices or outcomes to satisfy a percentage."
@@ -196,17 +224,34 @@ ${JSON.stringify(outputExample, null, 2)}
 ${OUTPUT_END}`;
   }
 
-  function parseDirectorResponse(value) {
+  function parseDirectorResponseDetailed(value) {
     const source = String(value || "");
     const start = source.lastIndexOf(OUTPUT_START);
-    const end = source.indexOf(OUTPUT_END, start + OUTPUT_START.length);
-    if (start < 0 || end < 0) return null;
-    try {
-      const parsed = JSON.parse(source.slice(start + OUTPUT_START.length, end).trim());
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
-    } catch (error) {
-      return null;
+    let jsonText = "";
+    if (start >= 0) {
+      const end = source.indexOf(OUTPUT_END, start + OUTPUT_START.length);
+      if (end < 0) return { ok: false, reason: "output_truncated", output: null };
+      jsonText = source.slice(start + OUTPUT_START.length, end).trim();
+    } else {
+      const trimmed = source.trim();
+      const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+      jsonText = (fenced ? fenced[1] : trimmed).trim();
+      if (!jsonText.startsWith("{") || !jsonText.endsWith("}")) {
+        return { ok: false, reason: "missing_output_start", output: null };
+      }
     }
+    try {
+      const parsed = JSON.parse(jsonText);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? { ok: true, reason: "parsed", output: parsed }
+        : { ok: false, reason: "invalid_json", output: null };
+    } catch (error) {
+      return { ok: false, reason: "invalid_json", output: null };
+    }
+  }
+
+  function parseDirectorResponse(value) {
+    return parseDirectorResponseDetailed(value).output;
   }
 
   function normalizeStyleThread(value, expectedWeight, knownPressureIds) {
@@ -304,6 +349,49 @@ ${OUTPUT_END}`;
     };
   }
 
+  function normalizeCharacterIntent(value, context) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    if (Object.keys(value).some((key) => !CHARACTER_INTENT_KEYS.has(key))) return null;
+    const intentId = text(value.intentId, 160);
+    const dayKey = text(value.dayKey, 120);
+    const saveScope = text(value.saveScope, 240);
+    const actorId = text(value.actorId, 120);
+    const targetIds = textList(value.targetIds || [], 8, 120);
+    const goal = text(value.goal, 240);
+    const motive = text(value.motive, 240);
+    const urgency = text(value.urgency, 20);
+    const visibility = text(value.visibility, 20);
+    const preferredChannels = textList(value.preferredChannels || [], 3, 20);
+    const sourcePressureIds = textList(value.sourcePressureIds || [], 8, 160);
+    const sourceRefs = textList(value.sourceRefs || [], 8, 160);
+    const publicPostDraft = value.publicPostDraft == null || value.publicPostDraft === "" ? "" : text(value.publicPostDraft, 280);
+    const expiresDayKey = text(value.expiresDayKey, 120);
+    if (!intentId || dayKey !== context.dayKey || saveScope !== context.saveScope || !context.knownCharacterIds.has(actorId)) return null;
+    if (!targetIds || targetIds.some((id) => !context.knownActorIds.has(id)) || !goal || !motive || !expiresDayKey) return null;
+    if (!INTENT_URGENCIES.has(urgency) || !INTENT_VISIBILITIES.has(visibility) || !preferredChannels?.length) return null;
+    if (preferredChannels.some((channel) => !INTENT_CHANNELS.has(channel))) return null;
+    if (!sourcePressureIds || sourcePressureIds.some((id) => !context.knownPressureIds.has(id))) return null;
+    if (!sourceRefs || sourceRefs.some((id) => !context.digestIds.has(id))) return null;
+    if (preferredChannels.includes("sns") && (visibility !== "public" || !publicPostDraft)) return null;
+    if (preferredChannels.some((channel) => channel === "phone" || channel === "invite") && !sourceRefs.length && !sourcePressureIds.length) return null;
+    return {
+      intentId,
+      dayKey,
+      saveScope,
+      actorId,
+      targetIds: [...new Set(targetIds)],
+      goal,
+      motive,
+      urgency,
+      visibility,
+      preferredChannels: [...new Set(preferredChannels)],
+      sourcePressureIds: [...new Set(sourcePressureIds)],
+      sourceRefs: [...new Set(sourceRefs)],
+      publicPostDraft,
+      expiresDayKey
+    };
+  }
+
   function stageTransitionAllowed(from, to) {
     const fromIndex = PRESSURE_STAGES.indexOf(from);
     const toIndex = PRESSURE_STAGES.indexOf(to);
@@ -337,6 +425,10 @@ ${OUTPUT_END}`;
     const operations = output.pressureOperations;
     if (!Array.isArray(operations) || operations.length > MAX_PRESSURE_OPERATIONS) return { ok: false, reason: "invalid_operations" };
     const knownActors = new Set((helpers.knownActorIds || []).map(String));
+    const knownCharacterIds = new Set((typeof helpers.getKnownCharacters === "function" ? helpers.getKnownCharacters(state) : [])
+      .filter((item) => item?.known === true)
+      .map((item) => String(item.id || ""))
+      .filter(Boolean));
     const knownScopes = new Set(["global", ...(helpers.knownScopeKeys || []).map(String)]);
     const digestMap = new Map((director.chronicleDigests || []).map((item) => [item.id, item]));
     const pressures = clone(director.pressures || []);
@@ -386,6 +478,27 @@ ${OUTPUT_END}`;
       };
     }
 
+    const rawCharacterIntents = output.characterIntents == null ? [] : output.characterIntents;
+    if (!Array.isArray(rawCharacterIntents) || rawCharacterIntents.length > MAX_CHARACTER_INTENTS) {
+      return { ok: false, reason: "invalid_character_intents" };
+    }
+    const finalPressureIds = new Set(pressures.map((item) => item.id).filter(Boolean));
+    const intentActors = new Set();
+    const characterIntents = [];
+    for (const value of rawCharacterIntents) {
+      const intent = normalizeCharacterIntent(value, {
+        dayKey: String(job.dayKey || ""),
+        saveScope: String(job.saveScope || ""),
+        knownActorIds: knownActors,
+        knownCharacterIds,
+        knownPressureIds: finalPressureIds,
+        digestIds: new Set(digestMap.keys())
+      });
+      if (!intent || intentActors.has(intent.actorId)) return { ok: false, reason: "invalid_character_intent" };
+      intentActors.add(intent.actorId);
+      characterIntents.push(intent);
+    }
+
     return {
       ok: true,
       patch: {
@@ -397,6 +510,7 @@ ${OUTPUT_END}`;
         baseChronicleRevision: director.chronicleRevision,
         dailyDirection,
         pressures,
+        characterIntents,
         receipt: {
           jobId: job.jobId,
           trigger: job.trigger === "manual" ? "manual" : "day_change",
@@ -423,6 +537,7 @@ ${OUTPUT_END}`;
     buildDirectorInput,
     buildDirectorPrompt,
     parseDirectorResponse,
+    parseDirectorResponseDetailed,
     validateDirectorOutput,
     prepareDirectorPatch
   };

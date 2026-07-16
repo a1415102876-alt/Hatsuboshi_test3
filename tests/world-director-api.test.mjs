@@ -63,6 +63,12 @@ function validOutput(overrides = {}) {
       intensity: 35, direction: "mixed", visibility: "implicit", dramaticNeed: "确认承诺是否可靠",
       escalationConditions: ["承诺再次被忽略"], reliefConditions: ["按时履行承诺"]
     }],
+    characterIntents: [{
+      intentId: "intent:a:day-2", dayKey: "day-2", saveScope: "scope-a", actorId: "idol:a",
+      targetIds: ["producer"], goal: "Ask about the promised lesson", motive: "Keep the promise visible",
+      urgency: "normal", visibility: "private", preferredChannels: ["phone", "invite"],
+      sourcePressureIds: [], sourceRefs: ["d1"], publicPostDraft: "", expiresDayKey: "day-2"
+    }],
     ...overrides
   };
 }
@@ -103,7 +109,7 @@ function helpers() {
   return {
     knownActorIds: ["idol:a", "idol:b", "producer"],
     knownScopeKeys: ["global", "thread:a"],
-    getKnownCharacters: () => [{ id: "idol:a", name: "A", relationshipStage: "trusted" }],
+    getKnownCharacters: () => [{ id: "idol:a", name: "A", relationshipStage: "trusted", assigned: true, known: true }],
     composePublicWorldSummary: () => "公开校园摘要",
     getRecentSceneStats: () => ({ lesson: 2, chat: 1 }),
     getTimePhase: () => "morning",
@@ -119,7 +125,7 @@ test("director input is bounded and excludes private application state", () => {
   const input = normalize(api.buildDirectorInput(state, job({ baseChronicleRevision: 15 }), helpers()));
   assert.equal(input.chronicleDigests.length, 12);
   assert.equal(input.chronicleDigests[0].id, "d4");
-  assert.deepEqual(input.knownCharacters, [{ id: "idol:a", name: "A", relationshipStage: "trusted" }]);
+  assert.deepEqual(input.knownCharacters, [{ id: "idol:a", name: "A", relationshipStage: "trusted", assigned: true, known: true }]);
   assert.equal(input.publicWorldSummary, "公开校园摘要");
   const serialized = JSON.stringify(input);
   for (const secret of ["SECRET PROMPT", "FULL STORY", "SECRET KEY", "SECRET QUEST", "harness", "apiKey"]) {
@@ -136,7 +142,8 @@ test("Director prompt exposes the complete output contract", () => {
     "dayKey", "tone", "summary", "focusActorIds", "focusPressureIds", "narrativeGoals", "avoid",
     "action", "pressureId", "type", "theme", "actorId", "targetIds", "scopeKey", "sourceRefs",
     "sourceSummary", "stage", "intensity", "direction", "visibility", "dramaticNeed",
-    "escalationConditions", "reliefConditions"
+    "escalationConditions", "reliefConditions", "characterIntents", "intentId", "goal", "motive", "urgency",
+    "preferredChannels", "publicPostDraft", "expiresDayKey"
   ]) {
     assert.match(prompt, new RegExp(`\\b${field}\\b`), `missing output field ${field}`);
   }
@@ -163,6 +170,40 @@ test("Director prompt exposes the complete output contract", () => {
   assert.equal(prompt.includes("SECRET KEY"), false);
 });
 
+test("character intents validate known participants, references, channels, visibility, and fields atomically", () => {
+  const api = loadModules().directorApi;
+  const state = baseState();
+  assert.equal(api.prepareDirectorPatch(validOutput(), state, job(), helpers()).ok, true);
+  const baseIntent = validOutput().characterIntents[0];
+  const cases = [
+    { ...baseIntent, actorId: "idol:unknown" },
+    { ...baseIntent, targetIds: ["idol:unknown"] },
+    { ...baseIntent, sourcePressureIds: ["pressure:unknown"] },
+    { ...baseIntent, sourceRefs: ["missing"] },
+    { ...baseIntent, preferredChannels: ["phone"], sourcePressureIds: [], sourceRefs: [] },
+    { ...baseIntent, urgency: "immediate" },
+    { ...baseIntent, visibility: "private", preferredChannels: ["sns"], publicPostDraft: "private leak" },
+    { ...baseIntent, visibility: "public", preferredChannels: ["sns"], publicPostDraft: "" },
+    { ...baseIntent, preferredChannels: ["email"] },
+    { ...baseIntent, path: "state.trust" }
+  ];
+  for (const intent of cases) {
+    const before = JSON.stringify(state);
+    assert.equal(api.prepareDirectorPatch(validOutput({ characterIntents: [intent] }), state, job(), helpers()).ok, false);
+    assert.equal(JSON.stringify(state), before);
+  }
+  assert.equal(api.prepareDirectorPatch(validOutput({ characterIntents: [baseIntent, { ...baseIntent, intentId: "intent:a:second" }] }), state, job(), helpers()).ok, false);
+});
+
+test("legacy Director output without character intents remains compatible", () => {
+  const api = loadModules().directorApi;
+  const output = validOutput();
+  delete output.characterIntents;
+  const prepared = api.prepareDirectorPatch(output, baseState(), job(), helpers());
+  assert.equal(prepared.ok, true);
+  assert.deepEqual(normalize(prepared.patch.characterIntents), []);
+});
+
 test("styled Director input and prompt freeze the player mix and separate threads", () => {
   const api = loadModules().directorApi;
   const input = normalize(api.buildDirectorInput(baseState(), styledJob(), helpers()));
@@ -177,13 +218,22 @@ test("styled Director input and prompt freeze the player mix and separate thread
   assert.match(prompt, /40/);
 });
 
-test("director parser accepts only the marked JSON output", () => {
+test("director parser classifies truncated marked output and accepts complete bounded JSON variants", () => {
   const api = loadModules().directorApi;
   const output = validOutput();
   const text = `ignored\n【初星导演输出开始】\n${JSON.stringify(output)}\n【初星导演输出结束】`;
   assert.deepEqual(normalize(api.parseDirectorResponse(text)), output);
-  assert.equal(api.parseDirectorResponse(JSON.stringify(output)), null);
-  assert.equal(api.parseDirectorResponse("【初星导演输出开始】{broken}【初星导演输出结束】"), null);
+  assert.deepEqual(normalize(api.parseDirectorResponse(JSON.stringify(output))), output);
+  assert.deepEqual(normalize(api.parseDirectorResponse(`\`\`\`json\n${JSON.stringify(output)}\n\`\`\``)), output);
+  assert.deepEqual(normalize(api.parseDirectorResponseDetailed("【初星导演输出开始】\n{\"schemaVersion\":1,")), {
+    ok: false, reason: "output_truncated", output: null
+  });
+  assert.deepEqual(normalize(api.parseDirectorResponseDetailed("【初星导演输出开始】{broken}【初星导演输出结束】")), {
+    ok: false, reason: "invalid_json", output: null
+  });
+  assert.deepEqual(normalize(api.parseDirectorResponseDetailed("not json")), {
+    ok: false, reason: "missing_output_start", output: null
+  });
 });
 
 test("pressure signature is deterministic across target order", () => {
@@ -298,6 +348,7 @@ test("director patch applies atomically once and preserves state outside directo
   assert.equal(state.freeMode.world.director.directorRevision, 1);
   assert.equal(state.freeMode.world.director.lastAppliedJobId, job().jobId);
   assert.equal(state.freeMode.world.director.receipts.length, 1);
+  assert.equal(state.freeMode.world.director.characterIntents.length, 1);
   assert.deepEqual(normalize({ idol: state.idol, tasks: state.tasks, harness: state.harness }), outsideBefore);
   assert.equal(modules.directorState.applyDirectorPatch(state, prepared.patch).applied, false);
   assert.equal(state.freeMode.world.director.directorRevision, 1);

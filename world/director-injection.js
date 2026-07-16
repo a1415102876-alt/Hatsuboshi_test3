@@ -4,6 +4,7 @@
   const DEFAULT_MAX_CHARS = 1800;
   const MIN_MAX_CHARS = 320;
   const MAX_PRESSURES = 5;
+  const MAX_CHARACTER_INTENTS = 3;
   const ACTIVE_STATUSES = new Set(["active"]);
   const INACTIVE_STAGES = new Set(["resolved"]);
 
@@ -75,6 +76,27 @@
       .map(sanitizePressure);
   }
 
+  function selectRelevantCharacterIntents(director, options = {}) {
+    if (!director?.enabled) return [];
+    const context = normalizeContext(options);
+    if (!context.currentDayKey) return [];
+    const participantIds = new Set(context.participants);
+    return (Array.isArray(director.characterIntents) ? director.characterIntents : [])
+      .filter((intent) => intent?.dayKey === context.currentDayKey && participantIds.has(String(intent.actorId || "")))
+      .slice(0, MAX_CHARACTER_INTENTS)
+      .map((intent) => ({
+        actorId: cleanText(intent.actorId, 120),
+        targetIds: Array.isArray(intent.targetIds) ? intent.targetIds.map((id) => cleanText(id, 120)).filter(Boolean).slice(0, 8) : [],
+        goal: cleanText(intent.goal, 240),
+        motive: cleanText(intent.motive, 240),
+        urgency: cleanText(intent.urgency, 20),
+        preferredChannels: Array.isArray(intent.preferredChannels)
+          ? intent.preferredChannels.map((channel) => cleanText(channel, 20)).filter(Boolean).slice(0, 3)
+          : []
+      }))
+      .filter((intent) => intent.actorId && intent.goal && intent.motive);
+  }
+
   function formatPressure(pressure) {
     const actors = [pressure.actorId, ...pressure.targetIds].filter(Boolean).join(" / ");
     const escalation = pressure.escalationConditions.length ? `；升级条件：${pressure.escalationConditions.join("、")}` : "";
@@ -99,6 +121,7 @@
     const direction = director?.dailyDirection;
     if (!director?.enabled || !direction || direction.dayKey !== context.currentDayKey) return "";
     const pressures = selectRelevantPressures(director, context);
+    const characterIntents = selectRelevantCharacterIntents(director, context);
     const threads = direction.styleThreads && typeof direction.styleThreads === "object"
       ? direction.styleThreads
       : null;
@@ -111,6 +134,9 @@
       `今日叙事方向（是语气与关注点，不是既定剧本）：${cleanText(direction.tone, 120)}；${cleanText(direction.summary, 320)}`,
       direction.narrativeGoals?.length ? `可追求：${direction.narrativeGoals.map((item) => cleanText(item, 180)).filter(Boolean).join("；")}` : "",
       direction.avoid?.length ? `应避免：${direction.avoid.map((item) => cleanText(item, 180)).filter(Boolean).join("；")}` : "",
+      characterIntents.length ? "Each character intent is a current inclination or consideration, not an accomplished action." : "",
+      characterIntents.length ? "They do not have to trigger this turn and must never decide the player's response." : "",
+      ...characterIntents.map((intent) => `- ${intent.actorId}: ${intent.goal}; motive: ${intent.motive}; urgency: ${intent.urgency}; considered channels: ${intent.preferredChannels.join("/")}`),
       pressures.length ? "与本场相关的潜在压力：" : "",
       ...pressures.map(formatPressure),
       "约束：压力不必在本轮爆发；只在人物、地点与当前行动自然支持时体现。",
@@ -131,6 +157,7 @@
   global.HatsuWorld = global.HatsuWorld || {};
   global.HatsuWorld.directorInjection = {
     selectRelevantPressures,
+    selectRelevantCharacterIntents,
     composeDirectorNarrativeBlock,
     composeDirectorEvidenceContract
   };

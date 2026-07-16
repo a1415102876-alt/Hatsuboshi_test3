@@ -28,6 +28,16 @@
     expired: "已过期"
   };
   const AUDIT_STATUS_RANK = { pending: 1, attached: 2, expired: 3, resolved: 4 };
+  const INITIATIVE_STATUS_LABELS = {
+    pending: "待投递",
+    notified: "已通知",
+    deferred: "稍后处理",
+    invited: "已接受",
+    resolved: "已完成",
+    expired: "已过期",
+    abandoned: "已婉拒"
+  };
+  const INITIATIVE_CHANNEL_LABELS = { phone: "LINE", sns: "初星圈", invite: "公寓来访" };
   const ACTION_LABELS = {
     lesson: "上课",
     training: "训练",
@@ -136,8 +146,10 @@
           moderate: { used: 0, total: 0 },
           major: { used: 0, total: 0 }
         },
-        channels: { attach: 0, invite: 0 },
+        channels: { attach: 0, invite: 0, phone: 0, sns: 0 },
         attachEvents: [],
+        initiativeEvents: [],
+        unreadPhoneCount: 0,
         emptyReason: "当前计划尚未建立。"
       },
       badges: { worldEngine: false, sns: false }
@@ -277,6 +289,7 @@
     const candidates = [];
     if (matches(source.pendingCandidate)) candidates.push(source.pendingCandidate);
     if (Array.isArray(source.recentCandidates)) candidates.push(...source.recentCandidates.filter(matches));
+    if (Array.isArray(source.initiative?.candidates)) candidates.push(...source.initiative.candidates.filter(matches));
     const deduped = new Map();
     candidates.forEach((candidate, index) => {
       const key = bounded(candidate.incidentId, 160) || `${bounded(candidate.sourceTurnId, 160)}|${index}`;
@@ -286,7 +299,7 @@
     });
     const current = [...deduped.values()];
     const used = { minor: 0, moderate: 0, major: 0 };
-    const channels = { attach: 0, invite: 0 };
+    const channels = { attach: 0, invite: 0, phone: 0, sns: 0 };
     current.forEach((candidate) => {
       if (candidate.severity in used) used[candidate.severity] += 1;
       if (candidate.channel in channels) channels[candidate.channel] += 1;
@@ -326,6 +339,19 @@
     }).sort((left, right) => right.timeMinutes - left.timeMinutes || right.order - left.order)
       .slice(0, 24)
       .map(({ timeMinutes, order, ...row }) => row);
+    const initiativeEvents = current.filter((candidate) => (
+      candidate.origin === "character_intent"
+      && INITIATIVE_CHANNEL_LABELS[candidate.channel]
+      && INITIATIVE_STATUS_LABELS[candidate.status]
+    )).map((candidate) => ({
+      channelLabel: INITIATIVE_CHANNEL_LABELS[candidate.channel],
+      statusLabel: INITIATIVE_STATUS_LABELS[candidate.status],
+      actorLabels: [...new Set((candidate.actorIds || [])
+        .map((id) => bounded(resolveActorLabel(id), 60) || displayActor(id))
+        .filter(Boolean))].slice(0, 4),
+      summary: bounded(candidate.delivery?.goal, 120),
+      unread: candidate.channel === "phone" && Boolean(candidate.delivery?.unread)
+    })).slice(0, 12);
     return {
       budget: {
         minor: { used: budget(used.minor, 24), total: budget(plan.severityBudget?.minor, 12) },
@@ -334,6 +360,8 @@
       },
       channels,
       attachEvents,
+      initiativeEvents,
+      unreadPhoneCount: initiativeEvents.filter((item) => item.unread).length,
       emptyReason: attachEvents.length ? "" : publicEmptyReason(source, current.length)
     };
   }

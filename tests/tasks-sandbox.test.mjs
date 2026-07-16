@@ -56,6 +56,12 @@ function finishLiljaScoutFlow(HatsuTasks, state) {
   HatsuTasks.applyQuestCompletionsFromReply(state, "【初星任务完成】scout_lilja");
 }
 
+function finishChinaScoutFlow(HatsuTasks, state, text = "【初星任务完成】scout_china") {
+  HatsuTasks.activateScoutQuestForIdol(state, state.idol);
+  HatsuTasks.onScoutInviteComplete(state);
+  return HatsuTasks.applyQuestCompletionsFromReply(state, text);
+}
+
 function loadSideQuestPool() {
   const sandbox = { globalThis: {}, console };
   sandbox.globalThis = sandbox;
@@ -74,6 +80,21 @@ function baseSandboxState() {
     Vo: 120,
     Da: 100,
     Vi: 80
+  };
+}
+
+function baseChinaSandboxState() {
+  return {
+    launchMode: "sandbox",
+    idol: "仓本千奈",
+    sandbox: { openingComplete: true, inviteComplete: false, responsibleIdol: "仓本千奈" },
+    freeMode: { postLiveDay: 1 },
+    stamina: 100,
+    stress: 0,
+    trust: 0,
+    Vo: 80,
+    Da: 70,
+    Vi: 120
   };
 }
 
@@ -835,4 +856,142 @@ test("confirmed idol task state activates only that idol pack", () => {
   assert.equal(taskState.main.temari_main_01.status, "locked");
   assert.equal(taskState.main.relationship_20.status, "active");
   assert.equal(taskState.main.first_live_success.status, "active");
+});
+
+test("sandbox selectable idols include China with scout and personal quests", () => {
+  const HatsuTasks = loadHatsuTasks();
+  assert.ok(HatsuTasks.SANDBOX_SELECTABLE_IDOLS.includes("仓本千奈"));
+  assert.equal(HatsuTasks.SANDBOX_IDOL_QUEST_PACKS["仓本千奈"].scoutId, "scout_china");
+  assert.deepEqual(HatsuTasks.SANDBOX_IDOL_QUEST_PACKS["仓本千奈"].personalIds, HatsuTasks.CHINA_PERSONAL_IDS);
+  assert.equal(HatsuTasks.MAIN_QUEST_META.china_main_03.title, "解决担当面对的矛盾：优势与成果");
+});
+
+test("legacy sandbox state migrates China quests and progress flags", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseChinaSandboxState();
+  state.tasks = { main: {}, wallet: {}, side: {}, campus: {} };
+  HatsuTasks.ensureTasksShape(state);
+  assert.equal(state.tasks.main.scout_china.status, "locked");
+  assert.equal(state.tasks.main.china_main_01.status, "locked");
+  assert.equal(state.tasks.main.china_main_03.flags.advantage_boundary_confirmed, false);
+  assert.equal(state.tasks.main.china_main_03.flags.publicity_commission_completed, false);
+});
+
+test("China scout and personal choice can complete in one ordered reply", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseChinaSandboxState();
+  const completed = finishChinaScoutFlow(
+    HatsuTasks,
+    state,
+    "【初星任务完成】scout_china\n【初星任务完成】china_main_01"
+  );
+  assert.deepEqual(Array.from(completed), ["scout_china", "china_main_01"]);
+  assert.equal(state.tasks.main.china_main_01.status, "completed");
+  assert.equal(state.tasks.main.china_main_02.status, "active");
+  assert.equal(state.tasks.main.temari_main_01.status, "locked");
+});
+
+test("China scout prompt addendum preserves commission truth and personal choice", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseChinaSandboxState();
+  HatsuTasks.activateScoutQuestForIdol(state, "仓本千奈");
+  const prompt = HatsuTasks.buildSandboxScoutQuestPromptBlock(state);
+  assert.match(prompt, /爷爷.*委托/);
+  assert.match(prompt, /没有.*委托.*担当/);
+  assert.match(prompt, /本人.*选择/);
+  assert.match(prompt, /【初星任务完成】scout_china/);
+  assert.match(prompt, /【初星任务完成】china_main_01/);
+  assert.equal(HatsuTasks.buildSandboxScoutQuestPromptBlock(baseSandboxState()), "");
+});
+
+test("China personal quest prompts cover persistence and advantage boundaries", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseChinaSandboxState();
+  finishChinaScoutFlow(HatsuTasks, state);
+  state.sandbox.inviteComplete = true;
+  const trainingPrompt = HatsuTasks.buildSandboxMainQuestPromptBlock(state, "gymnasium");
+  assert.match(trainingPrompt, /落后.*失败/);
+  assert.match(trainingPrompt, /想过放弃.*回来继续/);
+  assert.match(trainingPrompt, /【初星任务完成】china_main_02/);
+  assert.match(trainingPrompt, /【初星任务标记】china_advantage_boundary/);
+  const offsitePrompt = HatsuTasks.buildSandboxMainQuestPromptBlock(state, "courtyard");
+  assert.doesNotMatch(offsitePrompt, /【初星任务完成】china_main_02/);
+});
+
+test("China publicity quest completes only after boundary and authoritative successful commission", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseChinaSandboxState();
+  finishChinaScoutFlow(HatsuTasks, state);
+  state.sandbox.inviteComplete = true;
+  HatsuTasks.applyQuestFlagsFromReply(state, "【初星任务标记】china_advantage_boundary");
+  assert.equal(state.tasks.main.china_main_03.status, "active");
+  assert.equal(state.tasks.main.china_main_03.flags.advantage_boundary_confirmed, true);
+  state.tasks.side.slots = [{
+    title: "校园杂志封面拍摄",
+    desc: "为学园宣传完成品牌视觉",
+    locationId: "photo_studio",
+    ownerIdol: "仓本千奈",
+    status: "active"
+  }, { title: "商场暖场", desc: "外部商演", locationId: "shopping_mall", status: "open" },
+  { title: "电台访谈", desc: "节目访谈", locationId: "local_radio", status: "open" }];
+  state.tasks.side.dayKey = HatsuTasks.getCampusDayKey(state);
+  assert.equal(state.sandbox.responsibleIdol, "仓本千奈");
+  assert.equal(HatsuTasks.isChinaPublicitySideQuest(state.tasks.side.slots[0]), true);
+  const result = HatsuTasks.applySideQuestTier(state, 0, "pass");
+  assert.equal(result.slot.title, "校园杂志封面拍摄");
+  assert.equal(result.chinaPublicityRecorded, true);
+  assert.equal(result.chinaQuestCompleted, true);
+  assert.equal(state.tasks.main.china_main_03.status, "completed");
+});
+
+test("failed or unrelated commissions do not advance China publicity quest", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseChinaSandboxState();
+  finishChinaScoutFlow(HatsuTasks, state);
+  state.sandbox.inviteComplete = true;
+  state.tasks.side.slots = [{
+    title: "校园杂志封面拍摄",
+    desc: "宣传照",
+    locationId: "photo_studio",
+    ownerIdol: "仓本千奈",
+    status: "active"
+  }, { title: "商场暖场", desc: "外部商演", locationId: "shopping_mall", status: "open" },
+  { title: "电台访谈", desc: "节目访谈", locationId: "local_radio", status: "open" }];
+  state.tasks.side.dayKey = HatsuTasks.getCampusDayKey(state);
+  const failed = HatsuTasks.applySideQuestTier(state, 0, "fail");
+  assert.equal(failed.chinaPublicityRecorded, false);
+  assert.equal(state.tasks.main.china_main_03.flags.publicity_commission_completed, false);
+});
+
+test("publicity commission does not advance China quest for another responsible idol", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseChinaSandboxState();
+  finishChinaScoutFlow(HatsuTasks, state);
+  state.sandbox.inviteComplete = true;
+  state.sandbox.responsibleIdol = "月村手毬";
+  state.tasks.side.slots = [
+    { title: "杂志摄影", desc: "宣传拍摄", locationId: "photo_studio", status: "active" },
+    { title: "商场暖场", desc: "外部商演", locationId: "shopping_mall", status: "open" },
+    { title: "电台访谈", desc: "节目访谈", locationId: "local_radio", status: "open" }
+  ];
+  state.tasks.side.dayKey = HatsuTasks.getCampusDayKey(state);
+  const result = HatsuTasks.applySideQuestTier(state, 0, "perfect");
+  assert.equal(result.chinaPublicityRecorded, false);
+  assert.equal(state.tasks.main.china_main_03.flags.publicity_commission_completed, false);
+});
+
+test("China publicity side quest prompt addendum explains the character boundary", () => {
+  const HatsuTasks = loadHatsuTasks();
+  const state = baseChinaSandboxState();
+  finishChinaScoutFlow(HatsuTasks, state);
+  const prompt = HatsuTasks.buildSandboxSideQuestPromptBlock(state, {
+    title: "杂志封面拍摄",
+    desc: "品牌视觉宣传",
+    locationId: "photo_studio"
+  });
+  assert.match(prompt, /家世.*外表.*教养/);
+  assert.match(prompt, /成果/);
+  assert.equal(HatsuTasks.buildSandboxSideQuestPromptBlock(state, { title: "商场路演", locationId: "mall" }), "");
+  assert.match(appSource, /buildSandboxScoutQuestPromptBlock/);
+  assert.match(appSource, /buildSandboxSideQuestPromptBlock/);
 });

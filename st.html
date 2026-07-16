@@ -566,6 +566,7 @@
       "world/storyteller/observations.js",
       "world/storyteller/plan.js",
       "world/storyteller/incidents.js",
+      "world/storyteller/initiative.js",
       "world/storyteller/notifications.js",
       "world/storyteller/injection.js",
       "world/storyteller/phone-view.js",
@@ -2225,7 +2226,7 @@
         if (fetchTimeoutId) clearTimeout(fetchTimeoutId);
       }
     }
-    async function runTransactionalViaTavernHelper(tavernHelper, promptText, reqId) {
+    async function runTransactionalViaTavernHelper(tavernHelper, promptText, reqId, channelLeaseId) {
       // 先静默写入当前 user 楼层，确保预设里的 {{lastUserMessage}} 与 user_input
       // 指向同一轮输入。生成失败时按 requestId 回滚，不留下孤儿楼层。
       //
@@ -2267,7 +2268,7 @@
           rollbackSilentUserMessage(userIndex, reqId);
           try { await persistChatSilently(); } catch (persistError) {}
         }
-        postCommittedReply(reqId, '', { isFinal: true });
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
         throw error;
       }
       if (eventSource && typeof eventSource.on === 'function') {
@@ -2306,14 +2307,14 @@
         removeEndedListener();
         rollbackSilentUserMessage(userIndex, reqId);
         await persistChatSilently();
-        postCommittedReply(reqId, '', { isFinal: true });
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
         throw error;
       }
       removeEndedListener();
       if (!generatedText) {
         rollbackSilentUserMessage(userIndex, reqId);
         await persistChatSilently();
-        postCommittedReply(reqId, '', { isFinal: true });
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
         return;
       }
       await createSilentChatMessage('assistant', generatedText, reqId);
@@ -2323,7 +2324,8 @@
         isFinal: true,
         rawText: generatedText,
         renderedText: '',
-        messageId: assistantMessageId
+        messageId: assistantMessageId,
+        channelLeaseId
       });
     }
 
@@ -2339,7 +2341,7 @@
 
       const tavernHelper = getTavernHelper();
       if (tavernHelper) {
-        await runTransactionalViaTavernHelper(tavernHelper, promptText, reqId);
+        await runTransactionalViaTavernHelper(tavernHelper, promptText, reqId, channelLeaseId);
         return;
       }
 
@@ -2361,13 +2363,13 @@
       } catch (error) {
         rollbackSilentUserMessage(userIndex, reqId);
         await persistChatSilently();
-        postCommittedReply(reqId, '', { isFinal: true });
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
         throw error;
       }
       if (!generatedText) {
         rollbackSilentUserMessage(userIndex, reqId);
         await persistChatSilently();
-        postCommittedReply(reqId, '', { isFinal: true });
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
         return;
       }
       const assistantResolvedText = generatedText
@@ -2382,7 +2384,8 @@
         isFinal: true,
         rawText: existingAssistantHit?.rawText || assistantResolvedText,
         renderedText: existingAssistantHit?.renderedText || '',
-        messageId: assistantMessageId
+        messageId: assistantMessageId,
+        channelLeaseId
       });
     }
 

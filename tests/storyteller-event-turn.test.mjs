@@ -386,6 +386,7 @@ function buildAcceptContext(state, calls, overrides = {}, incidentOverrides = {}
     }
   };
   const source = [
+    readFunction(appSource, "normalizeStorytellerEventConversation"),
     readFunction(appSource, "beginHarnessStorytellerEventTurn"),
     readFunction(appSource, "dispatchAcceptedStorytellerCandidate"),
     readFunction(appSource, "revalidateCurrentStorytellerMajorCandidate"),
@@ -409,14 +410,17 @@ test("event prompt composition keeps Director Storyteller authority and output o
   const director = body.indexOf("composeWorldDirectorPromptAddendum");
   const event = body.indexOf("composeStorytellerIndependentEventPromptAddendum");
   const authority = body.indexOf("composeNarrativeAuthorityContract");
-  const output = body.indexOf("outputContract");
+  const output = body.indexOf("buildChoiceOnlyExample");
   assert.ok(world >= 0 && world < director && director < event && event < authority && authority < output);
   assert.doesNotMatch(body, /settleAction|advanceFreeModeTime|rollActionEvent|processSandboxQuest/);
+  assert.match(body, /option1|buildChoiceOnlyExample|galgameRenderContract\("choice"\)/);
+  assert.match(body, /<sum>|剧情小结|概括/);
+  assert.doesNotMatch(body, /自然收束，不要输出选项/);
 });
 
 function eventReplyState(overrides = {}) {
   const candidate = candidateFixture({ status: "invited" });
-  return {
+  const state = {
     ...stateFixture(candidate),
     pendingAiRequestId: "request-event",
     harness: {
@@ -444,20 +448,25 @@ function eventReplyState(overrides = {}) {
     },
     ...overrides
   };
+  state.freeMode.world.storyteller.activeConversation = {
+    incidentId: candidate.incidentId,
+    planId: candidate.planId,
+    saveScope: candidate.saveScope,
+    dayKey: candidate.dayKey,
+    sourceTurnId: candidate.sourceTurnId,
+    turnId: "storyteller-turn-a",
+    status: "generating",
+    round: 0,
+    storySegments: [], summaries: [], choices: [], selectedActions: [],
+    lastRequestId: "request-event", lastMessageId: null
+  };
+  return state;
 }
 
-function loadEventSettlement(state, options = {}) {
+function loadEventRoundCommit(state, options = {}) {
   const context = {
     state,
-    globalThis: {
-      HatsuWorldStorytellerIncidents: { normalizeIncidentCandidate: (candidate) => candidate },
-      HatsuWorldStorytellerNotifications: {
-        transitionNotification(candidate, action) {
-          if (action !== "resolve" || candidate.status !== "invited") return { ok: false, reason: "invalid_transition" };
-          return { ok: true, candidate: { ...candidate, status: "resolved" } };
-        }
-      }
-    },
+    globalThis: { HatsuWorldStorytellerIncidents: { normalizeIncidentCandidate: (candidate) => candidate } },
     activeHostSaveScope: "chat-a",
     activeStorageKey: "storage-a",
     runtimeSessionEpoch: "session-new",
@@ -470,65 +479,113 @@ function loadEventSettlement(state, options = {}) {
     Date,
     ...options
   };
-  vm.runInNewContext(`${readFunction(appSource, "settleStorytellerEventForReply")}; this.settle = settleStorytellerEventForReply;`, context);
+  const source = [
+    readFunction(appSource, "normalizeStorytellerEventConversation"),
+    readFunction(appSource, "getActiveStorytellerEventConversation"),
+    readFunction(appSource, "isStorytellerEventConversationCurrent"),
+    readFunction(appSource, "commitStorytellerEventRoundReply"),
+    "this.commit = commitStorytellerEventRoundReply;"
+  ].join("\n");
+  vm.runInNewContext(source, context);
   return context;
 }
 
-test("accepted final event reply completes exact turn and resolves exact invite once", () => {
+test("accepted event reply completes one conversation round without resolving the candidate", () => {
   const state = eventReplyState();
-  const beforeBusiness = JSON.stringify({
-    day: state.day, clock: state.freeMode.clockMinutes, Vo: state.Vo, Da: state.Da, Vi: state.Vi,
-    stamina: state.stamina, stress: state.stress, trust: state.trust, log: state.log
-  });
-  const context = loadEventSettlement(state);
+  const result = loadEventRoundCommit(state).commit("request-event", {
+    story: "美铃在中庭停下脚步，继续说明来意。",
+    options: ["先听她说完", "询问具体安排", "确认她的顾虑", "提出另一种做法"]
+  }, "美铃在中庭向制作人说明来意。", 42);
+  assert.equal(result.accepted, true);
+  assert.equal(state.freeMode.world.storyteller.pendingCandidate.status, "invited");
+  assert.equal(state.freeMode.world.storyteller.activeConversation.status, "awaiting_choice");
+  assert.equal(state.freeMode.world.storyteller.activeConversation.round, 1);
+  assert.deepEqual(state.freeMode.world.storyteller.activeConversation.choices, ["先听她说完", "询问具体安排", "确认她的顾虑", "提出另一种做法"]);
+  assert.equal(state.freeMode.world.storyteller.activeConversation.lastMessageId, 42);
+  assert.equal(state.harness.activeTurn.status, "awaiting_choice");
+  assert.equal(state.freeMode.world.storyteller.recentCandidates, undefined);
+});
 
-  const result = context.settle("request-event", true, false, true);
-  assert.equal(result.resolved, true);
-  assert.equal(state.harness.activeTurn.status, "completed");
+function loadEventEnd(state, calls) {
+  const context = {
+    state,
+    globalThis: {
+      HatsuWorldStorytellerIncidents: { normalizeIncidentCandidate: (candidate) => candidate },
+      HatsuWorldStorytellerNotifications: {
+        transitionNotification(candidate, action) {
+          calls.push(`transition:${action}`);
+          return action === "resolve" && candidate.status === "invited"
+            ? { ok: true, candidate: { ...candidate, status: "resolved" } }
+            : { ok: false, reason: "invalid_transition" };
+        }
+      }
+    },
+    activeHostSaveScope: "chat-a",
+    activeStorageKey: "storage-a",
+    getWorldFeedDayKey: () => "live+2",
+    formatFreeModeClock: () => "10:00",
+    recordStorytellerObservation: () => { calls.push("observation"); return { recorded: true }; },
+    commitStorytellerEventConversationDigest: () => { calls.push("digest"); return true; },
+    requestStorytellerEventChronicleUpdate: () => { calls.push("chronicle"); return true; },
+    recordHarnessTrace: () => {},
+    debugHarnessEvent: () => {},
+    closeVnChoicesOverlay: () => calls.push("close-choices"),
+    hideVnCustomChoicePanel: () => {},
+    setElementHidden: () => {},
+    saveState: () => calls.push("save"),
+    render: () => calls.push("render"),
+    renderPhoneHome: () => {},
+    renderWorldEnginePhoneApp: () => {},
+    updateFreeModeEventButton: () => {},
+    Date
+  };
+  const source = [
+    readFunction(appSource, "normalizeStorytellerEventConversation"),
+    readFunction(appSource, "getActiveStorytellerEventConversation"),
+    readFunction(appSource, "isStorytellerEventConversationCurrent"),
+    readFunction(appSource, "clearStorytellerEventConversation"),
+    readFunction(appSource, "endStorytellerEventConversation"),
+    "this.end = endStorytellerEventConversation;"
+  ].join("\n");
+  vm.runInNewContext(source, context);
+  return context;
+}
+
+test("ending an awaiting event conversation resolves exactly once without another model request", () => {
+  const state = eventReplyState();
+  state.harness.activeTurn.status = "awaiting_choice";
+  state.freeMode.world.storyteller.activeConversation = {
+    ...state.freeMode.world.storyteller.activeConversation,
+    status: "awaiting_choice",
+    round: 2,
+    storySegments: ["第一段", "第二段"],
+    summaries: ["第一轮概括", "第二轮概括"],
+    choices: ["A", "B", "C", "D"],
+    selectedActions: ["A"],
+    lastMessageId: 42
+  };
+  const calls = [];
+  const context = loadEventEnd(state, calls);
+  assert.equal(context.end(), true);
   assert.equal(state.freeMode.world.storyteller.pendingCandidate, null);
-  assert.equal(state.freeMode.world.storyteller.recentCandidates.at(-1).status, "resolved");
-  assert.equal(JSON.stringify({
-    day: state.day, clock: state.freeMode.clockMinutes, Vo: state.Vo, Da: state.Da, Vi: state.Vi,
-    stamina: state.stamina, stress: state.stress, trust: state.trust, log: state.log
-  }), beforeBusiness);
-  assert.equal(context.settle("request-event", true, false, true).resolved, false);
-  assert.equal(state.freeMode.world.storyteller.recentCandidates.length, 1);
+  assert.equal(state.freeMode.world.storyteller.activeConversation, null);
+  assert.equal(state.harness.activeTurn.status, "completed");
+  assert.deepEqual(calls.filter((item) => item === "observation" || item === "digest" || item === "chronicle"), ["observation", "digest", "chronicle"]);
+  assert.equal(calls.some((item) => item === "send"), false);
+  const before = JSON.stringify(state);
+  assert.equal(context.end(), false);
+  assert.equal(JSON.stringify(state), before);
 });
 
-test("stale partial retry wrong lease and wrong scope event replies are mutation-free", () => {
-  const cases = [
-    { args: ["request-old", true, false, true] },
-    { args: ["request-event", true, false, false] },
-    { args: ["request-event", true, true, true] },
-    { args: ["request-event", false, false, true] },
-    { args: ["request-event", true, false, true], options: { isPrimaryModelLeaseCurrent: () => false } },
-    { args: ["request-event", true, false, true], mutate: (state) => { state.harness.activeTurn.saveScope = "chat-b"; } }
-  ];
-  for (const item of cases) {
-    const state = eventReplyState();
-    item.mutate?.(state);
-    const before = JSON.stringify(state);
-    const result = loadEventSettlement(state, item.options).settle(...item.args);
-    assert.equal(result.resolved, false, item.args.join("|"));
-    assert.equal(JSON.stringify(state), before, item.args.join("|"));
-  }
-});
-
-test("event reply commit ordering validates before chronicle and releases after save", () => {
-  const body = readFunction(appSource, "commitStorytellerEventReply");
-  const settle = body.indexOf("settleStorytellerEventForReply");
-  const observation = body.indexOf("recordAcceptedFinalStorytellerObservation");
-  const chronicle = body.indexOf("requestChronicleUpdate");
-  const save = body.indexOf("saveState(");
-  const ack = body.indexOf("sendAiReplyAck", save);
-  assert.ok(settle >= 0 && settle < observation && observation < chronicle && chronicle < save && save < ack);
-  assert.doesNotMatch(body, /processSandboxQuest|advanceFreeModeTime|state\.log/);
+test("event replies commit a conversation round before generic Chronicle handling", () => {
   const applyStart = appSource.indexOf("function applyAiReply(");
   const applyEnd = appSource.indexOf("function isCurrentStorytellerEventReply(", applyStart);
   const apply = appSource.slice(applyStart, applyEnd);
   const eventRoute = apply.indexOf("isCurrentStorytellerEventReply");
+  const roundCommit = apply.indexOf("commitStorytellerEventRoundReply");
   const genericChronicle = apply.indexOf("preparePendingDirectorDigestCandidate");
-  assert.ok(eventRoute >= 0 && eventRoute < genericChronicle);
+  assert.ok(eventRoute >= 0 && eventRoute < roundCommit && roundCommit < genericChronicle);
+  assert.doesNotMatch(appSource, /function settleStorytellerEventForReply|function commitStorytellerEventReply/);
 });
 
 test("Storyteller event observations require a completed exact event turn", () => {
@@ -573,6 +630,7 @@ test("event recovery preserves turn incident and frozen prompt while rotating re
   const sent = [];
   const sandbox = {
     state,
+    globalThis: { HatsuWorldStorytellerIncidents: { normalizeIncidentCandidate: (candidate) => candidate } },
     runtimeSessionEpoch: "session-new",
     pendingAiRequestId: "",
     aiReplyRetryCount: 0,
@@ -596,6 +654,9 @@ test("event recovery preserves turn incident and frozen prompt while rotating re
     openEventOverlay: () => {}, showToast: () => {}
   };
   vm.runInNewContext([
+    readFunction(appSource, "normalizeStorytellerEventConversation"),
+    readFunction(appSource, "getActiveStorytellerEventConversation"),
+    readFunction(appSource, "isStorytellerEventConversationCurrent"),
     readFunction(appSource, "resolveHarnessRecoveryPrompt"),
     readFunction(appSource, "hasConflictingHarnessRecoveryFlow"),
     readFunction(appSource, "retryHarnessNarrativeRecovery"),
@@ -608,7 +669,16 @@ test("event recovery preserves turn incident and frozen prompt while rotating re
   assert.equal(state.harness.activeTurn.requestId, "request-recovery");
   assert.deepEqual(Array.from(state.harness.activeTurn.requestIds), ["request-event", "request-recovery"]);
   assert.equal(state.harness.activeTurn.generationPrompt, "frozen storyteller event prompt");
+  assert.equal(state.freeMode.world.storyteller.activeConversation.lastRequestId, "request-recovery");
   assert.equal(sent[0].options.ownerKind, "storyteller_event_recovery");
+});
+
+test("event recovery rotates the active conversation request identity with the harness turn", () => {
+  const retry = readFunction(appSource, "retryHarnessNarrativeRecovery");
+  assert.match(retry, /turn\.kind === "storyteller_event"/);
+  assert.match(retry, /storyteller\.activeConversation/);
+  assert.match(retry, /lastRequestId:\s*requestId/);
+  assert.match(retry, /status:\s*"generating"/);
 });
 
 test("event recovery failure returns to recovery_required and timeout uses shared failure path", () => {
@@ -625,6 +695,7 @@ test("confirmed event abandonment transitions only the exact invited candidate",
   const abandon = readFunction(appSource, "abandonHarnessNarrativeRecovery");
   assert.match(abandon, /abandonStorytellerEventCandidateForTurn/);
   assert.match(helper, /transitionNotification\?\.\(candidate, "abandon"/);
+  assert.match(helper, /storyteller\.activeConversation = null/);
   assert.doesNotMatch(readFunction(appSource, "closeHarnessRecoveryOverlay"), /abandonStorytellerEventCandidateForTurn|abandoned|state\./);
   assert.doesNotMatch(readFunction(appSource, "closeEventOverlay"), /abandonStorytellerEventCandidateForTurn|abandoned|recovery_required/);
 });

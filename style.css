@@ -1045,6 +1045,31 @@ p {
     0 8px 18px rgba(38, 169, 244, 0.28);
   color: #fff;
   transition: transform 160ms ease, box-shadow 160ms ease;
+  position: relative;
+}
+
+.phone-unread-badge {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fff;
+  border-radius: 10px;
+  background: #e53935;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  box-sizing: border-box;
+}
+
+.phone-unread-badge[hidden] {
+  display: none;
 }
 
 .phone-launch-icon svg {
@@ -5423,6 +5448,13 @@ p {
   top: 48%;
 }
 
+#apartmentDoorbellBtn {
+  left: 63%;
+  top: 37%;
+  border-color: rgba(229, 57, 53, 0.72);
+  background: rgba(126, 28, 34, 0.86);
+}
+
 #apartmentDaySummaryBtn {
   right: 4%;
   bottom: calc(30% + env(safe-area-inset-bottom));
@@ -5843,7 +5875,7 @@ body.is-free-mode-active {
 .free-mode-phone-btn {
   position: absolute;
   right: 14px;
-  top: calc(50% + 38px);
+  top: calc(50% + 104px);
   z-index: 4;
   display: inline-flex;
   flex-direction: column;
@@ -6083,6 +6115,58 @@ body.is-free-mode-active {
   justify-content: space-between;
   gap: 12px;
   min-width: 0;
+}
+
+.free-mode-event-btn {
+  position: absolute;
+  right: 14px;
+  top: calc(50% + 38px);
+  z-index: 4;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 56px;
+  min-height: 56px;
+  padding: 8px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 18px;
+  background: rgba(16, 20, 28, 0.78);
+  color: #fff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.free-mode-event-btn svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.free-mode-event-badge {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid rgba(16, 20, 28, 0.94);
+  border-radius: 50%;
+  background: #ff4058;
+  box-shadow: 0 0 0 2px rgba(255, 64, 88, 0.2);
+}
+
+.free-mode-event-btn[hidden],
+.free-mode-event-badge[hidden] {
+  display: none !important;
 }
 
 .affinity-identity-copy {
@@ -7640,7 +7724,7 @@ body.is-free-mode-active {
 }
 
 .free-mode-apartment-btn {
-  top: calc(50% + 170px);
+  top: calc(50% + 236px);
 }
 
 .free-mode-apartment-btn svg,
@@ -7663,7 +7747,7 @@ body.is-free-mode-active {
 .free-mode-bag-btn {
   position: absolute;
   right: 14px;
-  top: calc(50% + 104px);
+  top: calc(50% + 170px);
   z-index: 4;
   display: inline-flex;
   flex-direction: column;
@@ -7693,6 +7777,36 @@ body.is-free-mode-active {
   color: #2a1608;
   font-size: 10px;
   line-height: 1.2;
+}
+
+@media (max-height: 640px) {
+  #freeModeAffinityBtn,
+  #freeModeTaskPanelBtn,
+  #freeModeSideQuestBtn,
+  #freeModeEventBtn,
+  #freeModePhoneBtn,
+  #freeModeBagBtn,
+  #freeModeApartmentBtn {
+    width: 50px;
+    min-width: 50px;
+    min-height: 48px;
+    padding: 5px 4px;
+    gap: 2px;
+    border-radius: 14px;
+    font-size: 10px;
+  }
+
+  #freeModeAffinityBtn { top: calc(50% - 186px); }
+  #freeModeTaskPanelBtn { top: calc(50% - 134px); }
+  #freeModeSideQuestBtn { top: calc(50% - 82px); }
+  #freeModeEventBtn { top: calc(50% - 30px); }
+  #freeModePhoneBtn { top: calc(50% + 22px); }
+  #freeModeBagBtn { top: calc(50% + 74px); }
+  #freeModeApartmentBtn { top: calc(50% + 126px); }
+
+  #worldMapLayoutEditBtn {
+    display: none !important;
+  }
 }
 
 .gift-shop-panel {
@@ -10441,6 +10555,14 @@ body.is-free-mode-active {
   min-height: 52px;
   border-radius: 8px;
   white-space: nowrap;
+}
+
+.outing-idol-scout-talk {
+  grid-column: 1 / -1;
+}
+
+.outing-idol-action-grid .event-button[hidden] {
+  display: none;
 }
 
 .outing-facility-guide-modal {

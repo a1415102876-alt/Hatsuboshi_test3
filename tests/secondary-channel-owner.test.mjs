@@ -315,5 +315,21 @@ test("Director host dispatch reserves enough output tokens for the JSON contract
   assert.equal(context.send("private prompt", owner), true);
   assert.equal(posted.length, 1);
   assert.equal(posted[0].kind, "director");
-  assert.equal(posted[0].apiConfig.maxTokens, 3200);
+  assert.equal(posted[0].apiConfig.maxTokens, 8000);
+});
+
+test("Director retry raises the output budget for reasoning-heavy providers", () => {
+  const posted = [];
+  const owner = { jobId: "director-job", requestId: "director-request", saveScope: "scope-a", kind: "director" };
+  const context = {
+    getSecondaryApiConfig: () => ({ enabled: true, baseUrl: "https://example.test", model: "model-a", apiKey: "secret", temperature: 0.7, maxTokens: 1200 }),
+    isCurrentSecondaryReply: () => true,
+    isSillyTavernHost: () => true,
+    pushSecondaryDebug() {},
+    window: { parent: { postMessage: (payload) => posted.push(payload) } },
+    runLocalSecondaryApiPrompt() { throw new Error("local fallback must not run"); }
+  };
+  vm.runInNewContext(`${readFunction(appSource, "requestHostSecondaryPromptSend")}; this.send = requestHostSecondaryPromptSend;`, context);
+  assert.equal(context.send("private prompt", owner, { directorAttempt: 2 }), true);
+  assert.equal(posted[0].apiConfig.maxTokens, 12000);
 });

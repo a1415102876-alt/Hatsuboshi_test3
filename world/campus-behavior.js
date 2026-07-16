@@ -45,6 +45,12 @@
       locationId: "club_room",
       activityId: "student_council",
       publicLabel: "副会长在部室栋学生会，态度很冲"
+    },
+    "仓本千奈": {
+      locationId: "china_home",
+      facilityId: "bedroom",
+      activityId: "at_home",
+      publicLabel: "仓本家卧室，等待制作人来访"
     }
   };
 
@@ -239,6 +245,7 @@
     const targetIdol = normalizeIdolName(state?.idol, helpers?.canonicalIdolName);
     return {
       locationId: config.locationId,
+      facilityId: config.facilityId || "",
       activityId: config.activityId || "wandering",
       publicLabel: config.publicLabel || "",
       mood: config.mood || "",
@@ -402,6 +409,12 @@
     if (!canonical) return "";
     const config = SCOUT_OPENING_PRESENCE[canonical];
     return config?.locationId || "";
+  }
+
+  function getScoutTargetFacility(idolName, helpers) {
+    const canonical = normalizeIdolName(idolName, helpers?.canonicalIdolName);
+    if (!canonical) return "";
+    return SCOUT_OPENING_PRESENCE[canonical]?.facilityId || "";
   }
 
   function getLocationBehaviorLines(locationId, state) {
@@ -595,6 +608,7 @@
     applyCampusSnapshot,
     getIdolCampusSlot,
     getScoutTargetLocation,
+    getScoutTargetFacility,
     getLocationBehaviorLines,
     getIdolsAtLocation,
     getInteractableIdolsAtLocation,

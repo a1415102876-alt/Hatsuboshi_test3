@@ -194,6 +194,9 @@
       : Number.isFinite(Number(minute))
         ? Math.max(0, Math.round(Number(minute)))
         : null;
+    const rawDelivery = value.delivery && typeof value.delivery === "object" && !Array.isArray(value.delivery)
+      ? value.delivery
+      : null;
     const candidate = {
       schemaVersion: 1,
       incidentId: bounded(value.incidentId),
@@ -227,7 +230,27 @@
         deferredUntilWorldMinute: nullableMinute(rawNotification.deferredUntilWorldMinute),
         expiresAtWorldMinute: nullableMinute(rawNotification.expiresAtWorldMinute),
         notificationReason: bounded(rawNotification.notificationReason, 60)
-      } : null
+      } : null,
+      ...(value.origin === "character_intent" ? {
+        origin: "character_intent",
+        intentId: bounded(value.intentId, 160),
+        delivery: rawDelivery ? {
+          goal: bounded(rawDelivery.goal, 240),
+          motive: bounded(rawDelivery.motive, 240),
+          urgency: ["low", "normal", "high"].includes(rawDelivery.urgency) ? rawDelivery.urgency : "normal",
+          visibility: rawDelivery.visibility === "public" ? "public" : "private",
+          publicPostDraft: bounded(rawDelivery.publicPostDraft, 280),
+          unread: Boolean(rawDelivery.unread),
+          relationshipRole: ["responsible", "assigned", "friend", "known"].includes(rawDelivery.relationshipRole)
+            ? rawDelivery.relationshipRole
+            : "known",
+          relationshipStage: bounded(rawDelivery.relationshipStage, 80),
+          contextSummaries: boundedList(rawDelivery.contextSummaries, 4, 180),
+          ...(Number.isFinite(Number(rawDelivery.deferredUntilWorldMinute)) ? {
+            deferredUntilWorldMinute: Math.max(0, Math.round(Number(rawDelivery.deferredUntilWorldMinute)))
+          } : {})
+        } : null
+      } : {})
     };
     const styleAware = value.styleId != null || value.styleMixRevision != null || value.disturbance != null;
     if (!styleAware) return candidate;
