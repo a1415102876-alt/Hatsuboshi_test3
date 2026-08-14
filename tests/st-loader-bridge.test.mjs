@@ -133,15 +133,67 @@ test("st.html loads the gift shop module so the shop/bag entry is available unde
   assert.match(scriptsBlock[1], /"shop\/gift-shop\.js"/);
 });
 
-test("st.html rewrites large assets to R2 while keeping avatars on Workers base", () => {
+test("st.html rewrites avatars and other assets to R2", () => {
   assert.match(stSource, /R2_MEDIA_CDN/);
   assert.match(stSource, /function rewriteAssetsInText\(/);
   assert.match(stSource, /function rewriteAssetRef\(/);
-  assert.match(stSource, /isLocalAvatarAsset/);
+  assert.doesNotMatch(stSource, /isLocalAvatarAsset/);
   assert.match(stSource, /rewriteAssetsInCss/);
-  assert.match(stSource, /\.replaceAll\('"\.\/assets\/avatars\/'/);
-  assert.match(stSource, /\.replaceAll\('"\.\/assets\/'/);
-  assert.doesNotMatch(stSource, /\.replaceAll\('"\.\/assets\/', '"' \+ abs\('assets\/'\)\)/);
+  assert.match(stSource, /return withR2MediaVersion\(r2MediaUrl\(normalized\)\)/);
+  assert.doesNotMatch(stSource, /return abs\(normalized\)/);
+  assert.match(stSource, /sourceText = rewriteAssetsInText\(await modRes\.text\(\)\)/);
+  assert.match(stSource, /routeText = rewriteAssetsInText\(await routeRes\.text\(\)\)/);
+  assert.match(stSource, /miniLiveCoreText = rewriteAssetsInText\(await miniLiveCoreRes\.text\(\)\)/);
+  assert.match(stSource, /function rewriteElementAssetRefs\(/);
+  assert.match(stSource, /assetRefObserver\.observe\(page/);
+});
+
+test("asset resolver sends every repository asset path form to R2", () => {
+  const start = stSource.indexOf("function withR2MediaVersion");
+  const end = stSource.indexOf(readFunction("shouldRewriteUrl")) + readFunction("shouldRewriteUrl").length;
+  const source = stSource.slice(start, end);
+  const helpers = new Function(
+    "BASE",
+    "window",
+    "R2_MEDIA_CDN",
+    "R2_MEDIA_VERSION",
+    `function abs(path) { return new URL(path, BASE).href; }
+${source}
+return { rewriteAssetRef, rewriteAssetsInText, rewriteAssetsInCss };`
+  )(
+    "https://hatsuboshi-test3.vercel.app/",
+    {},
+    "https://r2.example",
+    "test-version"
+  );
+
+  for (const path of [
+    "./assets/scenes/Producer_Apartment.png",
+    "assets/scenes/Producer_Apartment.png",
+    "/assets/scenes/Producer_Apartment.png",
+    "../assets/scenes/Producer_Apartment.png"
+  ]) {
+    assert.equal(
+      helpers.rewriteAssetRef(path),
+      "https://r2.example/assets/scenes/Producer_Apartment.png?v=test-version"
+    );
+  }
+  assert.equal(
+    helpers.rewriteAssetRef("https://example.com/assets/external.png"),
+    "https://example.com/assets/external.png"
+  );
+  assert.match(
+    helpers.rewriteAssetsInText('const scene = "./assets/scenes/TV_Studio.png";'),
+    /https:\/\/r2\.example\/assets\/scenes\/TV_Studio\.png\?v=test-version/
+  );
+  assert.match(
+    helpers.rewriteAssetsInText('const scene = `\.\/assets\/scenes\/${name}\.png`;'),
+    /https:\/\/r2\.example\/assets\/scenes\/\$\{name\}\.png\?v=test-version/
+  );
+  assert.equal(
+    helpers.rewriteAssetsInCss('background:url("../assets/scenes/Aquarium.png") center/cover'),
+    'background:url("https://r2.example/assets/scenes/Aquarium.png?v=test-version") center/cover'
+  );
 });
 
 
