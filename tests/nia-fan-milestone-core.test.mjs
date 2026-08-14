@@ -18,6 +18,37 @@ test('old saves receive an idle 5000-fan milestone', () => {
   });
 });
 
+test('route-specific event ids survive normalization before the route context is available', () => {
+  const normalized = core.normalizeFanMilestone({
+    eventId: 'nia-kotone-fans-5000-followup',
+    threshold: 5000
+  });
+  assert.equal(normalized.eventId, 'nia-kotone-fans-5000-followup');
+  assert.equal(normalized.threshold, 5000);
+});
+
+test('a legacy Saki fallback event migrates to the matching episode on the current route', () => {
+  const route = {
+    routeId: 'fujita-kotone',
+    episodes: [
+      { eventId: 'nia-kotone-fans-5000', episode: 12, trigger: { type: 'fans', threshold: 5000 } },
+      { eventId: 'nia-kotone-fans-5000-followup', episode: 13, trigger: { type: 'fans', threshold: 5000 } }
+    ]
+  };
+  const recovered = core.reconcileFanMilestone({
+    eventId: 'nia-saki-fans-5000',
+    threshold: 5000,
+    status: 'completed'
+  }, {
+    route,
+    scenario: 'nia',
+    idolName: '藤田琴音',
+    fans: 5000
+  });
+  assert.equal(recovered.eventId, 'nia-kotone-fans-5000-followup');
+  assert.equal(recovered.status, 'pending');
+});
+
 test('only formal NIA routes reach the pending milestone', () => {
   const idle = core.normalizeFanMilestone({});
   assert.equal(core.reconcileFanMilestone(idle, {

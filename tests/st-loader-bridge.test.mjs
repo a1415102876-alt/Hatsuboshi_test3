@@ -52,6 +52,23 @@ test("st.html reply bridge safely reads context and falls back to latest post-pr
   assert.match(stSource, /Math\.max\(1, pendingPromptChatLength\)/);
   assert.match(stSource, /const replyMessageId = findLatestUsableAiReplyId\(messageId\)/);
 });
+
+test("transactional generation owns its reply until the explicit committed result arrives", () => {
+  const forwarded = [];
+  const sendLatest = new Function(
+    "pendingRequestId",
+    "transactionalReplyRequestId",
+    "collectAndSendAiReply",
+    `${readFunction("sendLatestAiReplyToFrame")}; return sendLatestAiReplyToFrame;`
+  )("request-current", "request-current", (...args) => forwarded.push(args));
+
+  sendLatest(12, true, "host_ended_empty");
+  assert.deepEqual(forwarded, []);
+  assert.match(readFunction("runTransactionalPrompt"), /transactionalReplyRequestId = reqId/);
+  assert.match(readFunction("runTransactionalPrompt"), /pendingPromptChatLength = Array\.isArray\(context\.chat\) \? context\.chat\.length : 0/);
+  assert.match(readFunction("clearPendingReplyRequest"), /transactionalReplyRequestId = ''/);
+});
+
 test("st.html loader uses a responsive mobile viewport instead of a fixed desktop canvas", () => {
   assert.doesNotMatch(stSource, /#hatsu-st-page\s*\{[\s\S]*?width:\s*1180px\s*!important/);
   assert.match(stSource, /--hatsu-viewport-height/);

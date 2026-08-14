@@ -1164,6 +1164,7 @@
     const useVisualHideFloors = true;
     let pendingRequestId = '';
     let pendingChannelLeaseId = '';
+    let transactionalReplyRequestId = '';
     let pendingPromptSentAt = 0;
     let pendingPromptChatLength = 0;
     let pendingCandidateInFlight = false;
@@ -2972,6 +2973,8 @@
       if (!requestPromptCache.has(reqId)) requestPromptCache.set(reqId, promptText);
       pendingRequestId = reqId;
       pendingChannelLeaseId = String(channelLeaseId || '');
+      transactionalReplyRequestId = reqId;
+      pendingPromptChatLength = Array.isArray(context.chat) ? context.chat.length : 0;
       clearReplyCandidateState();
 
       const tavernHelper = getTavernHelper();
@@ -3126,6 +3129,7 @@
     }
     function sendLatestAiReplyToFrame(messageId, isFinal = true, emptyReason = '') {
       if (!pendingRequestId) return;
+      if (transactionalReplyRequestId === pendingRequestId) return;
       collectAndSendAiReply(messageId, isFinal, { emptyReason });
     }
 
@@ -3360,6 +3364,7 @@
 
     function clearPendingReplyRequest() {
       clearReplyCandidateState();
+      transactionalReplyRequestId = '';
       pendingPromptSentAt = 0;
       pendingPromptChatLength = 0;
       pendingRequestId = '';

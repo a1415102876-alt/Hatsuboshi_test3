@@ -27291,7 +27291,13 @@ ${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到
     }
 
     // 切换背景
-    const bgUrl = getSceneBackground();
+    const rawBgUrl = getSceneBackground();
+    let bgUrl = rawBgUrl;
+    try {
+      bgUrl = new URL(rawBgUrl, window.HATSU_ASSET_BASE || document.baseURI).href;
+    } catch {
+      // Keep the configured path when the host has no usable base URL.
+    }
     const backdropEl = document.getElementById("vnBackdrop");
     if (backdropEl) {
       backdropEl.style.backgroundImage = `linear-gradient(180deg, rgba(18, 18, 24, 0.08) 0%, transparent 42%, rgba(18, 18, 24, 0.22) 100%), url('${bgUrl}')`;

@@ -6,6 +6,11 @@
     Saki: "saki",
     saki: "saki",
     "藤田琴音": "kotone",
+    "藤田ことね": "kotone",
+    "琴音": "kotone",
+    "ことね": "kotone",
+    "Fujita Kotone": "kotone",
+    "fujita kotone": "kotone",
     Kotone: "kotone",
     kotone: "kotone",
     "花海佑芽": "ume",
@@ -82,8 +87,27 @@
     return Object.freeze(shared.concat(UME_EXTRA_POSES));
   }
 
+  // 琴音尚缺部分 SHARED 原图时，把 fallback 指到已有资源，避免空层
+  const KOTONE_SHARED_FALLBACK_OVERRIDES = Object.freeze({
+    titjob: "handjob",
+    missionary_legs_up: "missionary",
+    missionary_mating_press: "missionary",
+    prone_bone: "doggy_face_down",
+    lotus: "cowgirl",
+    carry: "standing",
+    breeding: "doggy",
+    aftercare_embrace: "kissing_makeout"
+  });
+
+  function buildKotoneNsfwPoses() {
+    return Object.freeze(SHARED_NSFW_POSES.map((pose) => {
+      const nextFallback = KOTONE_SHARED_FALLBACK_OVERRIDES[pose.id];
+      return nextFallback ? { ...pose, fallback: nextFallback } : pose;
+    }));
+  }
+
   const SAKI_NSFW_POSES = SHARED_NSFW_POSES;
-  const KOTONE_NSFW_POSES = SHARED_NSFW_POSES;
+  const KOTONE_NSFW_POSES = buildKotoneNsfwPoses();
   const UME_NSFW_POSES = buildUmeNsfwPoses();
 
   const POSE_BY_CHARACTER = Object.freeze({
@@ -395,6 +419,7 @@ ${whitelist}`;
     CHARACTER_SLUGS,
     SAKI_NSFW_POSES,
     KOTONE_NSFW_POSES,
+    KOTONE_SHARED_FALLBACK_OVERRIDES,
     UME_NSFW_POSES,
     UME_EXTRA_POSES,
     SHARED_NSFW_POSES,
