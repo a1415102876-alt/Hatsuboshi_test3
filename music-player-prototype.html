@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>小手机音乐播放器 · 原型</title>
+<style>
+  /* ===== 设计令牌（Spotify 风格 / 学マス 适配）===== */
+  :root {
+    --sp-bg: #0b0b0f;
+    --sp-surface: #121212;
+    --sp-surface-2: #181818;
+    --sp-surface-3: #2a2a2a;
+    --sp-green: #1db954;
+    --sp-green-bright: #1ed760;
+    --sp-text: #ffffff;
+    --sp-text-dim: #b3b3b3;
+    --sp-text-faint: #7a7a7a;
+    --idol-accent: #ff4f9a;
+    --phone-shell-height: min(calc(100dvh - 56px), 920px);
+    --phone-shell-width: calc(var(--phone-shell-height) * 9 / 19.2);
+    font-family: "Poppins", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    background:
+      radial-gradient(circle at 20% 10%, rgba(255, 79, 154, 0.18), transparent 40%),
+      radial-gradient(circle at 85% 90%, rgba(29, 185, 84, 0.16), transparent 42%),
+      #07070a;
+  }
+
+  /* ===== 机身（沿用现有小手机尺寸感）===== */
+  .phone-frame {
+    width: var(--phone-shell-width);
+    max-width: 96vw;
+  }
+  .phone-bezel {
+    height: var(--phone-shell-height);
+    border-radius: clamp(28px, 4vw, 42px);
+    padding: clamp(10px, 1.4vw, 14px);
+    background: linear-gradient(165deg, #2a2633 0%, #15121a 100%);
+    border: 2px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 28px 60px rgba(8, 6, 14, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .phone-notch {
+    position: absolute;
+    top: 12px; left: 50%;
+    transform: translateX(-50%);
+    width: 92px; height: 22px;
+    border-radius: 0 0 16px 16px;
+    background: #0f0d14;
+    z-index: 5;
+  }
+  .phone-screen {
+    flex: 1 1 auto;
+    min-height: 0;
+    border-radius: 26px;
+    overflow: hidden;
+    background: var(--sp-bg);
+    color: var(--sp-text);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* ===== 状态栏 ===== */
+  .status-bar {
+    flex: 0 0 auto;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .status-icons { display: flex; gap: 5px; align-items: center; }
+  .status-icons i {
+    display: block;
+    width: 16px; height: 11px;
+    background: currentColor;
+    -webkit-mask: var(--m) center/contain no-repeat;
+    mask: var(--m) center/contain no-repeat;
+  }
+  .ic-signal { --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 12'%3E%3Crect x='0' y='8' width='3' height='4' rx='1'/%3E%3Crect x='5' y='5' width='3' height='7' rx='1'/%3E%3Crect x='10' y='2' width='3' height='10' rx='1'/%3E%3Crect x='15' y='0' width='3' height='12' rx='1'/%3E%3C/svg%3E"); }
+  .ic-wifi { width: 16px; --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 12'%3E%3Cpath d='M8 11.5 1 4.5a10 10 0 0 1 14 0Z' fill='none' stroke='%23000' stroke-width='1.4'/%3E%3Ccircle cx='8' cy='9' r='1.4'/%3E%3C/svg%3E"); }
+  .ic-batt { width: 24px; --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Crect x='0.5' y='1' width='20' height='10' rx='2.5' fill='none' stroke='%23000' stroke-width='1'/%3E%3Crect x='2' y='2.5' width='15' height='7' rx='1'/%3E%3Crect x='21.5' y='4' width='1.6' height='4' rx='0.8'/%3E%3C/svg%3E"); }
+
+  /* ===== 通用：可滚动主体 ===== */
+  .app-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .app-scroll::-webkit-scrollbar { width: 0; }
+
+  /* ===== 曲库视图 ===== */
+  .library {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: linear-gradient(180deg, #1f1430 0%, var(--sp-bg) 38%);
+  }
+  .lib-head {
+    flex: 0 0 auto;
+    padding: 6px 18px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .lib-title { font-size: 22px; font-weight: 700; letter-spacing: 0.3px; }
+  .lib-head-actions { display: flex; gap: 14px; }
+  .icon-btn {
+    width: 34px; height: 34px;
+    display: grid; place-items: center;
+    border: 0; background: transparent;
+    color: var(--sp-text);
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background 0.2s ease;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.08); }
+  .icon-btn svg { width: 22px; height: 22px; }
+
+  .lib-section-title {
+    padding: 4px 18px 10px;
+    font-size: 15px;
+    font-weight: 700;
+  }
+
+  /* 快捷宫格 */
+  .quick-grid {
+    padding: 0 18px 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .quick-card {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 52px;
+    border-radius: 6px;
+    background: var(--sp-surface-3);
+    overflow: hidden;
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+  .quick-card:hover { background: #3a3a3a; }
+  .quick-card .qc-cover { width: 52px; height: 52px; flex: 0 0 auto; }
+  .quick-card .qc-name {
+    font-size: 12px; font-weight: 600;
+    line-height: 1.2;
+    overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+
+  /* 歌曲列表 */
+  .track-list { padding: 4px 0 12px; }
+  .track-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 18px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .track-row:hover { background: rgba(255,255,255,0.06); }
+  .track-row.is-playing .tr-title { color: var(--sp-green-bright); }
+  .tr-cover {
+    width: 48px; height: 48px;
+    flex: 0 0 auto;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .tr-meta { flex: 1 1 auto; min-width: 0; }
+  .tr-title {
+    font-size: 14px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tr-artist {
+    font-size: 12px; color: var(--sp-text-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-top: 2px;
+  }
+  .tr-more { color: var(--sp-text-faint); flex: 0 0 auto; }
+  .tr-like {
+    flex: 0 0 auto;
+    border: 0; background: transparent; cursor: pointer;
+    color: var(--sp-text-faint);
+    display: grid; place-items: center;
+    width: 30px; height: 30px;
+    transition: color 0.2s ease, transform 0.15s ease;
+  }
+  .tr-like svg { width: 20px; height: 20px; }
+  .tr-like:hover { transform: scale(1.12); color: var(--sp-text); }
+  .tr-like.liked { color: var(--sp-green-bright); }
+
+  /* 分段：全部 / 已点赞 */
+  .lib-tabs {
+    display: flex; gap: 8px;
+    padding: 4px 18px 10px;
+  }
+  .lib-tab {
+    border: 0; cursor: pointer;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 13px; font-weight: 600;
+    color: var(--sp-text);
+    background: var(--sp-surface-3);
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  .lib-tab:hover { background: #3a3a3a; }
+  .lib-tab.active { background: var(--sp-green); color: #04130a; }
+  .lib-empty {
+    padding: 40px 24px; text-align: center;
+    color: var(--sp-text-faint); font-size: 13px; line-height: 1.6;
+  }
+
+  /* 已点赞列表顶部操作条 */
+  .liked-actions {
+    display: flex; gap: 10px; align-items: center;
+    padding: 2px 18px 10px;
+  }
+  .liked-play-btn, .liked-shuffle-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 0; cursor: pointer;
+    border-radius: 999px;
+    font-size: 13px; font-weight: 700;
+    padding: 9px 18px;
+    transition: transform 0.15s ease, background 0.2s ease, color 0.2s ease;
+  }
+  .liked-play-btn { background: var(--sp-green); color: #04130a; }
+  .liked-play-btn:hover { background: var(--sp-green-bright); transform: scale(1.03); }
+  .liked-shuffle-btn { background: var(--sp-surface-3); color: var(--sp-text); }
+  .liked-shuffle-btn:hover { background: #3a3a3a; transform: scale(1.03); }
+  .liked-actions svg { width: 18px; height: 18px; }
+
+  /* 已点赞快捷磁贴 */
+  .quick-card.liked-tile .qc-cover {
+    background: linear-gradient(135deg, #4f24c9, #8a5bff 60%, #c08bff);
+    display: grid; place-items: center; color: #fff;
+  }
+  .quick-card.liked-tile .qc-cover svg { width: 24px; height: 24px; }
+  .tr-eq {
+    flex: 0 0 auto;
+    display: none;
+    align-items: flex-end;
+    gap: 2px;
+    height: 14px;
+  }
+  .track-row.is-playing .tr-eq { display: flex; }
+  .track-row.is-playing .tr-more { display: none; }
+  .tr-eq span {
+    width: 3px; background: var(--sp-green-bright); border-radius: 2px;
+    animation: eq 0.9s ease-in-out infinite;
+  }
+  .tr-eq span:nth-child(2){ animation-delay: 0.2s; }
+  .tr-eq span:nth-child(3){ animation-delay: 0.4s; }
+  @keyframes eq {
+    0%,100% { height: 4px; } 50% { height: 14px; }
+  }
+
+  /* 封面渐变占位 */
+  .cover {
+    position: relative;
+    display: grid; place-items: center;
+    color: rgba(255,255,255,0.92);
+    font-weight: 800;
+    background-size: cover; background-position: center;
+  }
+  .cover span { font-size: 1.1em; text-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+  .cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+  /* ===== 迷你播放条 ===== */
+  .mini-player {
+    flex: 0 0 auto;
+    margin: 0 8px 6px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #3b1d4d, #2a2440);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .mini-player::after {
+    content: "";
+    position: absolute; left: 8px; right: 8px; bottom: 3px;
+    height: 2px; border-radius: 2px;
+    background: rgba(255,255,255,0.25);
+  }
+  .mini-player .mp-prog {
+    position: absolute; left: 8px; bottom: 3px;
+    height: 2px; width: 38%; border-radius: 2px;
+    background: #fff; z-index: 1;
+  }
+  .mp-cover { width: 40px; height: 40px; border-radius: 4px; flex: 0 0 auto; }
+  .mp-meta { flex: 1 1 auto; min-width: 0; }
+  .mp-title { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mp-artist { font-size: 11px; color: var(--sp-text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mp-play {
+    width: 34px; height: 34px; flex: 0 0 auto;
+    border: 0; background: transparent; color: #fff; cursor: pointer;
+    display: grid; place-items: center;
+  }
+  .mp-play svg { width: 24px; height: 24px; }
+
+  /* ===== 全屏播放页 ===== */
+  .now-playing {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, var(--np-accent, #5d2a6e) 0%, #1a1320 52%, var(--sp-bg) 100%);
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1);
+    z-index: 10;
+  }
+  .now-playing.open { transform: translateY(0); }
+  .np-bar {
+    flex: 0 0 auto;
+    height: 30px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 20px 0; font-size: 12px; font-weight: 600;
+  }
+  .np-top {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 18px 4px;
+  }
+  .np-top .np-label { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: rgba(255,255,255,0.85); text-align: center; flex: 1; }
+  .np-top .np-sub { display: block; font-size: 12px; font-weight: 700; letter-spacing: 0; text-transform: none; }
+
+  .np-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4px 26px 22px;
+    gap: 18px;
+  }
+  .np-cover {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 10px;
+    box-shadow: 0 24px 50px rgba(0,0,0,0.5);
+    font-size: 64px;
+  }
+  .np-info { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .np-info-text { min-width: 0; }
+  .np-song { font-size: 22px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np-singer { font-size: 14px; color: var(--sp-text-dim); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np-like { border: 0; background: transparent; color: var(--sp-green-bright); cursor: pointer; padding: 4px; }
+  .np-like svg { width: 26px; height: 26px; }
+
+  /* 进度条 */
+  .np-progress { display: flex; flex-direction: column; gap: 6px; }
+  .np-track {
+    height: 4px; border-radius: 4px;
+    background: rgba(255,255,255,0.28);
+    position: relative; cursor: pointer;
+  }
+  .np-fill { position: absolute; inset: 0 auto 0 0; width: 32%; background: #fff; border-radius: 4px; }
+  .np-knob {
+    position: absolute; top: 50%; left: 32%;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: #fff; transform: translate(-50%, -50%);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+  .np-track:hover .np-fill { background: var(--sp-green-bright); }
+  .np-time { display: flex; justify-content: space-between; font-size: 11px; color: var(--sp-text-dim); font-variant-numeric: tabular-nums; }
+
+  /* 控制按钮 */
+  .np-controls { display: flex; align-items: center; justify-content: space-between; }
+  .np-ctrl {
+    border: 0; background: transparent; color: #fff; cursor: pointer;
+    display: grid; place-items: center;
+    transition: transform 0.15s ease, color 0.2s ease;
+  }
+  .np-ctrl:hover { transform: scale(1.08); }
+  .np-ctrl.secondary { color: var(--sp-text-dim); }
+  .np-ctrl.secondary.active { color: var(--sp-green-bright); }
+  .np-ctrl.secondary svg { width: 22px; height: 22px; }
+  .np-ctrl.step svg { width: 34px; height: 34px; }
+  .np-play {
+    width: 64px; height: 64px; border-radius: 50%;
+    background: #fff; color: #000;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+  }
+  .np-play svg { width: 30px; height: 30px; }
+  .np-play:hover { transform: scale(1.05); }
+
+  .np-foot {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 26px 14px;
+    color: var(--sp-text-dim);
+  }
+  .np-foot button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 4px; }
+  .np-foot svg { width: 20px; height: 20px; }
+
+  .home-indicator {
+    position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.6);
+    z-index: 20;
+  }
+
+  .hint {
+    position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%);
+    color: #8a8a96; font-size: 12px; letter-spacing: 0.5px;
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="phone-frame">
+    <div class="phone-bezel">
+      <div class="phone-notch"></div>
+      <div class="phone-screen">
+
+        <!-- 曲库视图 -->
+        <div class="library">
+          <div class="status-bar">
+            <span id="clock">22:40</span>
+            <span class="status-icons"><i class="ic-signal"></i><i class="ic-wifi"></i><i class="ic-batt"></i></span>
+          </div>
+
+          <div class="lib-head">
+            <div class="lib-title">音乐</div>
+            <div class="lib-head-actions">
+              <button class="icon-btn" aria-label="搜索">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="app-scroll">
+            <div class="quick-grid" id="quickGrid"></div>
+            <div class="lib-tabs" id="libTabs">
+              <button type="button" class="lib-tab active" data-filter="all">全部曲目</button>
+              <button type="button" class="lib-tab" data-filter="liked">已点赞 <span id="likedCount">0</span></button>
+            </div>
+            <div class="track-list" id="trackList"></div>
+          </div>
+
+          <!-- 迷你播放条 -->
+          <div class="mini-player" id="miniPlayer" hidden>
+            <div class="mp-prog"></div>
+            <div class="cover mp-cover" id="mpCover"></div>
+            <div class="mp-meta">
+              <div class="mp-title" id="mpTitle">—</div>
+              <div class="mp-artist" id="mpArtist">—</div>
+            </div>
+            <button class="mp-play" id="mpPlayBtn" aria-label="播放/暂停"></button>
+          </div>
+        </div>
+
+        <!-- 全屏播放页 -->
+        <div class="now-playing" id="nowPlaying">
+          <div class="np-bar">
+            <span id="clock2">22:40</span>
+            <span class="status-icons"><i class="ic-signal"></i><i class="ic-wifi"></i><i class="ic-batt"></i></span>
+          </div>
+          <div class="np-top">
+            <button class="np-ctrl secondary" id="npCloseBtn" aria-label="收起">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <span class="np-label">正在播放<span class="np-sub" id="npList">学园偶像大师精选</span></span>
+            <button class="np-ctrl secondary" aria-label="更多">
+              <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+            </button>
+          </div>
+
+          <div class="np-body">
+            <div class="cover np-cover" id="npCover"></div>
+            <div class="np-info">
+              <div class="np-info-text">
+                <div class="np-song" id="npSong">—</div>
+                <div class="np-singer" id="npSinger">—</div>
+              </div>
+              <button class="np-like" id="npLikeBtn" aria-label="收藏">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7.5-4.6-9.7-9A5 5 0 0 1 12 6.5 5 5 0 0 1 21.7 12C19.5 16.4 12 21 12 21Z"/></svg>
+              </button>
+            </div>
+
+            <div class="np-progress">
+              <div class="np-track" id="npTrack">
+                <div class="np-fill" id="npFill"></div>
+                <div class="np-knob" id="npKnob"></div>
+              </div>
+              <div class="np-time"><span id="npCur">0:00</span><span id="npDur">3:42</span></div>
+            </div>
+
+            <div class="np-controls">
+              <button class="np-ctrl secondary" id="npShuffle" aria-label="随机播放">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>
+              </button>
+              <button class="np-ctrl step" id="npPrev" aria-label="上一首">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5v14H4V5h2Zm14 0v14L9 12 20 5Z"/></svg>
+              </button>
+              <button class="np-ctrl np-play" id="npPlayBtn" aria-label="播放/暂停"></button>
+              <button class="np-ctrl step" id="npNext" aria-label="下一首">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 5v14h2V5h-2ZM4 5v14l11-7L4 5Z"/></svg>
+              </button>
+              <button class="np-ctrl secondary" id="npRepeat" aria-label="循环">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="np-foot">
+            <button aria-label="设备">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8"/></svg>
+            </button>
+            <button aria-label="播放列表">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h13M3 12h13M3 18h9M19 16v5M19 21l3-2-3-2"/></svg>
+            </button>
+          </div>
+          <div class="home-indicator"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+  <div class="hint" id="hint">点击歌曲开始播放</div>
+  <audio id="audio" preload="metadata"></audio>
+
+<script src="playlist-data.js"></script>
+<script>
+  // ===== 真实曲目（来自 playlist-data.js）=====
+  const PALETTE = [
+    ["#7b4dff", "#3a1d6e"], ["#ff7ab8", "#7a2f5e"], ["#2fd4c9", "#155e66"],
+    ["#ff5a3c", "#7a1f2e"], ["#5aa9ff", "#1f3a7a"], ["#ffc24d", "#7a4f15"],
+    ["#ff4f9a", "#3a1d6e"], ["#9d7bff", "#2a1f5e"], ["#4ade80", "#155e3a"],
+  ];
+  // 音乐文件托管在 R2（桶内同名 PlayList 文件夹）。换桶只改这一行。
+  const MUSIC_CDN = "https://pub-cfdeb8f85de84d8193695eca002e7880.r2.dev";
+  const musicUrl = (key) => !key ? "" :
+    (/^https?:\/\//i.test(key) ? key : MUSIC_CDN + "/" + key.split("/").map(encodeURIComponent).join("/"));
+  const tracks = (window.HATSU_TRACKS || []).map((t, i) => {
+    const pal = PALETTE[i % PALETTE.length];
+    return { ...t, c1: pal[0], c2: pal[1] };
+  });
+
+  let cur = -1, playing = false, shuffle = false, repeat = false;
+  let currentFilter = "all";
+  let queue = [];        // 当前播放上下文（tracks 下标数组）
+  let queuePos = -1;     // cur 在 queue 中的位置
+
+  const LIKED_KEY = "hatsu_liked_v1";
+  let likedSet = new Set();
+  try { likedSet = new Set(JSON.parse(localStorage.getItem(LIKED_KEY) || "[]")); } catch (e) {}
+  const trackKey = (t) => t.file;
+  const isLiked = (i) => likedSet.has(trackKey(tracks[i]));
+  function saveLiked() {
+    try { localStorage.setItem(LIKED_KEY, JSON.stringify([...likedSet])); } catch (e) {}
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const audio = $("audio");
+  const fmt = (s) => (Number.isFinite(s) ? `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,"0")}` : "0:00");
+  const coverCss = (t) => `background:linear-gradient(150deg, ${t.c1}, ${t.c2});`;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const initial = (t) => (t.title || "?").trim().charAt(0).toUpperCase();
+  const coverInner = (t) => t.cover
+    ? `<img src="${musicUrl(t.cover)}" alt="" loading="lazy" onerror="this.remove()"><span>${esc(initial(t))}</span>`
+    : `<span>${esc(initial(t))}</span>`;
+  const playSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  const pauseSvg = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
+  const heartPath = '<path d="M12 21s-7.5-4.6-9.7-9A5 5 0 0 1 12 6.5 5 5 0 0 1 21.7 12C19.5 16.4 12 21 12 21Z"/>';
+  const heartSvg = (filled) => `<svg viewBox="0 0 24 24" fill="${filled ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2">${heartPath}</svg>`;
+
+  function likedIndices() {
+    return tracks.map((_, i) => i).filter((i) => isLiked(i));
+  }
+  function viewIndices() {
+    return currentFilter === "liked" ? likedIndices() : tracks.map((_, i) => i);
+  }
+
+  function renderLibrary() {
+    if (!tracks.length) { $("hint").textContent = "未找到歌单：请先运行 node generate-playlist.cjs"; return; }
+    const likedCount = likedSet.size;
+    $("likedCount").textContent = likedCount;
+
+    // 快捷宫格：第一格固定为“已点赞的歌曲”，其余为前几首
+    const likedTile = `
+      <div class="quick-card liked-tile" data-tile="liked">
+        <div class="cover qc-cover">${heartSvg(true)}</div>
+        <div class="qc-name">已点赞的歌曲</div>
+      </div>`;
+    const songTiles = tracks.slice(0, 3).map((t, i) => `
+      <div class="quick-card" data-i="${i}">
+        <div class="cover qc-cover" style="${coverCss(t)}">${coverInner(t)}</div>
+        <div class="qc-name">${esc(t.title)}</div>
+      </div>`).join("");
+    $("quickGrid").innerHTML = likedTile + songTiles;
+
+    document.querySelectorAll(".lib-tab").forEach((b) => b.classList.toggle("active", b.dataset.filter === currentFilter));
+
+    const idxs = viewIndices();
+    if (!idxs.length) {
+      $("trackList").innerHTML = `<div class="lib-empty">还没有点赞的歌曲。<br>点击歌曲右侧的红心即可收藏。</div>`;
+    } else {
+      const actionsBar = currentFilter === "liked" ? `
+        <div class="liked-actions">
+          <button type="button" class="liked-play-btn" id="likedPlayBtn">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>播放
+          </button>
+          <button type="button" class="liked-shuffle-btn" id="likedShuffleBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg>随机播放
+          </button>
+        </div>` : "";
+      $("trackList").innerHTML = actionsBar + idxs.map((i) => {
+        const t = tracks[i];
+        return `
+        <div class="track-row${i === cur ? " is-playing" : ""}" data-i="${i}">
+          <div class="cover tr-cover" style="${coverCss(t)}">${coverInner(t)}</div>
+          <div class="tr-meta">
+            <div class="tr-title">${esc(t.title)}</div>
+            <div class="tr-artist">${esc(t.artist)}</div>
+          </div>
+          <div class="tr-eq"><span></span><span></span><span></span></div>
+          <button type="button" class="tr-like${isLiked(i) ? " liked" : ""}" data-like-i="${i}" aria-label="点赞">${heartSvg(isLiked(i))}</button>
+        </div>`;
+      }).join("");
+    }
+
+    document.querySelectorAll(".track-row").forEach((el) => {
+      el.addEventListener("click", () => { selectTrack(+el.dataset.i); openNowPlaying(); });
+    });
+    document.querySelectorAll(".quick-card[data-i]").forEach((el) => {
+      el.addEventListener("click", () => { selectTrack(+el.dataset.i); openNowPlaying(); });
+    });
+    document.querySelectorAll(".tr-like").forEach((el) => {
+      el.addEventListener("click", (e) => { e.stopPropagation(); toggleLike(+el.dataset.likeI); });
+    });
+    const likedTileEl = document.querySelector('.quick-card[data-tile="liked"]');
+    if (likedTileEl) likedTileEl.addEventListener("click", () => setFilter("liked"));
+    const lp = $("likedPlayBtn"); if (lp) lp.addEventListener("click", () => playLiked(false));
+    const ls = $("likedShuffleBtn"); if (ls) ls.addEventListener("click", () => playLiked(true));
+  }
+
+  function playLiked(shuffleMode) {
+    const idxs = likedIndices();
+    if (!idxs.length) return;
+    shuffle = shuffleMode;
+    $("npShuffle").classList.toggle("active", shuffle);
+    queue = idxs.slice();
+    queuePos = shuffleMode ? Math.floor(Math.random() * queue.length) : 0;
+    selectTrack(queue[queuePos], queue);
+    openNowPlaying();
+  }
+
+  function setFilter(f) {
+    currentFilter = f;
+    const scroller = document.querySelector(".app-scroll");
+    const top = scroller ? scroller.scrollTop : 0;
+    renderLibrary();
+    if (scroller) scroller.scrollTop = top;
+  }
+
+  function toggleLike(i) {
+    const key = trackKey(tracks[i]);
+    if (likedSet.has(key)) likedSet.delete(key); else likedSet.add(key);
+    saveLiked();
+    const scroller = document.querySelector(".app-scroll");
+    const top = scroller ? scroller.scrollTop : 0;
+    renderLibrary();
+    if (scroller) scroller.scrollTop = top;
+    if (cur === i) updateNpLike();
+  }
+
+  function updateNpLike() {
+    const on = cur >= 0 && isLiked(cur);
+    $("npLikeBtn").innerHTML = heartSvg(on);
+  }
+
+  function selectTrack(i, context) {
+    cur = i;
+    queue = (context && context.length) ? context.slice() : viewIndices();
+    if (!queue.includes(i)) queue = tracks.map((_, k) => k);
+    queuePos = queue.indexOf(i);
+    const t = tracks[cur];
+    audio.src = musicUrl(t.file);
+    audio.play().catch(() => {});
+    syncTrackUi();
+  }
+
+  function syncTrackUi() {
+    const t = tracks[cur];
+    $("miniPlayer").hidden = false;
+    $("mpCover").style.cssText = coverCss(t); $("mpCover").innerHTML = coverInner(t);
+    $("mpTitle").textContent = t.title; $("mpArtist").textContent = t.artist;
+    $("npCover").style.cssText = coverCss(t); $("npCover").innerHTML = coverInner(t);
+    $("npSong").textContent = t.title; $("npSinger").textContent = t.artist;
+    $("nowPlaying").style.setProperty("--np-accent", t.c2);
+    document.querySelectorAll(".track-row").forEach((r) => r.classList.toggle("is-playing", +r.dataset.i === cur));
+    updateNpLike();
+    syncPlayBtns(); updateProgress();
+  }
+
+  function syncPlayBtns() {
+    const svg = playing ? pauseSvg : playSvg;
+    $("npPlayBtn").innerHTML = svg; $("mpPlayBtn").innerHTML = svg;
+  }
+
+  function updateProgress() {
+    const dur = audio.duration || 0;
+    const pos = audio.currentTime || 0;
+    const pct = dur ? Math.min(100, (pos / dur) * 100) : 0;
+    $("npFill").style.width = pct + "%";
+    $("npKnob").style.left = pct + "%";
+    $("npCur").textContent = fmt(pos);
+    $("npDur").textContent = fmt(dur);
+    document.querySelector(".mp-prog").style.width = pct + "%";
+  }
+
+  function togglePlay() {
+    if (cur < 0) { selectTrack(0); return; }
+    if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+  }
+  function ensureQueue() {
+    if (!queue.length) { queue = viewIndices(); if (!queue.length) queue = tracks.map((_, k) => k); }
+    if (queuePos < 0) queuePos = Math.max(0, queue.indexOf(cur));
+  }
+  function nextTrack() {
+    if (!tracks.length) return;
+    ensureQueue();
+    let pos;
+    if (shuffle) {
+      if (queue.length <= 1) pos = queuePos;
+      else { do { pos = Math.floor(Math.random() * queue.length); } while (pos === queuePos); }
+    } else {
+      pos = (queuePos + 1) % queue.length;
+    }
+    queuePos = pos;
+    selectTrack(queue[pos], queue);
+  }
+  function prevTrack() {
+    if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+    ensureQueue();
+    const pos = (queuePos - 1 + queue.length) % queue.length;
+    queuePos = pos;
+    selectTrack(queue[pos], queue);
+  }
+
+  function openNowPlaying() { $("nowPlaying").classList.add("open"); }
+  function closeNowPlaying() { $("nowPlaying").classList.remove("open"); }
+
+  // 音频事件
+  audio.addEventListener("play", () => { playing = true; syncPlayBtns(); });
+  audio.addEventListener("pause", () => { playing = false; syncPlayBtns(); });
+  audio.addEventListener("timeupdate", updateProgress);
+  audio.addEventListener("loadedmetadata", updateProgress);
+  audio.addEventListener("ended", () => { if (repeat) { audio.currentTime = 0; audio.play().catch(() => {}); } else nextTrack(); });
+  audio.addEventListener("error", () => { $("hint").textContent = "无法播放：" + (tracks[cur] ? tracks[cur].file : ""); });
+
+  // 控件事件
+  $("mpPlayBtn").addEventListener("click", (e) => { e.stopPropagation(); togglePlay(); });
+  $("miniPlayer").addEventListener("click", openNowPlaying);
+  $("npPlayBtn").addEventListener("click", togglePlay);
+  $("npNext").addEventListener("click", nextTrack);
+  $("npPrev").addEventListener("click", prevTrack);
+  $("npCloseBtn").addEventListener("click", closeNowPlaying);
+  $("npLikeBtn").addEventListener("click", () => { if (cur >= 0) toggleLike(cur); });
+  document.querySelectorAll(".lib-tab").forEach((b) => {
+    b.addEventListener("click", () => setFilter(b.dataset.filter));
+  });
+  $("npShuffle").addEventListener("click", () => { shuffle = !shuffle; $("npShuffle").classList.toggle("active", shuffle); });
+  $("npRepeat").addEventListener("click", () => { repeat = !repeat; $("npRepeat").classList.toggle("active", repeat); });
+  $("npTrack").addEventListener("click", (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const dur = audio.duration || 0;
+    if (dur) audio.currentTime = ((e.clientX - r.left) / r.width) * dur;
+  });
+
+  function tick() {
+    const d = new Date();
+    const s = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+    $("clock").textContent = s; $("clock2").textContent = s;
+  }
+  setInterval(tick, 1000); tick();
+
+  renderLibrary();
+  $("npPlayBtn").innerHTML = playSvg;
+  $("mpPlayBtn").innerHTML = playSvg;
+</script>
+</body>
+</html>

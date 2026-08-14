@@ -1,0 +1,19 @@
+# 本地视频缓存目录；First Live 播放走 app.js 里的 VIDEO_CDN 远程链接。
+# 可把 mp4 放在此处作本地备份或离线调试，但不要提交到 git。
+assets/videos/*
+!assets/videos/.gitkeep
+assets/videosss/*
+!assets/videosss/.gitkeep
+
+# 音乐播放器歌曲与封面：版权 + 体积原因不入库，使用者自行放入并运行 generate-playlist.cjs。
+assets/PlayList/*
+!assets/PlayList/.gitkeep
+
+# Isolated feature worktrees.
+.worktrees/
+
+# Local analysis, repository references, and image-generation source material.
+.analysis-archive/
+.reference-Hatsuboshi_test2/
+.superpowers/brainstorm/
+HCG/

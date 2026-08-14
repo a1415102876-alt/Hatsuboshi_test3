@@ -1,0 +1,26 @@
+# Wrangler 上传静态资源时忽略（gitignore 语法）
+# 构建机 clone 后带 .git，整包约 147MB，会触发 Workers 单文件 25MB 限制
+
+.git
+**/.git/**
+
+.cursor
+**/.cursor/**
+
+node_modules
+**/node_modules/**
+
+# 本地开发 / 转换脚本，不必上线
+convert-ncm.cjs
+extract-embedded-covers.cjs
+generate-playlist.cjs
+music-player-prototype.html
+playlist-data.js
+worker.js
+wrangler.toml
+_headers
+
+# 测试与文档（可选，减小上传体积）
+tests
+docs
+design-system

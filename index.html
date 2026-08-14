@@ -1,0 +1,2196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>初星育成</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <svg class="icon-sprite" aria-hidden="true">
+    <symbol id="icon-star" viewBox="0 0 24 24"><path d="m12 2 2.9 6 6.6.9-4.8 4.7 1.1 6.5-5.8-3.1-5.8 3.1 1.1-6.5-4.8-4.7 6.6-.9L12 2Z"/></symbol>
+    <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M12 21s-8-4.8-8-11a4.7 4.7 0 0 1 8-3.3A4.7 4.7 0 0 1 20 10c0 6.2-8 11-8 11Z"/></symbol>
+    <symbol id="icon-point" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 8h5.1a3.1 3.1 0 0 1 0 6.2H9V8Z"/><path d="M9 14v4"/></symbol>
+    <symbol id="icon-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 10v7"/><path d="M12 7h.01"/></symbol>
+    <symbol id="icon-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5Z"/></symbol>
+    <symbol id="icon-mic" viewBox="0 0 24 24"><path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4Z"/><path d="M19 10a7 7 0 0 1-14 0"/><path d="M12 17v5"/><path d="M8 22h8"/></symbol>
+    <symbol id="icon-dance" viewBox="0 0 24 24"><path d="M13 4a2 2 0 1 0-2.9 1.8"/><path d="m7 22 3-8 3 2 4 6"/><path d="m10 14 2-5 3 3 4-2"/><path d="M5 10l5-1"/></symbol>
+    <symbol id="icon-visual" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="icon-rest" viewBox="0 0 24 24"><path d="M4 11V7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v4"/><path d="M4 11h16v7H4z"/><path d="M4 18v2"/><path d="M20 18v2"/></symbol>
+    <symbol id="icon-chat" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z"/></symbol>
+    <symbol id="icon-map" viewBox="0 0 24 24"><path d="m9 18-6 3V6l6-3 6 3 6-3v15l-6 3-6-3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><rect x="2" y="2" width="13" height="13" rx="2"/></symbol>
+    <symbol id="icon-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/></symbol>
+    <symbol id="icon-bag" viewBox="0 0 24 24"><path d="M6 7h12l1 14H5L6 7Z"/><path d="M9 7a3 3 0 0 1 6 0"/></symbol>
+    <symbol id="icon-menu" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></symbol>
+    <symbol id="icon-settings" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 1 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 1 1 7.1 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 1 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 1 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z"/></symbol>
+    <symbol id="icon-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l3 3"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="icon-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></symbol>
+    <symbol id="icon-bell" viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></symbol>
+    <symbol id="icon-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+    <symbol id="icon-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="icon-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="icon-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></symbol>
+    <symbol id="icon-skip-prev" viewBox="0 0 24 24"><path d="M6 5v14H4V5h2Zm14 0v14L9 12 20 5Z"/></symbol>
+    <symbol id="icon-skip-next" viewBox="0 0 24 24"><path d="M18 5v14h2V5h-2ZM4 5v14l11-7L4 5Z"/></symbol>
+    <symbol id="icon-shuffle" viewBox="0 0 24 24"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></symbol>
+    <symbol id="icon-repeat" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+    <symbol id="icon-dots" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></symbol>
+    <symbol id="icon-repost" viewBox="0 0 24 24"><path d="M4 6h10l-2-2M20 18H10l2 2M4 6l3 3M4 6v3M20 18l-3-3M20 18v-3"/></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.3"/><path d="M21 3v6h-6"/></symbol>
+    <symbol id="icon-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></symbol>
+  </svg>
+
+  <div id="toastStack" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- ── Splash Screen ── -->
+  <div class="splash-screen" id="splashScreen" aria-label="启动画面">
+    <div class="splash-bg"></div>
+    <div class="splash-petals">
+      <span class="petal" style="--i:0"></span>
+      <span class="petal" style="--i:1"></span>
+      <span class="petal" style="--i:2"></span>
+      <span class="petal" style="--i:3"></span>
+      <span class="petal" style="--i:4"></span>
+      <span class="petal" style="--i:5"></span>
+      <span class="petal" style="--i:6"></span>
+      <span class="petal" style="--i:7"></span>
+      <span class="petal" style="--i:8"></span>
+      <span class="petal" style="--i:9"></span>
+      <span class="petal" style="--i:10"></span>
+    </div>
+    <img class="splash-logo" src="./assets/select-bg/logo_color_w.png" alt="学園アイドルマスター" draggable="false">
+    <div class="splash-shimmer"></div>
+  </div>
+
+  <main class="produce-app">
+    <section class="launch-screen" id="launchStage" aria-label="选择游戏模式">
+      <div class="launch-visual">
+        <p class="ui-kicker">Hatsuboshi Gakuen</p>
+        <h1 id="launchTitle">初星学园</h1>
+        <p id="launchDesc">请选择本次游玩模式。育成模式走经典 22 天日程；沙盒模式从学园大地图开始自由行动；NSFW 模式用于姿势与场景 CG 测试。</p>
+      </div>
+      <div class="launch-mode-list" role="list">
+        <p id="launchResumeNote" class="launch-resume-note" hidden>返回主菜单不会删除当前存档，可随时从此处继续。</p>
+        <button id="launchResumeBtn" class="launch-mode-card is-resume" type="button" role="listitem" hidden>
+          <span class="launch-mode-kicker">Resume</span>
+          <strong>继续游戏</strong>
+          <span class="launch-mode-desc">回到离开前的进度。</span>
+        </button>
+        <button id="launchRestoreBackupBtn" class="launch-mode-card is-backup" type="button" role="listitem" hidden>
+          <span class="launch-mode-kicker">Backup</span>
+          <strong>恢复备份存档</strong>
+          <span class="launch-mode-desc">找回更换担当或开始新游戏前自动备份的进度。</span>
+        </button>
+        <button id="launchProduceBtn" class="launch-mode-card" type="button" role="listitem">
+          <span class="launch-mode-kicker">Produce</span>
+          <strong>育成模式</strong>
+          <span class="launch-mode-desc">22 天 First Live 经典育成。选择担当、签署合约、完成开场剧情后进入日程推进。</span>
+        </button>
+        <button id="launchSandboxBtn" class="launch-mode-card is-sandbox" type="button" role="listitem">
+          <span class="launch-mode-kicker">Sandbox</span>
+          <strong>沙盒模式</strong>
+          <span class="launch-mode-desc">亚纱里老师开学指引后，物色担当并进入学园大地图。教学楼上课、体育馆训练，地图时间按小时推进。</span>
+        </button>
+        <button id="launchNsfwTestBtn" class="launch-mode-card is-nsfw-test" type="button" role="listitem">
+          <span class="launch-mode-kicker">NSFW Lab</span>
+          <strong>NSFW 模式</strong>
+          <span class="launch-mode-desc">选择角色、姿势与场景，直接预览 HCG；也可复用公寓邀约流程发起多轮测试。</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="select-screen is-hidden" id="selectionStage" aria-labelledby="selectTitle">
+      <div class="select-visual">
+        <div class="select-visual-bg" id="selectVisualBg"></div>
+        <p class="ui-kicker" id="selectKicker">Hatsuboshi Produce</p>
+        <h1 id="selectTitle">选择担当偶像</h1>
+        <p id="selectDesc">22 天 First Live 育成。羁绊事件独立成剧情日，LLM 负责把前端结果写成角色叙事。</p>
+        <div id="scenarioPreview" class="scenario-preview" hidden>
+          <img id="scenarioPreviewLogo" class="scenario-preview-logo" src="" alt="" draggable="false">
+          <p id="scenarioSlogan" class="scenario-slogan"></p>
+        </div>
+        <div class="select-rules" aria-label="育成规则" id="selectRules">
+          <span>3 次普通行动</span>
+          <span>1 次额外行动</span>
+          <span>1 次总结轮次</span>
+          <span>随机互动事件</span>
+        </div>
+        <div id="selectBootActions" class="select-boot-actions">
+          <button id="selectLaunchBackBtn" class="select-launch-back-btn" type="button">返回模式选择</button>
+        </div>
+        <div id="selectConfirmContainer" class="select-confirm-container" style="display: none;">
+          <button id="confirmIdolBtn" class="confirm-idol-btn" type="button">
+            <span>开始育成</span>
+            <svg class="btn-arrow" viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div id="scenarioConfirmContainer" class="select-confirm-container scenario-confirm-container" style="display: none;">
+          <button id="confirmScenarioBtn" class="confirm-idol-btn scenario-confirm-btn" type="button">
+            <span>进入「初」剧本</span>
+            <svg class="btn-arrow" viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+      <section class="select-panel" id="selectPanel" aria-label="担当偶像列表">
+        <div class="panel-head">
+          <div>
+            <p class="ui-kicker">Producer Setup</p>
+            <h2>担当偶像</h2>
+          </div>
+          <svg><use href="#icon-star"></use></svg>
+        </div>
+        <div id="idolList" class="idol-list"></div>
+      </section>
+
+      <section class="select-panel is-hidden scenario-panel" id="scenarioPanel" aria-label="育成剧本列表">
+        <div class="panel-head">
+          <div>
+            <p class="ui-kicker">Produce Scenario</p>
+            <h2>选择剧本</h2>
+            <p id="scenarioIdolLabel" class="scenario-idol-label"></p>
+          </div>
+          <svg><use href="#icon-book"></use></svg>
+        </div>
+        <div class="scenario-list" role="list">
+          <button class="scenario-card" type="button" role="listitem" data-scenario="hatsu">
+            <span class="scenario-card-index">01</span>
+            <span><strong>初</strong><small>定期公演</small></span>
+            <svg class="scenario-card-arrow"><use href="#icon-chevron-right"></use></svg>
+          </button>
+          <button class="scenario-card" type="button" role="listitem" data-scenario="nia">
+            <span class="scenario-card-index">02</span>
+            <span><strong>N.I.A</strong><small>NEXT IDOL AUDITION</small></span>
+            <svg class="scenario-card-arrow"><use href="#icon-chevron-right"></use></svg>
+          </button>
+        </div>
+        <button id="scenarioBackBtn" class="scenario-back-btn" type="button">
+          <svg aria-hidden="true"><use href="#icon-chevron-left"></use></svg>
+          <span>返回担当选择</span>
+        </button>
+      </section>
+
+      <section class="select-panel is-hidden" id="producerPanel" aria-label="制作人信息设定">
+        <div class="panel-head">
+          <div>
+            <p class="ui-kicker">Producer Setup</p>
+            <h2 id="producerSetupTitle">制作人档案</h2>
+          </div>
+          <svg><use href="#icon-settings"></use></svg>
+        </div>
+        <div class="producer-form">
+          <div class="form-group">
+            <label for="prodNameInput">制作人称呼 (SillyTavern {{user}} 代称)</label>
+            <div class="input-wrapper">
+              <input type="text" id="prodNameInput" placeholder="请输入代称，默认为 {{user}}" value="{{user}}">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="prodGenderInput">制作人性别 (Gender)</label>
+            <div class="input-wrapper">
+              <input type="text" id="prodGenderInput" placeholder="例如：男 / 女 / 非二元 / 由 AI 自行发挥" value="">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="prodPersonalityInput">性格特征 (Personality)</label>
+            <div class="textarea-wrapper">
+              <textarea id="prodPersonalityInput" placeholder="描述您的性格（例如：温柔耐心、总是为偶像着想，但有些不擅言辞...）"></textarea>
+            </div>
+            <div class="quick-tags" id="prodPersonalityTags">
+              <button type="button" class="quick-tag-btn" data-val="温柔耐心">温柔耐心</button>
+              <button type="button" class="quick-tag-btn" data-val="热血严厉">热血严厉</button>
+              <button type="button" class="quick-tag-btn" data-val="冷静睿智">冷静睿智</button>
+              <button type="button" class="quick-tag-btn" data-val="幽默风趣">幽默风趣</button>
+              <button type="button" class="quick-tag-btn" data-val="傲娇少言">傲娇少言</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="prodStyleInput">说话风格 (Speaking Style)</label>
+            <div class="input-wrapper">
+              <input type="text" id="prodStyleInput" placeholder="例如：使用温和的敬语、常用鼓励性语气、简短直接" value="">
+            </div>
+            <div class="quick-tags" id="prodStyleTags">
+              <button type="button" class="quick-tag-btn" data-val="多用敬语，称呼对方为小姐">用敬语</button>
+              <button type="button" class="quick-tag-btn" data-val="常用温和的鼓励口吻">鼓励语气</button>
+              <button type="button" class="quick-tag-btn" data-val="严厉且就事论事">严肃认真</button>
+              <button type="button" class="quick-tag-btn" data-val="说话直接，甚至有些带刺">直截了当</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="prodSettingsInput">额外设定与剧情背景</label>
+            <div class="textarea-wrapper">
+              <textarea id="prodSettingsInput" placeholder="描述其他细节（例如：与偶像曾是青梅竹马 / 对学园历史很熟悉 / 有共同认识的人...）"></textarea>
+            </div>
+          </div>
+          <div class="producer-form-actions">
+            <button id="producerBackBtn" class="confirm-idol-btn secondary-action" type="button" style="background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(111, 102, 128, 0.2); color: var(--ink); margin-top: 10px;">
+              <span>返回选择</span>
+            </button>
+            <button id="producerStartBtn" class="confirm-idol-btn" type="button" style="margin-top: 10px;">
+              <span>签署合约</span>
+              <svg class="btn-arrow" viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="select-panel is-hidden" id="niaInheritancePanel" aria-label="N.I.A 前情继承设定">
+        <div class="panel-head">
+          <div>
+            <p class="ui-kicker">N.I.A Continuity</p>
+            <h2>N.I.A 前情继承</h2>
+          </div>
+          <svg><use href="#icon-heart"></use></svg>
+        </div>
+        <div class="producer-form nia-inheritance-form">
+          <div class="nia-inheritance-summary" aria-label="继承档案摘要">
+            <div><span>担当偶像</span><strong id="niaInheritanceIdol">花海咲季</strong></div>
+            <div><span>好感度阶段</span><strong id="niaInheritanceAffinity">100 / 100 · AFF_SAKI_100</strong></div>
+          </div>
+          <p class="nia-inheritance-lead">N.I.A 会接续《初》结束后的经历。以下内容均为选填；填写后会加入后续剧情提示词。</p>
+          <div class="form-group">
+            <label for="niaRelationshipInput">现在的关系（选填）</label>
+            <div class="textarea-wrapper">
+              <textarea id="niaRelationshipInput" maxlength="2000" placeholder="例如：已经能够彼此托付胜负、坦率谈论未来的制作人与担当偶像"></textarea>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="niaPromisesInput">重要约定（选填）</label>
+            <div class="textarea-wrapper">
+              <textarea id="niaPromisesInput" maxlength="2000" placeholder="填写双方在此前剧情中定下、希望 N.I.A 继续遵守的约定"></textarea>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="niaMemoriesInput">珍贵回忆（选填）</label>
+            <div class="textarea-wrapper">
+              <textarea id="niaMemoriesInput" maxlength="2000" placeholder="填写制作人与偶像共同珍视、后续可以自然提及的经历"></textarea>
+            </div>
+          </div>
+          <div class="producer-form-actions">
+            <button id="niaInheritanceBackBtn" class="confirm-idol-btn secondary-action" type="button">
+              <span>返回制作人档案</span>
+            </button>
+            <button id="niaInheritanceConfirmBtn" class="confirm-idol-btn" type="button">
+              <span>确认前情并签约</span>
+              <svg class="btn-arrow" viewBox="0 0 24 24" width="18" height="18"><path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="select-panel is-hidden" id="sandboxApiPanel" aria-label="沙盒次 API 设置">
+        <div class="panel-head">
+          <div>
+            <p class="ui-kicker">World Setup</p>
+            <h2>次 API 设置</h2>
+          </div>
+          <svg><use href="#icon-settings"></use></svg>
+        </div>
+        <div class="producer-form sandbox-api-form">
+          <label class="world-engine-toggle" for="sandboxApiEnabled">
+            <span><strong>启用次 API</strong><small>用于每日世界层、委托与 Director 推演</small></span>
+            <input id="sandboxApiEnabled" type="checkbox">
+          </label>
+          <label class="world-engine-field" for="sandboxApiBaseUrl"><span>接口地址</span><input id="sandboxApiBaseUrl" type="text" placeholder="https://api.openai.com/v1" spellcheck="false"></label>
+          <label class="world-engine-field" for="sandboxApiModel"><span>模型</span><input id="sandboxApiModel" type="text" placeholder="gpt-4o-mini" spellcheck="false"></label>
+          <label class="world-engine-field" for="sandboxApiKey"><span>API Key（仅存浏览器本地）</span><input id="sandboxApiKey" type="password" placeholder="sk-..." spellcheck="false" autocomplete="off"></label>
+          <p id="sandboxApiStatus" class="world-engine-settings-status">可测试连接，也可暂不填写。</p>
+          <div class="sandbox-api-actions">
+            <button id="sandboxApiTestBtn" type="button" class="confirm-idol-btn secondary-action">测试连接</button>
+            <button id="sandboxApiSkipBtn" type="button" class="confirm-idol-btn secondary-action">暂不填写</button>
+            <button id="sandboxApiContinueBtn" type="button" class="confirm-idol-btn">保存并继续</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="game-stage is-hidden" id="gameStage" aria-label="初星育成主界面">
+      <div class="scene-backdrop" aria-hidden="true">
+        <div class="window-grid"></div>
+        <div class="classroom-desk"></div>
+      </div>
+
+      <header class="top-hud" aria-label="育成状态">
+        <article class="hud-card day-card">
+          <button id="openScheduleBtn" class="info-dot" type="button" data-modal="schedule" aria-label="查看日程详情"><svg><use href="#icon-info"></use></svg></button>
+          <span>距 First Live</span>
+          <strong><b id="daysLeftValue">22</b>日</strong>
+        </article>
+
+        <section class="center-hud" aria-label="体力与信赖度">
+          <div class="stamina-pill">
+            <img class="stamina-art" src="./UI/stamina.png" alt="" draggable="false">
+            <div class="stamina-track" aria-hidden="true">
+              <div class="stamina-fill" id="staminaFill"></div>
+            </div>
+            <span class="stamina-value"><b id="staminaValue">35</b><small>/100</small></span>
+          </div>
+          <div class="point-pill trust-pill">
+            <svg><use href="#icon-heart"></use></svg>
+            <strong id="trustValue">0</strong>
+          </div>
+          <div class="point-pill stress-pill" aria-label="压力">
+            <span class="stress-pill-emoji" aria-hidden="true">💢</span>
+            <strong id="stressValue">0</strong>
+          </div>
+        </section>
+
+        <div class="nia-review-stack">
+        <article class="hud-card exam-card">
+          <button id="openWorldBtn" class="info-dot" type="button" data-modal="world" aria-label="查看世界书"><svg><use href="#icon-info"></use></svg></button>
+          <span>审查基准</span>
+          <div class="exam-thresholds">
+            <div class="threshold-item vo"><span class="threshold-icon-crop"><img class="threshold-icon" src="./UI/Vo_Mini.png" alt="Vocal"></span><span class="val" id="targetVo">1030</span></div>
+            <div class="threshold-item da"><span class="threshold-icon-crop"><img class="threshold-icon" src="./UI/Da_Mini.png" alt="Dance"></span><span class="val" id="targetDa">1510</span></div>
+            <div class="threshold-item vi"><span class="threshold-icon-crop"><img class="threshold-icon" src="./UI/Vi_mini.png" alt="Visual"></span><span class="val" id="targetVi">1580</span></div>
+            <div class="threshold-item fans nia-only" hidden><img class="threshold-icon" src="./UI/nia-fan-mini.png" alt="粉丝数"><span class="val" id="targetFans">3000</span></div>
+          </div>
+        </article>
+        <div class="nia-fan-progress nia-only" hidden>
+          <img class="nia-fan-badge" src="./UI/nia-fan-badge.png" alt="粉丝">
+          <div class="nia-fan-meter">
+            <div class="nia-fan-track" id="niaFanTrack" role="progressbar" aria-label="粉丝进度" aria-valuemin="0" aria-valuemax="3000" aria-valuenow="0">
+              <div class="nia-fan-fill" id="niaFanFill"></div>
+            </div>
+            <strong class="nia-fan-value" id="niaFanValue">0</strong>
+          </div>
+          <div class="nia-fan-rank" id="niaFanRank" aria-label="粉丝评级 B"></div>
+        </div>
+        </div>
+      </header>
+
+      <aside class="side-items" aria-label="育成道具">
+        <button id="sideItemStory" class="side-token" type="button" aria-label="好感剧情"><svg><use href="#icon-heart"></use></svg><span id="affinityPendingBadge">0</span></button>
+        <button id="sideItemEvent" class="side-token" type="button" data-modal="event" aria-label="随机事件池"><svg><use href="#icon-star"></use></svg><span>2</span></button>
+        <button id="sideItemLastEvent" class="side-token" type="button" aria-label="最近事件"><svg><use href="#icon-chat"></use></svg></button>
+        <button id="sideItemSystem" class="side-token" type="button" data-modal="system" aria-label="系统控制台"><svg><use href="#icon-settings"></use></svg></button>
+        <button id="sideItemPrompt" class="side-token" type="button" data-panel="prompt" aria-label="提示词工作台"><svg><use href="#icon-copy"></use></svg></button>
+        <button id="sideItemLog" class="side-token" type="button" data-panel="log" aria-label="育成日志"><svg><use href="#icon-file"></use></svg></button>
+      </aside>
+
+      <section class="idol-stage" aria-label="担当偶像">
+        <div class="idol-card-name">
+          <p id="currentIdolLabel">请选择担当偶像</p>
+          <h2 id="idolName">藤田琴音</h2>
+          <span id="phaseBadge">First Live 前期</span>
+        </div>
+        <div class="idol-standee" id="idolStandee" aria-hidden="true">
+          <div class="hair"></div>
+          <div class="face"></div>
+          <div class="body"></div>
+          <div class="skirt"></div>
+        </div>
+      </section>
+
+      <section class="score-band" aria-label="能力值">
+        <button id="phoneLaunchBtn" class="phone-launch-btn" type="button" aria-label="打开小手机">
+          <span class="phone-launch-icon"><svg aria-hidden="true"><use href="#icon-phone"></use></svg><span id="phoneUnreadBadge" class="phone-unread-badge" hidden></span></span>
+          <span class="phone-launch-label">手机</span>
+        </button>
+        <div id="statMeters" class="stat-meters"></div>
+        <button id="notebookButton" class="notebook-button" type="button" data-panel="prompt" aria-label="打开 P 手账">
+          <svg><use href="#icon-book"></use></svg>
+          <span>P手帳</span>
+        </button>
+      </section>
+
+      <section class="action-zone" id="actionZone" aria-label="行动选择">
+        <p id="actionModeLabel">请选择行动</p>
+        <div id="actionButtons" class="action-buttons"></div>
+      </section>
+
+      <nav class="bottom-dock" aria-label="底部菜单">
+        <button id="dockChangeIdol" class="dock-button muted" type="button" aria-label="更换担当"><svg><use href="#icon-star"></use></svg></button>
+        <button id="dockResetRun" class="dock-button muted" type="button" aria-label="重置育成"><svg><use href="#icon-rest"></use></svg></button>
+        <button id="dockCopyPrompt" class="dock-button primary" type="button" aria-label="复制提示词"><svg><use href="#icon-copy"></use></svg></button>
+        <button id="dockOpenLog" class="dock-button primary" type="button" data-panel="log" aria-label="育成日志"><svg><use href="#icon-file"></use></svg></button>
+        <button id="dockOpenSystem" class="dock-button primary" type="button" data-modal="system" aria-label="系统菜单"><svg><use href="#icon-menu"></use></svg></button>
+      </nav>
+    </section>
+
+    <section class="free-mode-stage is-hidden" id="freeModeStage" aria-label="学园大地图">
+      <div class="world-map-frame">
+        <div class="world-map-canvas">
+          <img id="worldMapImage" class="world-map-bg" src="./assets/MAP/Gakuen.png" alt="初星学园大地图" draggable="false">
+          <div id="worldMapHotspots" class="world-map-hotspots" aria-label="地图地点"></div>
+          <div id="worldMapIdolMarkers" class="world-map-idol-markers" aria-label="偶像位置"></div>
+        </div>
+        <header class="free-mode-head">
+          <div class="free-mode-head-copy">
+            <p class="ui-kicker">Free Explore</p>
+            <h2>初星学园</h2>
+          </div>
+          <button id="freeModeStatusBadge" class="free-mode-status-badge" type="button" aria-label="当前日期与时间">Live后1天 · 08:00</button>
+          <button id="hybridCampusExitBtn" class="free-mode-exit-btn" type="button" hidden>返回经典育成</button>
+        </header>
+        <p id="freeModeLocationBadge" class="free-mode-location-badge">点击地图上的地点开始探索</p>
+        <button id="freeModeAffinityBtn" class="free-mode-affinity-btn" type="button" hidden aria-label="查看担当好感度">
+          <svg aria-hidden="true"><use href="#icon-heart"></use></svg>
+          <span>担当</span>
+        </button>
+        <button id="freeModeTaskPanelBtn" class="free-mode-task-panel-btn" type="button" hidden>
+          <span>课题</span>
+        </button>
+        <button id="freeModeSideQuestBtn" class="free-mode-side-quest-btn" type="button" hidden>
+          <span>委托</span>
+          <span id="freeModeSideQuestBadge" class="free-mode-side-quest-badge"></span>
+        </button>
+        <button id="freeModeEventBtn" class="free-mode-event-btn" type="button" hidden aria-label="打开外部事件收件箱">
+          <svg aria-hidden="true"><use href="#icon-bell"></use></svg>
+          <span>事件</span>
+          <span id="freeModeEventBadge" class="free-mode-event-badge" hidden></span>
+        </button>
+        <button id="freeModeBagBtn" class="free-mode-bag-btn" type="button" hidden aria-label="打开礼物背包">
+          <span>背包</span>
+          <span id="freeModeBagBadge" class="free-mode-bag-badge"></span>
+        </button>
+        <button id="freeModeApartmentBtn" class="free-mode-apartment-btn" type="button" aria-label="回到制作人公寓">
+          <svg aria-hidden="true"><use href="#icon-home"></use></svg>
+          <span>公寓</span>
+        </button>
+        <button id="niaInterRoundOutingEndBtn" class="free-mode-apartment-btn" type="button" hidden aria-label="结束今天的外出">
+          <svg aria-hidden="true"><use href="#icon-home"></use></svg>
+          <span>结束外出</span>
+        </button>
+        <button id="freeModePhoneBtn" class="free-mode-phone-btn" type="button" aria-label="打开小手机">
+          <svg aria-hidden="true"><use href="#icon-phone"></use></svg>
+          <span>手机</span>
+        </button>
+        <button id="worldMapLayoutEditBtn" class="world-map-layout-edit-toggle" type="button">编辑布局</button>
+        <aside id="worldMapLayoutEditor" class="world-map-layout-editor is-hidden" aria-label="地图布局编辑">
+          <div class="world-map-layout-editor-head">
+            <strong>地图布局编辑</strong>
+            <span id="worldMapLayoutEditorStatus">拖动热点调整位置</span>
+          </div>
+          <p id="worldMapLayoutEditorCoord" class="world-map-layout-editor-coord">当前：--</p>
+          <div class="world-map-layout-editor-actions">
+            <button id="worldMapLayoutSaveBtn" class="world-map-layout-action" type="button">保存到浏览器</button>
+            <button id="worldMapLayoutExportBtn" class="world-map-layout-action primary" type="button">导出 JSON</button>
+            <button id="worldMapLayoutFitBtn" class="world-map-layout-action" type="button">地图：cover</button>
+            <button id="worldMapLayoutResetBtn" class="world-map-layout-action" type="button">恢复默认</button>
+            <button id="worldMapLayoutCloseEditorBtn" class="world-map-layout-action" type="button">完成编辑</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="producer-apartment-stage is-hidden" id="producerApartmentStage" aria-label="制作人公寓">
+      <div class="producer-apartment-bg" id="producerApartmentBg" aria-hidden="true"></div>
+      <header class="producer-apartment-head">
+        <div class="producer-apartment-head-copy">
+          <p class="ui-kicker">Producer Apartment</p>
+          <h2>制作人公寓</h2>
+        </div>
+        <button id="producerApartmentClock" class="free-mode-status-badge" type="button" aria-label="当前日期与时间">学园第 1 天 · 22:00</button>
+      </header>
+      <p id="producerApartmentHint" class="producer-apartment-hint">今日学园活动已结束，可以整理今天的事，准备休息。</p>
+      <button id="producerApartmentCampusBtn" class="producer-apartment-campus-btn" type="button" hidden aria-label="返回学园大地图">
+        <svg aria-hidden="true"><use href="#icon-map"></use></svg>
+        <span>学园</span>
+      </button>
+      <button id="apartmentCompanionStandeeBtn" class="apartment-companion-standee" type="button" hidden aria-label="与同行偶像互动">
+        <img id="apartmentCompanionStandeeImg" src="" alt="" draggable="false">
+        <span id="apartmentCompanionStandeeLabel" class="apartment-companion-standee-label"></span>
+      </button>
+      <div class="producer-apartment-hotspots" aria-label="夜间行动">
+        <button id="apartmentDoorbellBtn" class="apartment-hotspot is-accent is-doorbell" type="button" hidden title="门外有人来访。">
+          <span class="apartment-hotspot-kicker">Doorbell</span>
+          <strong>查看来访</strong>
+        </button>
+        <button id="apartmentSleepBtn" class="apartment-hotspot is-primary is-bed" type="button" title="结束今天，从 08:00 开始新的学园日程。">
+          <span class="apartment-hotspot-kicker">Rest</span>
+          <strong>上床睡觉</strong>
+        </button>
+        <button id="apartmentInviteBtn" class="apartment-hotspot is-accent is-door" type="button" title="好感度满额的担当或其他偶像可来公寓发生剧情。">
+          <span class="apartment-hotspot-kicker">Invite</span>
+          <strong>邀约</strong>
+        </button>
+        <button id="apartmentDaySummaryBtn" class="apartment-hotspot is-desk" type="button" title="查看关系变化、完成任务与今日行程。">
+          <span class="apartment-hotspot-kicker">Summary</span>
+          <strong>今日总结</strong>
+        </button>
+        <button id="apartmentPhoneBtn" class="apartment-hotspot is-desk" type="button" title="查看消息、广播与 SNS 动态。">
+          <span class="apartment-hotspot-kicker">Phone</span>
+          <strong>打开手机</strong>
+        </button>
+        <button id="apartmentWardrobeBtn" class="apartment-hotspot is-wardrobe" type="button" title="管理制作人与担当偶像的立绘。">
+          <span class="apartment-hotspot-kicker">衣柜</span>
+          <strong>立绘衣柜</strong>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <section id="portraitWardrobeOverlay" class="portrait-wardrobe-overlay" hidden aria-label="立绘衣柜">
+    <div class="portrait-wardrobe-shell" role="dialog" aria-modal="true" aria-labelledby="portraitWardrobeTitle">
+      <header class="portrait-wardrobe-head">
+        <div>
+          <p class="ui-kicker">立绘 / 换装</p>
+          <h2 id="portraitWardrobeTitle">立绘衣柜</h2>
+        </div>
+        <button id="portraitWardrobeCloseBtn" class="icon-button" type="button" aria-label="关闭"><svg><use href="#icon-close"></use></svg></button>
+      </header>
+      <div class="portrait-wardrobe-workspace">
+        <nav id="portraitWardrobeCharacters" class="portrait-wardrobe-characters" aria-label="角色"></nav>
+        <section id="portraitWardrobeStage" class="portrait-wardrobe-stage" aria-label="立绘预览">
+          <span class="portrait-wardrobe-stage-mark">试衣预览</span>
+          <img id="portraitWardrobePreview" class="portrait-wardrobe-preview" src="" alt="立绘预览" draggable="false">
+          <div class="portrait-wardrobe-stage-caption">
+            <strong id="portraitWardrobeCharacterName">制作人</strong>
+            <span id="portraitWardrobeLookName">默认立绘</span>
+          </div>
+        </section>
+        <aside class="portrait-wardrobe-controls">
+          <div class="portrait-wardrobe-section-head">
+            <span>立绘库</span>
+            <button id="portraitWardrobeResetBtn" class="portrait-wardrobe-text-btn" type="button">重置位置</button>
+          </div>
+          <div id="portraitWardrobeAssets" class="portrait-wardrobe-assets" aria-label="已上传立绘"></div>
+          <label class="portrait-wardrobe-upload" for="portraitWardrobeFileInput">
+            <svg aria-hidden="true"><use href="#icon-plus"></use></svg>
+            <span>选择 PNG / WebP / JPEG</span>
+          </label>
+          <input id="portraitWardrobeFileInput" type="file" accept="image/png,image/webp,image/jpeg" hidden>
+          <label class="portrait-wardrobe-field" for="portraitWardrobeNameInput">
+            <span>立绘名称</span>
+            <input id="portraitWardrobeNameInput" type="text" maxlength="120" placeholder="输入立绘名称">
+          </label>
+          <section id="portraitWardrobeAliasEditor" class="portrait-wardrobe-alias-editor" hidden aria-label="制作人触发名称">
+            <div class="portrait-wardrobe-section-head">
+              <span>触发名称</span>
+              <button id="portraitWardrobeAliasSaveBtn" class="portrait-wardrobe-text-btn" type="button">保存名称</button>
+            </div>
+            <div id="portraitWardrobeAliasTags" class="portrait-wardrobe-alias-tags"></div>
+            <div class="portrait-wardrobe-alias-entry">
+              <input id="portraitWardrobeAliasInput" type="text" maxlength="40" aria-label="触发名称" placeholder="输入正文中的发言者名称">
+              <button id="portraitWardrobeAliasAddBtn" type="button">添加</button>
+            </div>
+          </section>
+          <div class="portrait-wardrobe-sliders">
+            <label for="portraitWardrobeScale"><span>缩放</span><output id="portraitWardrobeScaleValue">100%</output></label>
+            <input id="portraitWardrobeScale" type="range" min="50" max="200" value="100">
+            <label for="portraitWardrobeOffsetX"><span>水平位置</span><output id="portraitWardrobeOffsetXValue">0</output></label>
+            <input id="portraitWardrobeOffsetX" type="range" min="-100" max="100" value="0">
+            <label for="portraitWardrobeOffsetY"><span>垂直位置</span><output id="portraitWardrobeOffsetYValue">0</output></label>
+            <input id="portraitWardrobeOffsetY" type="range" min="-100" max="100" value="0">
+          </div>
+          <p id="portraitWardrobeStatus" class="portrait-wardrobe-status" aria-live="polite">正在读取立绘库...</p>
+          <div class="portrait-wardrobe-actions">
+            <button id="portraitWardrobeRestoreBtn" class="portrait-wardrobe-action" type="button">恢复默认</button>
+            <button id="portraitWardrobeArchiveBtn" class="portrait-wardrobe-action is-danger" type="button">归档</button>
+            <button id="portraitWardrobeApplyBtn" class="portrait-wardrobe-action is-primary" type="button">设为当前</button>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section id="apartmentGoHomeOverlay" class="event-overlay" hidden aria-label="回到公寓">
+    <article class="event-panel apartment-go-home-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Producer Apartment</p>
+          <h2>回到公寓</h2>
+        </div>
+        <span id="apartmentGoHomePhaseBadge" class="event-phase">学园地图</span>
+      </header>
+      <p class="ai-prompt-note">选择今晚如何离开学园。与偶像一起回家需要对方好感度达到 100。</p>
+      <div class="apartment-go-home-actions">
+        <button id="apartmentGoHomeAloneBtn" class="apartment-go-home-btn" type="button">
+          <strong>自己回</strong>
+          <span>制作人独自回到公寓。</span>
+        </button>
+        <button id="apartmentGoHomeWithIdolBtn" class="apartment-go-home-btn is-accent" type="button">
+          <strong>与偶像一起回</strong>
+          <span>邀请好感度满额的偶像同行回家。</span>
+        </button>
+      </div>
+      <footer class="event-actions">
+        <button id="apartmentGoHomeCancelBtn" class="event-button secondary" type="button">取消</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="apartmentCompanionPickOverlay" class="event-overlay" hidden aria-label="选择同行偶像">
+    <article class="event-panel apartment-invite-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Go Home Together</p>
+          <h2>选择同行偶像</h2>
+        </div>
+        <span id="apartmentCompanionPickPhaseBadge" class="event-phase">学园地图</span>
+      </header>
+      <p id="apartmentCompanionPickNote" class="ai-prompt-note">仅好感度达到 100 的偶像可与你一起回家。</p>
+      <div id="apartmentCompanionPickList" class="apartment-invite-list" aria-label="可同行偶像列表"></div>
+      <footer class="event-actions">
+        <button id="apartmentCompanionPickCancelBtn" class="event-button secondary" type="button">返回</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="apartmentCompanionActionOverlay" class="event-overlay" hidden aria-label="公寓互动">
+    <article class="event-panel apartment-companion-action-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Apartment</p>
+          <h2 id="apartmentCompanionActionTitle">公寓互动</h2>
+        </div>
+      </header>
+      <p class="ai-prompt-note">选择想和同行偶像进行的互动。</p>
+      <div class="apartment-go-home-actions">
+        <button id="apartmentCompanionChatBtn" class="apartment-go-home-btn" type="button">
+          <strong>聊天</strong>
+          <span>在公寓里聊一聊今天的事。</span>
+        </button>
+        <button id="apartmentCompanionIntimacyBtn" class="apartment-go-home-btn is-accent" type="button">
+          <strong>亲密</strong>
+          <span>进入更私密的亲密互动剧情。</span>
+        </button>
+      </div>
+      <footer class="event-actions">
+        <button id="apartmentCompanionActionCancelBtn" class="event-button secondary" type="button">取消</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="eventOverlay" class="event-overlay" hidden aria-label="行动事件">
+    <!-- Visual Novel Play Container -->
+    <div id="vnContainer" class="vn-container">
+      <aside id="auditionRankingHud" class="audition-ranking-hud" aria-label="Current audition ranking" hidden>
+        <header class="audition-ranking-head">
+          <span>LIVE RANKING</span>
+          <small id="auditionRankingPhase">1 / 4</small>
+        </header>
+        <div id="auditionRankingStrip" class="audition-ranking-strip" aria-label="Top six candidates"></div>
+        <div id="auditionRankingSummary" class="audition-ranking-summary"></div>
+      </aside>
+      <button id="vnFreeModeClock" class="free-mode-status-badge vn-free-mode-clock" type="button" hidden aria-label="当前日期与时间">Live后1天 · 08:00</button>
+      <div id="vnBackdrop" class="vn-backdrop"></div>
+      <div id="vnHcgLayer" class="vn-hcg-layer" hidden aria-hidden="true">
+        <img id="vnHcgImage" class="vn-hcg-image" src="" alt="" draggable="false">
+      </div>
+      <div class="vn-stage">
+        <img id="vnStandee" class="vn-standee" src="" alt="立绘" draggable="false">
+      </div>
+      <div class="vn-dialogue-box" id="vnDialogueBox">
+        <div class="vn-nameplate" id="vnNameplate">角色</div>
+        <div class="vn-text" id="vnText">文本</div>
+        <div class="vn-controls">
+          <button id="vnBtnSkip" class="vn-btn">跳过 (SKIP)</button>
+          <button id="vnBtnLog" class="vn-btn">日志 (LOG)</button>
+          <button id="vnBtnDebug" class="vn-btn">调试 (DEBUG)</button>
+          <button id="vnBtnAuto" class="vn-btn">自动 (AUTO)</button>
+          <button id="vnBtnRegen" class="vn-btn">重新生成</button>
+          <button id="vnBtnEdit" class="vn-btn">编辑重发</button>
+          <button id="vnChronicleLoadBtn" class="vn-btn" type="button" hidden>读档 (LOAD)</button>
+        </div>
+      </div>
+      <div id="vnChoicesOverlay" class="vn-choices-overlay" style="display: none;">
+        <div class="vn-choices-title" id="vnChoicesTitle">请做出你的选择</div>
+        <div id="vnChoicesContainer" class="vn-choices-container"></div>
+        <div id="vnCustomChoicePanel" class="vn-custom-choice-panel" hidden>
+          <label class="vn-custom-choice-label" for="vnCustomChoiceInput">自定义行动</label>
+          <textarea id="vnCustomChoiceInput" class="vn-custom-choice-input" rows="3" maxlength="200" placeholder="输入你想对担当说的话或想做的动作"></textarea>
+          <div class="vn-custom-choice-actions">
+            <button id="vnCustomChoiceCancelBtn" class="vn-choice-btn vn-choice-btn-muted" type="button">返回选项</button>
+            <button id="vnCustomChoiceConfirmBtn" class="vn-choice-btn vn-choice-btn-accent" type="button">发送</button>
+          </div>
+        </div>
+      </div>
+      <div id="vnLogOverlay" class="vn-log-overlay" hidden>
+        <section class="vn-log-panel" role="dialog" aria-modal="true" aria-labelledby="vnLogTitle">
+          <header class="vn-log-head">
+            <div>
+              <p class="ui-kicker">Dialogue Log</p>
+              <h2 id="vnLogTitle">对话记录</h2>
+            </div>
+            <button id="vnLogCloseBtn" class="icon-button" type="button" aria-label="关闭对话记录"><svg><use href="#icon-close"></use></svg></button>
+          </header>
+          <div id="vnLogContent" class="vn-log-content"></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Classical Panel (Hidden by default, shown as log panel overlay) -->
+    <article id="vnClassicPanel" class="event-panel" style="display: none;">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Produce Event Log</p>
+          <h2 id="eventTitle">行动事件</h2>
+        </div>
+        <button id="closeClassicPanelBtn" class="icon-button" type="button" aria-label="返回对话"><svg><use href="#icon-close"></use></svg></button>
+      </header>
+      <div class="event-result" id="eventResult">等待结算</div>
+      <div class="event-story" id="eventStory"></div>
+      <div id="eventChoices" class="event-choices" hidden>
+        <button class="choice-button" data-index="0"></button>
+        <button class="choice-button" data-index="1"></button>
+        <button class="choice-button" data-index="2"></button>
+        <button class="choice-button" data-index="3"></button>
+      </div>
+      <footer class="event-actions" id="eventActions">
+        <button id="eventConfirmBtn" class="event-button secondary" type="button">确定</button>
+        <button id="eventRegenBtn" class="event-button secondary" type="button">重新生成</button>
+        <button id="eventAiBtn" class="event-button primary" type="button">编辑提示词重发</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="harnessRecoveryOverlay" class="event-overlay" hidden aria-label="行动叙事恢复">
+    <article class="event-panel" role="dialog" aria-modal="true" aria-labelledby="harnessRecoveryTitle">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Turn Recovery</p>
+          <h2 id="harnessRecoveryTitle">行动叙事尚未确认</h2>
+        </div>
+        <button id="harnessRecoveryCloseBtn" class="icon-button" type="button" aria-label="暂时关闭恢复提示">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </header>
+      <div class="event-result" id="harnessRecoverySummary">
+        本次行动的数值、随机结果和时间已经结算，不会回滚或再次结算。
+      </div>
+      <div class="event-story" id="harnessRecoveryPromptNote">
+        正在检查是否保留了原始行动提示词。
+      </div>
+      <footer class="event-actions">
+        <button id="harnessRecoveryDismissBtn" class="event-button secondary" type="button">暂时关闭</button>
+        <button id="harnessRecoveryAbandonBtn" class="event-button secondary" type="button">放弃叙事恢复</button>
+        <button id="harnessRecoveryRetryBtn" class="event-button primary" type="button">重新生成叙事</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="apartmentVisitorOverlay" class="event-overlay" hidden aria-label="公寓来访">
+    <article class="event-panel" role="dialog" aria-modal="true">
+      <header class="event-head">
+        <div><p class="ui-kicker">Apartment Doorbell</p><h2>门外有人</h2></div>
+        <button id="apartmentVisitorCloseBtn" class="icon-button" type="button" aria-label="关闭"><svg aria-hidden="true"><use href="#icon-close"></use></svg></button>
+      </header>
+      <p id="apartmentVisitorCopy" class="ai-prompt-note"></p>
+      <div class="event-actions">
+        <button id="apartmentVisitorAcceptBtn" class="event-button" type="button">接待</button>
+        <button id="apartmentVisitorDeferBtn" class="event-button secondary" type="button">稍后</button>
+        <button id="apartmentVisitorDeclineBtn" class="event-button secondary" type="button">婉拒</button>
+      </div>
+    </article>
+  </section>
+
+  <section id="storytellerMajorConfirmationOverlay" class="event-overlay storyteller-major-confirmation" hidden aria-label="重大世界事件确认">
+    <article class="event-panel storyteller-major-confirmation-panel" role="dialog" aria-modal="true" aria-labelledby="storytellerMajorConfirmationTitle">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Major Incident</p>
+          <h2 id="storytellerMajorConfirmationTitle">确认接受重大事件</h2>
+        </div>
+        <button id="storytellerMajorConfirmationCloseBtn" class="icon-button" type="button" aria-label="取消重大事件操作">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </header>
+      <div id="storytellerMajorConfirmationCopy" class="event-story storyteller-major-confirmation-copy">
+        重大事件会生成一段独立叙事，但不会自动推进时间或修改数值、资源和任务。
+      </div>
+      <footer class="event-actions">
+        <button id="storytellerMajorConfirmationCancelBtn" class="event-button secondary" type="button">取消</button>
+        <button id="storytellerMajorConfirmationConfirmBtn" class="event-button primary" type="button">确认接受</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="chronicleLoadOverlay" class="event-overlay chronicle-load-overlay" hidden aria-label="剧情读档">
+    <article class="event-panel chronicle-load-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Story Checkpoint</p>
+          <h2>剧情读档</h2>
+        </div>
+        <button id="chronicleLoadCloseBtn" class="icon-button event-panel-close-btn" type="button" aria-label="关闭读档面板">
+          <svg><use href="#icon-close"></use></svg>
+        </button>
+      </header>
+      <div class="event-panel-body chronicle-load-body">
+        <p class="ai-prompt-note chronicle-load-hint">按 AI 回复中的 <code>&lt;sum&gt;</code> 摘要列出可回退节点。选择后将创建酒馆分支并刷新界面。</p>
+        <div id="chronicleCheckpointList" class="chronicle-checkpoint-list"></div>
+      </div>
+    </article>
+  </section>
+
+  <section id="aiPromptOverlay" class="event-overlay" hidden aria-label="AI后续提示词">
+    <article class="event-panel ai-prompt-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">AI Continuation</p>
+          <h2>让 AI 生成后续</h2>
+        </div>
+        <span id="aiPromptPhaseBadge" class="event-phase">First Live 前期</span>
+      </header>
+      <p class="ai-prompt-note">前端已经完成结算。你可以在发送前调整提示词，让角色卡继续生成这次事件的后续剧情。</p>
+      <textarea id="aiPromptTextarea" class="ai-prompt-textarea" spellcheck="false"></textarea>
+      <footer class="event-actions">
+        <button id="aiPromptCancelBtn" class="event-button secondary" type="button">取消</button>
+        <button id="aiPromptSendBtn" class="event-button primary" type="button">发送给 AI</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="freeChatOverlay" class="event-overlay" hidden aria-label="担当闲聊">
+    <article class="event-panel ai-prompt-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Free Talk</p>
+          <h2>和担当闲聊</h2>
+        </div>
+        <span id="freeChatPhaseBadge" class="event-phase">First Live 前期</span>
+      </header>
+      <p class="ai-prompt-note">输入这次想和担当聊的话题。闲聊不会消耗行动次数，也不会推进日程或改变数值。</p>
+      <textarea id="freeChatTextarea" class="ai-prompt-textarea" spellcheck="false" placeholder="例如：问问她今天训练结束后最想吃什么"></textarea>
+      <footer class="event-actions">
+        <button id="freeChatCancelBtn" class="event-button secondary" type="button">取消</button>
+        <button id="freeChatSendBtn" class="event-button primary" type="button">发送闲聊</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="interactionOverlay" class="event-overlay" hidden aria-label="偶像互动">
+    <article class="event-panel interaction-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Idol Interaction</p>
+          <h2>安排偶像互动</h2>
+        </div>
+        <span id="interactionPhaseBadge" class="event-phase">First Live 前期</span>
+      </header>
+      <p class="ai-prompt-note">选择参与互动的其他偶像，或交给 AI 决定。互动不会消耗行动次数，也不会推进日程或改变数值。</p>
+      <div class="interaction-mode" role="group" aria-label="登场角色决定方式">
+        <button id="interactionModeSpecified" class="interaction-mode-button active" type="button" aria-pressed="true">指定角色</button>
+        <button id="interactionModeAi" class="interaction-mode-button" type="button" aria-pressed="false">AI 决定</button>
+      </div>
+      <div id="interactionCharacterList" class="interaction-character-list" aria-label="选择参与互动的偶像"></div>
+      <p id="interactionValidation" class="interaction-validation" aria-live="polite">请选择至少一名其他偶像。</p>
+      <label class="interaction-plot-field" for="interactionPlotTextarea">
+        <span>情节方向（可选）</span>
+        <textarea id="interactionPlotTextarea" spellcheck="false" maxlength="500" placeholder="例如：训练结束后，几个人在商店街偶遇；留空则由 AI 自行设计"></textarea>
+      </label>
+      <footer class="event-actions">
+        <button id="interactionCancelBtn" class="event-button secondary" type="button">取消</button>
+        <button id="interactionSendBtn" class="event-button primary" type="button">生成互动</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="outingOverlay" class="event-overlay" hidden aria-label="选择外出地点">
+    <article class="event-panel outing-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Outing Select</p>
+          <h2 id="outingOverlayTitle">选择外出地点</h2>
+        </div>
+        <span id="outingPhaseBadge" class="event-phase">First Live 前期</span>
+      </header>
+      <p id="outingOverlayNote" class="ai-prompt-note">选择预设地点，或填写自定义目的地。</p>
+      <div id="outingDestinationList" class="outing-destination-list"></div>
+      <label id="outingCustomField" class="outing-custom-field" for="outingCustomInput">
+        <span>自定义地点</span>
+        <input id="outingCustomInput" type="text" maxlength="40" placeholder="输入想和担当前往的地点">
+      </label>
+      <footer class="event-actions">
+        <button id="outingCancelBtn" class="event-button secondary" type="button">取消</button>
+        <button id="outingCustomConfirmBtn" class="event-button primary" type="button">前往自定义地点</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="companionOverlay" class="event-overlay" hidden aria-label="输入交流内容">
+    <article class="event-panel companion-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Companion Input</p>
+          <h2>输入交流内容</h2>
+        </div>
+        <span id="companionPhaseBadge" class="event-phase">First Live 前期</span>
+      </header>
+      <p class="ai-prompt-note">写下这次想与担当聊的话题、关心的事，或希望进行的互动。AI 将据此展开剧情并生成四个制作人回应选项。</p>
+      <label class="interaction-plot-field" for="companionTopicTextarea">
+        <span>交流内容</span>
+        <textarea id="companionTopicTextarea" spellcheck="false" maxlength="500" placeholder="例如：聊聊最近训练后的疲劳，或者一起回顾上次 Live 的失误"></textarea>
+      </label>
+      <footer class="event-actions">
+        <button id="companionCancelBtn" class="event-button secondary" type="button">取消</button>
+        <button id="companionConfirmBtn" class="event-button primary" type="button">开始交流</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="apartmentInviteOverlay" class="event-overlay" hidden aria-label="邀约偶像回家">
+    <article class="event-panel apartment-invite-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Apartment Invite</p>
+          <h2>邀约回家</h2>
+        </div>
+        <span id="apartmentInvitePhaseBadge" class="event-phase">夜间公寓</span>
+      </header>
+      <p id="apartmentInviteNote" class="ai-prompt-note">仅好感度达到 100 的偶像可邀约。选中后将进入制作人公寓的 NSFW 多轮剧情。</p>
+      <div id="apartmentInviteList" class="apartment-invite-list" aria-label="可邀约偶像列表"></div>
+      <footer class="event-actions">
+        <button id="apartmentInviteCancelBtn" class="event-button secondary" type="button">取消</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="nsfwCgTestOverlay" class="event-overlay" hidden aria-label="NSFW CG 测试">
+    <article class="event-panel nsfw-cg-test-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">NSFW CG Lab</p>
+          <h2>NSFW 测试</h2>
+        </div>
+        <span class="event-phase">姿势 / 场景</span>
+      </header>
+      <p class="ai-prompt-note">不消耗存档进度。可预览 HCG，或直接发起与公寓邀约相同的多轮 NSFW 流程。</p>
+      <div class="nsfw-cg-test-grid">
+        <section class="nsfw-cg-test-block" aria-label="选择角色">
+          <h3>角色</h3>
+          <div id="nsfwCgTestIdolList" class="nsfw-cg-test-chip-list"></div>
+        </section>
+        <section class="nsfw-cg-test-block" aria-label="选择场景">
+          <h3>场景</h3>
+          <div id="nsfwCgTestSceneList" class="nsfw-cg-test-chip-list"></div>
+        </section>
+        <section class="nsfw-cg-test-block nsfw-cg-test-poses" aria-label="选择姿势">
+          <h3>姿势</h3>
+          <div id="nsfwCgTestPoseList" class="nsfw-cg-test-pose-list"></div>
+        </section>
+      </div>
+      <p id="nsfwCgTestSummary" class="nsfw-cg-test-summary">尚未选择</p>
+      <footer class="event-actions">
+        <button id="nsfwCgTestCancelBtn" class="event-button secondary" type="button">返回</button>
+        <button id="nsfwCgTestConfirmPoseBtn" class="event-button primary" type="button" hidden>确认更换姿势</button>
+        <button id="nsfwCgTestInviteBtn" class="event-button secondary" type="button">开始邀约剧情</button>
+        <button id="nsfwCgTestPreviewBtn" class="event-button primary" type="button">预览 CG</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="intimacyOverlay" class="event-overlay" hidden aria-label="选择亲密模式">
+    <article class="event-panel intimacy-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Intimacy Select</p>
+          <h2>选择亲密模式</h2>
+        </div>
+        <span id="intimacyPhaseBadge" class="event-phase">First Live 前期</span>
+      </header>
+      <p id="intimacyModeNote" class="ai-prompt-note">信赖 60 解锁普通亲密；信赖 100 解锁 NSFW 亲密。</p>
+      <div class="intimacy-mode-list" role="list">
+        <button id="intimacyNormalBtn" class="intimacy-mode-button" type="button" role="listitem">
+          <strong>普通亲密</strong>
+          <span>摸头、拥抱、牵手、安抚等清水向亲近互动。固定结算：体力 +38，压力 -10，信赖 +20。</span>
+          <em class="intimacy-mode-badge is-ready">信赖+20</em>
+        </button>
+        <button id="intimacyNsfwBtn" class="intimacy-mode-button" type="button" role="listitem">
+          <strong>NSFW 亲密</strong>
+          <span>多轮 VN 演出：AI 提供 4 个选项，也可自定义输入，随时结束并生成收尾。</span>
+          <em id="intimacyNsfwBadge" class="intimacy-mode-badge">信赖100解锁</em>
+        </button>
+      </div>
+      <footer class="event-actions">
+        <button id="intimacyCancelBtn" class="event-button secondary" type="button">取消</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="freeModeEntryOverlay" class="event-overlay" hidden aria-label="自由模式入口">
+    <article class="event-panel free-mode-entry-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Free Mode</p>
+          <h2>进入自由模式</h2>
+        </div>
+        <span class="event-phase">First Live 后</span>
+      </header>
+      <p id="freeModeEntryNote" class="ai-prompt-note">First Live 已结束。你可以继续留在育成界面，或进入学园自由探索。</p>
+      <div class="free-mode-entry-points" aria-hidden="true">
+        <span>学园大地图</span>
+        <span>地点探索</span>
+        <span>后续事件预留</span>
+      </div>
+      <footer class="event-actions">
+        <button id="freeModeStayBtn" class="event-button secondary" type="button">留在这里</button>
+        <button id="freeModeEnterBtn" class="event-button primary" type="button">进入自由模式</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="freeModeTimeOverlay" class="event-overlay free-mode-time-overlay" hidden aria-label="自由模式时间管理">
+    <article class="event-panel free-mode-time-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Time</p>
+          <h2>时间管理</h2>
+        </div>
+      </header>
+      <p id="freeModeTimeCurrent" class="free-mode-time-current">Live后1天 · 08:00</p>
+      <p id="freeModeTimeHint" class="ai-prompt-note">输入分钟数可将时间推进至 22:00。</p>
+      <label class="free-mode-time-label" for="freeModeTimeAdvanceInput">推进分钟数</label>
+      <input id="freeModeTimeAdvanceInput" class="free-mode-time-input" type="number" min="1" max="840" inputmode="numeric" placeholder="例如 30">
+      <div class="free-mode-time-quick" aria-label="快捷推进">
+        <button class="free-mode-time-quick-btn" type="button" data-minutes="15">+15分</button>
+        <button class="free-mode-time-quick-btn" type="button" data-minutes="30">+30分</button>
+        <button class="free-mode-time-quick-btn" type="button" data-minutes="60">+1小时</button>
+        <button class="free-mode-time-quick-btn" type="button" data-minutes="120">+2小时</button>
+      </div>
+      <footer class="event-actions free-mode-time-actions">
+        <button id="freeModeTimeCloseBtn" class="event-button secondary" type="button">关闭</button>
+        <button id="freeModeTimeAdvanceBtn" class="event-button primary" type="button">推进时间</button>
+        <button id="freeModeAdvanceDayBtn" class="event-button primary free-mode-advance-day-btn" type="button" hidden>进入下一天</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="mapLocationOverlay" class="event-overlay map-location-overlay" hidden aria-label="地图地点详情">
+    <article class="event-panel map-location-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Location</p>
+          <h2 id="mapLocationTitle">地点</h2>
+        </div>
+      </header>
+      <div id="mapLocationVisual" class="map-location-visual">
+        <img id="mapLocationImage" src="" alt="" hidden>
+      </div>
+      <p id="mapLocationDesc" class="ai-prompt-note">地点说明</p>
+      <div id="mapLocationPresence" class="map-location-presence" hidden>
+        <p class="map-location-presence-label">当前可能在场</p>
+        <div id="mapLocationPresenceAvatars" class="map-location-presence-avatars"></div>
+        <button id="mapLocationPresenceToggle" class="map-location-presence-toggle" type="button" hidden>查看在场详情</button>
+        <div id="mapLocationPresenceList" class="map-location-presence-list" hidden></div>
+      </div>
+      <footer class="event-actions map-location-entry-actions">
+        <button id="mapLocationBackBtn" class="event-button secondary" type="button">返回地图</button>
+        <div class="map-location-enter-options">
+          <button id="mapLocationEnterFacilityBtn" class="event-button primary map-location-facility-btn" type="button" hidden>进入上课</button>
+          <button id="mapLocationEnterWithIdolBtn" class="event-button primary" type="button">和担当一起来</button>
+          <button id="mapLocationEnterAloneBtn" class="event-button secondary" type="button">自己来</button>
+        </div>
+        <button id="mapLocationOutingBtn" class="event-button secondary map-location-outing-btn" type="button" hidden>外出</button>
+        <button id="mapLocationShopBtn" class="event-button primary map-location-shop-btn" type="button" hidden>进入商店</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="giftShopOverlay" class="event-overlay gift-shop-overlay" hidden aria-label="初星小卖部商店">
+    <article class="event-panel gift-shop-panel">
+      <header class="event-head gift-shop-head">
+        <div>
+          <p class="ui-kicker">Hoshizora Shop</p>
+          <h2>初星小卖部</h2>
+        </div>
+        <div class="gift-shop-head-meta">
+          <span id="giftShopWalletBadge" class="gift-shop-wallet-badge">初星币 0</span>
+          <button id="giftShopCloseBtn" class="icon-button event-panel-close-btn" type="button" aria-label="关闭商店">
+            <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+          </button>
+        </div>
+      </header>
+      <nav class="gift-shop-tabs" aria-label="商店视图">
+        <button id="giftShopTabBuy" class="gift-shop-tab is-active" type="button" data-gift-shop-tab="shop">购买礼物</button>
+        <button id="giftShopTabBag" class="gift-shop-tab" type="button" data-gift-shop-tab="bag">背包</button>
+      </nav>
+      <div class="event-panel-body gift-shop-body">
+        <p id="giftShopHint" class="ai-prompt-note gift-shop-hint">用初星币购买礼物，赠送给担当或其他偶像、NPC 以提升好感。</p>
+        <div id="giftShopCatalog" class="gift-shop-catalog"></div>
+        <div id="giftShopBag" class="gift-shop-bag" hidden></div>
+        <div id="giftShopGivePanel" class="gift-shop-give-panel" hidden>
+          <div class="gift-shop-give-head">
+            <button id="giftShopGiveBackBtn" class="gift-shop-give-back" type="button">返回背包</button>
+            <strong id="giftShopGiveTitle">选择赠送对象</strong>
+          </div>
+          <p id="giftShopGiveHint" class="ai-prompt-note gift-shop-give-hint">选择要赠送的对象。</p>
+          <div id="giftShopRecipientList" class="gift-shop-recipient-list"></div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section id="freeModeOutingOverlay" class="event-overlay" hidden aria-label="自由模式选择外出地点">
+    <article class="event-panel outing-panel">
+      <header class="event-head">
+        <div>
+          <p class="ui-kicker">Hatsuboshi Transit</p>
+          <h2>初星校外线路图</h2>
+        </div>
+      </header>
+      <p class="ai-prompt-note">从学园正门离开校外。选择开放站点后，可像校内地点一样连续探索；私宅站点暂作为后续事件预留。</p>
+      <div id="offCampusTransitMap" class="off-campus-transit" aria-label="校外线路图"></div>
+      <div id="freeModeOutingDestinationList" class="outing-destination-list"></div>
+      <label class="outing-custom-field" for="freeModeOutingCustomInput">
+        <span>自定义地点</span>
+        <input id="freeModeOutingCustomInput" type="text" maxlength="40" placeholder="输入想和担当前往的地点">
+      </label>
+      <footer class="event-actions">
+        <button id="freeModeOutingCancelBtn" class="event-button secondary" type="button">返回</button>
+        <button id="freeModeOutingCustomConfirmBtn" class="event-button primary" type="button">前往自定义地点</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="freeModeOutingSceneOverlay" class="event-overlay free-mode-outing-scene-overlay" hidden aria-label="校外外出场景">
+    <article class="free-mode-outing-scene-panel">
+      <img id="freeModeOutingSceneImage" class="free-mode-outing-scene-bg" src="" alt="" draggable="false">
+      <div class="free-mode-outing-scene-shade" aria-hidden="true"></div>
+      <header class="free-mode-outing-scene-head">
+        <div class="free-mode-outing-scene-titlebox">
+          <p class="ui-kicker">Outing Scene</p>
+          <h2 id="freeModeOutingSceneTitle">外出地点</h2>
+          <p id="freeModeOutingSceneDesc">选择设施或与偶像互动。</p>
+        </div>
+        <div class="free-mode-outing-scene-actions">
+          <button id="freeModeOutingSceneBackBtn" class="event-button secondary" type="button">返回线路图</button>
+          <button id="niaInterRoundOutingSceneEndBtn" class="event-button secondary" type="button" hidden>结束今天的外出</button>
+          <button id="freeModeOutingSceneExploreBtn" class="event-button primary" type="button">开始探索</button>
+        </div>
+      </header>
+      <button id="freeModeOutingFacilityGuideBtn" class="outing-facility-guide-hotspot" type="button" aria-label="打开设施导览图">
+        <span class="outing-facility-guide-mini" aria-hidden="true"></span>
+        <strong>设施导览</strong>
+        <span>查看商场内设施</span>
+      </button>
+      <div id="freeModeOutingSceneIdols" class="free-mode-outing-scene-idols" aria-label="同行偶像"></div>
+      <div id="freeModeOutingSpeechBubble" class="outing-scene-speech-bubble" hidden>
+        <strong id="freeModeOutingSpeechName">担当偶像</strong>
+        <p id="freeModeOutingSpeechText"></p>
+      </div>
+      <section id="freeModeOutingDialogueBar" class="outing-scene-dialogue-bar" hidden aria-label="场景对话">
+        <header class="outing-scene-dialogue-head">
+          <span>Scene Talk</span>
+          <button id="freeModeOutingDialogueCloseBtn" class="icon-button" type="button" aria-label="关闭场景对话">
+            <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+          </button>
+        </header>
+        <div class="outing-scene-dialogue-body">
+          <p id="freeModeOutingNarrationText" class="outing-scene-narration"></p>
+          <p id="freeModeOutingProducerText" class="outing-scene-producer"></p>
+        </div>
+        <div class="outing-scene-dialogue-custom">
+          <input id="freeModeOutingDialogueCustomInput" class="outing-scene-dialogue-input" type="text" maxlength="160" autocomplete="off" enterkeyhint="send" placeholder="输入想聊的话或行动">
+          <button id="freeModeOutingDialogueCustomSendBtn" class="event-button primary" type="button">发送</button>
+        </div>
+        <div class="outing-scene-dialogue-actions">
+          <button class="event-button secondary" type="button" data-outing-dialogue-action="chat">继续聊</button>
+          <button class="event-button secondary" type="button" data-outing-dialogue-action="ask">问想去哪里</button>
+          <button class="event-button primary" type="button" data-outing-dialogue-action="explore">开始探索</button>
+        </div>
+      </section>
+      <div id="freeModeOutingIdolActionMenu" class="outing-idol-action-menu" hidden>
+        <div class="outing-idol-action-head">
+          <strong id="freeModeOutingIdolActionName">担当偶像</strong>
+          <button id="freeModeOutingIdolActionCloseBtn" class="icon-button" type="button" aria-label="关闭偶像行动菜单">
+            <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+          </button>
+        </div>
+        <div class="outing-idol-action-grid">
+          <button class="event-button primary" type="button" data-outing-idol-action="chat">闲聊</button>
+          <button class="event-button secondary" type="button" data-outing-idol-action="invite">邀请同行</button>
+          <button class="event-button secondary" type="button" data-outing-idol-action="ask">询问想去哪</button>
+          <button class="event-button secondary" type="button" data-outing-idol-action="status">查看状态</button>
+          <button class="event-button primary outing-idol-scout-talk" type="button" data-outing-idol-action="china_scout_talk" hidden>和千奈搭话</button>
+        </div>
+      </div>
+      <div id="freeModeOutingFacilityGuide" class="outing-facility-guide-modal" hidden>
+        <div class="outing-facility-guide-card">
+          <header class="outing-facility-guide-head">
+            <div>
+              <h3>购物中心设施导览</h3>
+              <p>选择后会切换背景，并更新提示词里的当前设施。</p>
+            </div>
+            <button id="freeModeOutingFacilityGuideCloseBtn" class="event-button secondary" type="button">关闭</button>
+          </header>
+          <div id="freeModeOutingFacilityGuideMap" class="outing-facility-guide-map"></div>
+          <div class="outing-facility-guide-hints" aria-hidden="true">
+            <span>关闭弹窗</span>
+            <span>更新场景背景</span>
+            <span>更新当前设施</span>
+            <span>保留偶像行动菜单</span>
+          </div>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section id="sideQuestOverlay" class="event-overlay side-quest-overlay" hidden aria-label="委托系统">
+    <article class="event-panel side-quest-panel">
+      <header class="event-head side-quest-head">
+        <div>
+          <p class="ui-kicker">Commission</p>
+          <h2 id="sideQuestOverlayTitle">委托系统</h2>
+        </div>
+        <button id="sideQuestCloseBtn" class="icon-button event-panel-close-btn" type="button" aria-label="关闭委托系统">
+          <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+        </button>
+      </header>
+      <div class="event-panel-body side-quest-body">
+        <p id="sideQuestOverlayHint" class="ai-prompt-note side-quest-hint">每天 3 条委托。承接小型商演与宣传工作，提高偶像知名度。</p>
+        <div id="sideQuestSlotList" class="side-quest-slot-list"></div>
+        <div id="sideQuestTierPanel" class="side-quest-tier-panel" hidden>
+          <h3 id="sideQuestTierTitle" class="side-quest-tier-title"></h3>
+          <p id="sideQuestTierDesc" class="side-quest-tier-desc"></p>
+          <div id="sideQuestTierButtons" class="side-quest-tier-buttons"></div>
+          <button id="sideQuestTierBackBtn" class="event-button secondary side-quest-tier-back" type="button">返回列表</button>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section id="affinityOverlay" class="event-overlay affinity-overlay" hidden aria-label="担当偶像好感度">
+    <article class="affinity-panel">
+      <div id="affinityBg" class="affinity-bg"></div>
+      <div class="affinity-scrim"></div>
+      <header class="affinity-head">
+        <button id="affinityCloseBtn" class="affinity-back-btn" type="button" aria-label="返回">
+          <svg aria-hidden="true"><use href="#icon-chevron-left"></use></svg>
+        </button>
+        <div class="affinity-head-title">
+          <span class="affinity-head-kicker">Bond</span>
+          <span class="affinity-head-label">担当偶像 好感度</span>
+        </div>
+      </header>
+      <div class="affinity-body">
+        <div class="affinity-idol-pager" aria-label="切换担当档案">
+          <button id="affinityPrevIdolBtn" class="affinity-idol-page-btn" type="button" aria-label="上一位担当">
+            <svg aria-hidden="true"><use href="#icon-chevron-left"></use></svg>
+          </button>
+          <span id="affinityIdolCounter" class="affinity-idol-counter" aria-live="polite">1 / 1</span>
+          <button id="affinityNextIdolBtn" class="affinity-idol-page-btn" type="button" aria-label="下一位担当">
+            <svg aria-hidden="true"><use href="#icon-chevron-right"></use></svg>
+          </button>
+        </div>
+        <div class="affinity-identity">
+          <div class="affinity-identity-copy">
+            <h2 id="affinityIdolName" class="affinity-idol-name">担当偶像</h2>
+            <p id="affinityIdolRomaji" class="affinity-idol-romaji"></p>
+            <span id="affinityIdolTag" class="affinity-idol-tag"></span>
+          </div>
+          <div class="affinity-responsibility-controls">
+            <span id="affinityResponsibleBadge" class="affinity-responsible-badge">当前负责</span>
+            <button id="affinitySetResponsibleBtn" class="affinity-set-responsible-btn" type="button" hidden>设为当前负责</button>
+          </div>
+        </div>
+
+        <nav class="affinity-tabs" aria-label="好感度视图">
+          <button id="affinityTabCurrent" class="affinity-tab is-active" type="button" data-affinity-tab="current">担当</button>
+          <button id="affinityTabSecondary" class="affinity-tab" type="button" data-affinity-tab="secondary">其他人物</button>
+          <button id="affinityTabNetwork" class="affinity-tab" type="button" data-affinity-tab="network">关系网</button>
+        </nav>
+
+        <div id="affinityPrimaryPanel" class="affinity-tab-panel">
+        <section class="affinity-card affinity-score-card">
+          <p class="affinity-card-title">好感度</p>
+          <div id="affinityHearts" class="affinity-hearts" aria-hidden="true"></div>
+          <div class="affinity-score-bar">
+            <div id="affinityScoreFill" class="affinity-score-fill"></div>
+            <span id="affinityScoreValue" class="affinity-score-value">0 / 100</span>
+          </div>
+          <p id="affinityStageLabel" class="affinity-stage-label"></p>
+        </section>
+
+        <div class="affinity-card-grid">
+          <section class="affinity-card affinity-bio-card">
+            <p class="affinity-card-title">角色简介</p>
+            <p id="affinityBio" class="affinity-bio"></p>
+          </section>
+          <section class="affinity-card affinity-status-card">
+            <p class="affinity-card-title">当前状态</p>
+            <ul id="affinityStatusList" class="affinity-status-list"></ul>
+          </section>
+        </div>
+
+        <section class="affinity-card affinity-note-card">
+          <p class="affinity-card-title">当前羁绊</p>
+          <p id="affinityBondTheme" class="affinity-bond-theme"></p>
+          <p id="affinityRouteSeed" class="affinity-route-seed"></p>
+        </section>
+        </div>
+
+        <section id="affinitySecondaryPanel" class="affinity-card affinity-tab-panel" hidden>
+          <p class="affinity-card-title">其他人物</p>
+          <div id="affinitySecondaryList" class="affinity-relation-list"></div>
+        </section>
+
+        <section id="affinityNetworkPanel" class="affinity-card affinity-tab-panel" hidden>
+          <p class="affinity-card-title">全人物关系网</p>
+          <div id="affinityNetworkList" class="affinity-network-list"></div>
+        </section>
+      </div>
+    </article>
+  </section>
+
+  <section id="taskPanelOverlay" class="event-overlay task-panel-overlay" hidden aria-label="亚纱里老师课题">
+    <article class="event-panel task-panel">
+      <header class="event-head task-panel-head">
+        <div>
+          <p class="ui-kicker">Asari Lesson Board</p>
+          <h2 id="taskPanelTitle">亚纱里老师课题</h2>
+        </div>
+        <button id="taskPanelCloseBtn" class="icon-button event-panel-close-btn" type="button" aria-label="关闭亚纱里老师课题">
+          <svg aria-hidden="true"><use href="#icon-close"></use></svg>
+        </button>
+      </header>
+      <div class="event-panel-body task-panel-body">
+        <section class="task-panel-main-stage" aria-label="亚纱里老师课题板">
+          <div class="task-panel-workspace">
+            <div class="task-panel-board">
+              <p id="taskPanelSummary" class="task-panel-summary"></p>
+              <div id="taskPanelMetrics" class="task-panel-metrics" aria-label="课题状态"></div>
+              <div id="taskPanelMainList" class="task-panel-sections"></div>
+              <section class="task-panel-section task-panel-commission" aria-label="委托系统">
+                <div class="task-panel-section-head">
+                  <h3>委托系统</h3>
+                  <span id="taskPanelSideMeta" class="task-panel-section-meta"></span>
+                </div>
+                <div id="taskPanelSideList" class="task-panel-side-list"></div>
+                <button id="taskPanelOpenSideQuestBtn" class="event-button secondary task-panel-action" type="button">打开委托结算</button>
+              </section>
+              <section class="task-panel-section task-panel-campus" aria-label="校园课与训练">
+                <div class="task-panel-section-head">
+                  <h3>校园课与训练</h3>
+                  <span id="taskPanelCampusMeta" class="task-panel-section-meta"></span>
+                </div>
+                <p id="taskPanelCampusHint" class="task-panel-hint"></p>
+              </section>
+            </div>
+            <aside class="task-panel-teacher" aria-label="亚纱里老师建议">
+              <div class="task-panel-teacher-art" aria-hidden="true">
+                <img src="./assets/novel-standees/asari-sensei.png" alt="">
+              </div>
+              <blockquote class="task-panel-advice">
+                <b>老师的一句话</b>
+                <p id="taskPanelAdvice">至少让我帮上你一点忙吧。多多依赖老师一些也可以的哦？</p>
+              </blockquote>
+            </aside>
+          </div>
+        </section>
+      </div>
+    </article>
+  </section>
+  <section id="notebookDrawer" class="notebook-drawer" hidden aria-label="P手账">
+    <div class="drawer-panel">
+      <header class="drawer-head">
+        <div>
+          <p class="ui-kicker">Producer Notebook</p>
+          <h2 id="drawerTitle">提示词工作台</h2>
+        </div>
+        <button id="closeNotebook" class="icon-button" type="button" aria-label="关闭手账"><svg><use href="#icon-close"></use></svg></button>
+      </header>
+      <div class="drawer-tabs" role="tablist" aria-label="手账标签">
+        <button id="promptTabPrompt" class="tab-button active" type="button" data-tab="prompt">本次提示词</button>
+        <button id="promptTabLog" class="tab-button" type="button" data-tab="log">育成日志</button>
+        <button id="promptTabDebug" class="tab-button" type="button" data-tab="debug">结算明细</button>
+      </div>
+      <div class="drawer-content">
+        <div class="tab-panel active" id="tabPrompt"><textarea id="promptText" spellcheck="false"></textarea></div>
+        <div class="tab-panel" id="tabLog"><div id="logList" class="log-list"></div></div>
+        <div class="tab-panel" id="tabDebug"><div id="debugPanel" class="debug-panel"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="daySummaryOverlay" class="event-overlay day-summary-overlay" hidden aria-label="今日育成进度总结">
+    <article class="day-summary-tablet" role="dialog" aria-modal="true" aria-labelledby="daySummaryTitle">
+      <div class="day-summary-statusbar" aria-hidden="true"></div>
+
+      <div class="day-summary-scroll">
+        <header class="day-summary-head">
+          <img id="daySummaryAvatar" class="day-summary-avatar" src="" alt="" draggable="false">
+          <div class="day-summary-meta">
+            <div class="day-summary-field">
+              <span class="day-summary-label">学年</span>
+              <strong id="daySummarySchedule" class="day-summary-value">1年1班</strong>
+            </div>
+            <div class="day-summary-field">
+              <span class="day-summary-label">姓名</span>
+              <strong id="daySummaryName" class="day-summary-value">藤田 琴音</strong>
+            </div>
+            <p class="day-summary-day-chip">育成第 <span id="daySummaryDayValue">1</span> 日</p>
+          </div>
+          <div class="day-summary-logo-wrap">
+            <img class="day-summary-logo" src="./assets/select-bg/bg_logo.png" alt="初星学园" draggable="false">
+          </div>
+        </header>
+
+        <section class="day-summary-chart" aria-label="今日能力分布">
+          <svg id="daySummaryRadar" class="day-summary-radar" viewBox="0 0 320 300" role="img" aria-labelledby="daySummaryTitle">
+            <defs>
+              <linearGradient id="daySummaryRadarFill" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#8fd3ff" stop-opacity="0.78"></stop>
+                <stop offset="100%" stop-color="#4fa7ef" stop-opacity="0.42"></stop>
+              </linearGradient>
+            </defs>
+            <g id="daySummaryRadarGrid"></g>
+            <polygon id="daySummaryRadarShape" class="day-summary-radar-shape"></polygon>
+            <g id="daySummaryRadarLabels" class="day-summary-radar-labels"></g>
+          </svg>
+        </section>
+
+        <section class="day-summary-notes-wrap" aria-label="今日总结正文">
+          <h2 id="daySummaryTitle" class="visually-hidden">今日育成进度总结</h2>
+          <div id="daySummaryNotes" class="day-summary-notes"></div>
+        </section>
+      </div>
+
+      <footer class="day-summary-footer">
+        <button id="daySummaryCloseBtn" class="day-summary-back-btn" type="button">返回总结轮次</button>
+      </footer>
+    </article>
+  </section>
+
+  <section id="phoneOverlay" class="event-overlay phone-overlay" hidden aria-label="小手机">
+    <div class="mini-phone-frame">
+      <div class="mini-phone-bezel" role="dialog" aria-modal="true" aria-labelledby="phoneHomeTitle">
+        <div class="mini-phone-notch" aria-hidden="true"></div>
+        <div class="mini-phone-screen">
+          <div id="phoneStatusBar" class="mini-phone-statusbar is-home" aria-hidden="true">
+            <span id="phoneStatusTime" class="mini-phone-clock">22:40</span>
+            <span class="mini-phone-status-icons">
+              <span class="mini-phone-signal"></span>
+              <span class="mini-phone-wifi"></span>
+              <span class="mini-phone-battery"></span>
+            </span>
+          </div>
+
+          <div id="phoneHomeView" class="phone-home-view">
+            <div class="phone-home-wallpaper" aria-hidden="true"></div>
+            <div class="phone-home-content">
+              <header class="phone-home-head">
+                <h1 id="phoneHomeTitle" class="visually-hidden">小手机主屏幕</h1>
+                <p id="phoneHomeDate" class="phone-home-date">6月26日 星期五</p>
+                <p class="phone-home-greeting">初星通讯</p>
+              </header>
+              <div id="phoneAppGrid" class="phone-app-grid" role="list" aria-label="应用"></div>
+            </div>
+            <div class="phone-home-dock" aria-label="Dock">
+              <div id="phoneDockApps" class="phone-dock-apps"></div>
+            </div>
+          </div>
+
+          <div id="phoneLineApp" class="line-app" hidden>
+            <div id="phoneLineListView" class="line-view line-view-list">
+              <header class="line-topbar line-topbar-main">
+                <h1 id="phoneLineListTitle" class="line-topbar-title">聊天</h1>
+                <div class="line-topbar-actions">
+                  <button type="button" class="line-icon-btn" aria-label="搜索"><svg aria-hidden="true"><use href="#icon-search"></use></svg></button>
+                  <button id="phoneAddFriendOpenBtn" type="button" class="line-icon-btn" aria-label="添加好友"><svg aria-hidden="true"><use href="#icon-plus"></use></svg></button>
+                  <button type="button" class="line-icon-btn" aria-label="菜单"><svg aria-hidden="true"><use href="#icon-menu"></use></svg></button>
+                </div>
+              </header>
+              <div class="line-list-search" aria-hidden="true">
+                <span class="line-list-search-icon"><svg aria-hidden="true"><use href="#icon-search"></use></svg></span>
+                <span class="line-list-search-text">搜索</span>
+              </div>
+              <div id="phoneChatList" class="line-chat-list" role="list"></div>
+              <nav class="line-tabbar" aria-label="底部导航">
+                <button id="phoneLineTabHomeBtn" type="button" class="line-tab"><span class="line-tab-icon line-tab-icon-home"></span><span class="line-tab-label">主页</span></button>
+                <button type="button" class="line-tab line-tab-active"><span class="line-tab-icon line-tab-icon-chat"></span><span class="line-tab-label">聊天</span></button>
+                <button type="button" class="line-tab"><span class="line-tab-icon line-tab-icon-call"></span><span class="line-tab-label">通话</span></button>
+                <button type="button" class="line-tab"><span class="line-tab-icon line-tab-icon-wallet"></span><span class="line-tab-label">钱包</span></button>
+                <button type="button" class="line-tab"><span class="line-tab-icon line-tab-icon-more"></span><span class="line-tab-label">更多</span></button>
+              </nav>
+            </div>
+
+            <div id="phoneLineChatView" class="line-view line-view-chat" hidden>
+              <header class="line-topbar line-topbar-chat">
+                <button id="phoneChatBackBtn" type="button" class="line-back-btn" aria-label="返回聊天列表">
+                  <svg aria-hidden="true"><use href="#icon-chevron-left"></use></svg>
+                </button>
+                <div class="line-topbar-chat-meta">
+                  <h1 id="phoneChatTitle" class="line-topbar-title">聊天</h1>
+                  <p id="phoneChatSubtitle" class="line-topbar-subtitle"></p>
+                </div>
+                <div class="line-topbar-actions">
+                  <button type="button" class="line-icon-btn" aria-label="搜索"><svg aria-hidden="true"><use href="#icon-search"></use></svg></button>
+                  <button id="phoneChatMenuBtn" type="button" class="line-icon-btn" aria-label="桥接诊断"><svg aria-hidden="true"><use href="#icon-menu"></use></svg></button>
+                </div>
+              </header>
+              <div id="phoneChatMessages" class="line-message-scroll"></div>
+              <div id="phoneChatRetryHint" class="line-chat-retry-hint" hidden>
+                <button id="phoneChatRetryBtn" type="button" class="line-chat-retry-btn">未收到回复，重新生成</button>
+              </div>
+              <div id="phoneNiaScheduleActions" class="line-schedule-actions" hidden>
+                <button id="phoneNiaScheduleRetryBtn" type="button" class="line-schedule-action is-retry" hidden>重新获取回复</button>
+                <button id="phoneNiaScheduleStartBtn" type="button" class="line-schedule-action is-start" hidden>开始第一天</button>
+              </div>
+              <form id="phoneChatForm" class="line-composer">
+                <button type="button" class="line-composer-addon" aria-label="更多功能" tabindex="-1"><svg aria-hidden="true"><use href="#icon-plus"></use></svg></button>
+                <input id="phoneChatInput" class="line-composer-input" type="text" placeholder="输入消息" maxlength="500" autocomplete="off" enterkeyhint="send">
+                <button type="submit" class="line-send-btn">发送</button>
+              </form>
+              <p id="phoneChatReadonlyNote" class="line-readonly-note" hidden>此对话暂不支持回复</p>
+            </div>
+
+            <div id="phoneLineAddFriendView" class="line-view line-view-add-friend" hidden>
+              <header class="line-topbar line-topbar-main">
+                <button id="phoneAddFriendBackBtn" type="button" class="line-back-btn" aria-label="返回聊天列表">
+                  <svg aria-hidden="true"><use href="#icon-chevron-left"></use></svg>
+                </button>
+                <h1 class="line-topbar-title">添加好友</h1>
+              </header>
+              <form id="phoneAddFriendForm" class="line-add-friend-form">
+                <label class="line-add-friend-label" for="phoneAddFriendInput">偶像姓名</label>
+                <input id="phoneAddFriendInput" class="line-add-friend-input" type="text" maxlength="32" autocomplete="off" placeholder="输入要添加的偶像姓名">
+                <p class="line-add-friend-note">添加后会收到对方的问候消息，之后即可私聊。不会消耗行动次数，也不会改变数值。</p>
+                <div id="phoneAddFriendSuggestions" class="line-add-friend-suggestions" aria-label="可添加的偶像"></div>
+                <button type="submit" class="line-add-friend-submit" id="phoneAddFriendSubmitBtn">添加并发送问候</button>
+              </form>
+            </div>
+          </div>
+
+          <div id="phoneMusicApp" class="music-app" hidden>
+            <div id="phoneMusicLibrary" class="music-library">
+              <header class="music-lib-head">
+                <h1 class="music-lib-title">音乐</h1>
+                <button type="button" class="music-icon-btn" aria-label="搜索"><svg aria-hidden="true"><use href="#icon-search"></use></svg></button>
+              </header>
+              <div class="music-scroll">
+                <div id="phoneMusicQuickGrid" class="music-quick-grid"></div>
+                <div class="music-tabs">
+                  <button type="button" class="music-tab music-tab-active" data-pm-filter="all">全部曲目</button>
+                  <button type="button" class="music-tab" data-pm-filter="liked">已点赞 <span id="phoneMusicLikedCount">0</span></button>
+                </div>
+                <div id="phoneMusicTrackList" class="music-track-list"></div>
+              </div>
+              <div id="phoneMusicMini" class="music-mini" hidden>
+                <div id="phoneMusicMiniProg" class="music-mini-prog"></div>
+                <div id="phoneMusicMiniCover" class="music-cover music-mini-cover"></div>
+                <div class="music-mini-meta">
+                  <div id="phoneMusicMiniTitle" class="music-mini-title">—</div>
+                  <div id="phoneMusicMiniArtist" class="music-mini-artist">—</div>
+                </div>
+                <button id="phoneMusicMiniPlayBtn" type="button" class="music-mini-play" aria-label="播放/暂停"><svg aria-hidden="true"><use href="#icon-play"></use></svg></button>
+              </div>
+            </div>
+
+            <div id="phoneMusicNow" class="music-now">
+              <header class="music-now-top">
+                <button id="phoneMusicNowCloseBtn" type="button" class="music-now-icon" aria-label="收起"><svg aria-hidden="true"><use href="#icon-chevron-down"></use></svg></button>
+                <span class="music-now-label">正在播放</span>
+                <button type="button" class="music-now-icon" aria-label="更多"><svg aria-hidden="true"><use href="#icon-dots"></use></svg></button>
+              </header>
+              <div class="music-now-body">
+                <div id="phoneMusicNowCover" class="music-cover music-now-cover"></div>
+                <div class="music-now-info">
+                  <div class="music-now-info-text">
+                    <div id="phoneMusicNowSong" class="music-now-song">—</div>
+                    <div id="phoneMusicNowSinger" class="music-now-singer">—</div>
+                  </div>
+                  <button id="phoneMusicNowLikeBtn" type="button" class="music-now-like" aria-label="点赞"><svg aria-hidden="true"><use href="#icon-heart"></use></svg></button>
+                </div>
+                <div class="music-now-progress">
+                  <div id="phoneMusicTrack" class="music-now-track">
+                    <div id="phoneMusicFill" class="music-now-fill"></div>
+                    <div id="phoneMusicKnob" class="music-now-knob"></div>
+                  </div>
+                  <div class="music-now-time"><span id="phoneMusicCur">0:00</span><span id="phoneMusicDur">0:00</span></div>
+                </div>
+                <div class="music-now-controls">
+                  <button id="phoneMusicShuffleBtn" type="button" class="music-ctrl music-ctrl-sec" aria-label="随机播放"><svg aria-hidden="true"><use href="#icon-shuffle"></use></svg></button>
+                  <button id="phoneMusicPrevBtn" type="button" class="music-ctrl music-ctrl-step" aria-label="上一首"><svg aria-hidden="true"><use href="#icon-skip-prev"></use></svg></button>
+                  <button id="phoneMusicPlayBtn" type="button" class="music-ctrl music-now-play" aria-label="播放/暂停"><svg aria-hidden="true"><use href="#icon-play"></use></svg></button>
+                  <button id="phoneMusicNextBtn" type="button" class="music-ctrl music-ctrl-step" aria-label="下一首"><svg aria-hidden="true"><use href="#icon-skip-next"></use></svg></button>
+                  <button id="phoneMusicRepeatBtn" type="button" class="music-ctrl music-ctrl-sec" aria-label="循环"><svg aria-hidden="true"><use href="#icon-repeat"></use></svg></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="phoneBroadcastApp" class="broadcast-app" hidden>
+            <header class="broadcast-hero">
+              <div class="broadcast-hero-bg" aria-hidden="true"></div>
+              <div class="broadcast-hero-strip">
+                <span class="broadcast-onair"><span class="broadcast-onair-dot"></span>ON AIR</span>
+                <span class="broadcast-dept-en">HATSUBOSHI RADIO</span>
+              </div>
+              <div class="broadcast-cast-row">
+                <div class="broadcast-cast-slot broadcast-cast-host">
+                  <div id="phoneBroadcastHostAvatar" class="broadcast-avatar-frame"></div>
+                  <p class="broadcast-cast-name" id="phoneBroadcastHostName">真诚优</p>
+                  <p class="broadcast-cast-roman" id="phoneBroadcastHostRoman">Mashiro Yu</p>
+                  <p class="broadcast-cast-role">部长 · 主持</p>
+                </div>
+                <div class="broadcast-cast-bridge" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><use href="#icon-mic"></use></svg>
+                </div>
+                <div class="broadcast-cast-slot broadcast-cast-guests">
+                  <div id="phoneBroadcastGuestAvatars" class="broadcast-guest-avatars"></div>
+                  <p class="broadcast-cast-guest-label">本期嘉宾</p>
+                  <p class="broadcast-cast-guest-names" id="phoneBroadcastGuestNames">—</p>
+                </div>
+              </div>
+              <div class="broadcast-episode-card">
+                <span id="phoneBroadcastCategory" class="broadcast-category-chip">学园广播</span>
+                <h1 id="phoneBroadcastTitle" class="broadcast-title">今日暂无节目</h1>
+                <p id="phoneBroadcastMeta" class="broadcast-meta">打开后将自动生成今日学园广播</p>
+              </div>
+            </header>
+            <nav id="phoneBroadcastTabs" class="broadcast-tabs" aria-label="广播内容">
+              <button type="button" class="broadcast-tab is-active" data-broadcast-tab="outline" aria-selected="true">提纲</button>
+              <button type="button" class="broadcast-tab" data-broadcast-tab="script" aria-selected="false">完整稿</button>
+              <button type="button" class="broadcast-tab" data-broadcast-tab="history" aria-selected="false">历史</button>
+            </nav>
+            <div class="broadcast-scroll">
+              <section class="broadcast-panel is-active" data-broadcast-panel="outline" aria-label="今日提纲">
+                <pre id="phoneBroadcastOutline" class="broadcast-outline">加载中…</pre>
+              </section>
+              <section class="broadcast-panel" data-broadcast-panel="script" hidden aria-label="完整稿">
+                <div id="phoneBroadcastScript" class="broadcast-script is-empty">完整稿尚未生成。</div>
+              </section>
+              <section class="broadcast-panel" data-broadcast-panel="history" hidden aria-label="历史节目">
+                <div id="phoneBroadcastHistory" class="broadcast-history"></div>
+              </section>
+            </div>
+            <footer class="broadcast-footer">
+              <p id="phoneBroadcastStatus" class="broadcast-status">提纲前端生成；完整稿于每日开始时自动请求。</p>
+              <button id="phoneBroadcastGenerateBtn" type="button" class="broadcast-generate-btn">生成完整广播稿</button>
+            </footer>
+          </div>
+
+          <div id="phoneSnsApp" class="sns-app" hidden>
+            <header class="sns-topbar">
+              <span class="sns-topbar-logo" aria-hidden="true"><svg><use href="#icon-star"></use></svg></span>
+              <h1 class="sns-title">初星圈</h1>
+              <button id="phoneSnsRefreshBtn" type="button" class="sns-refresh-btn" aria-label="刷新">
+                <svg aria-hidden="true"><use href="#icon-refresh"></use></svg>
+              </button>
+            </header>
+            <nav id="phoneSnsTabs" class="sns-tabs" aria-label="初星圈筛选">
+              <button type="button" class="sns-tab is-active" data-sns-tab="timeline" aria-selected="true">推荐</button>
+              <button type="button" class="sns-tab" data-sns-tab="hot" aria-selected="false">趋势</button>
+            </nav>
+            <div class="sns-scroll">
+              <section id="phoneSnsHotTopic" class="sns-trending" hidden aria-label="学园热议"></section>
+              <section id="phoneSnsBusinessCard" class="sns-business-card" hidden aria-label="初星圈营业">
+                <header class="sns-business-head">
+                  <div>
+                    <span class="sns-business-kicker">营业中</span>
+                    <h2 id="phoneSnsBusinessTitle" class="sns-business-title">发一条初星圈动态</h2>
+                  </div>
+                  <span id="phoneSnsBusinessProgress" class="sns-business-progress">1 / 3</span>
+                </header>
+
+                <div id="phoneSnsBusinessComposer" class="sns-business-panel sns-business-composer" hidden>
+                  <fieldset class="sns-business-fieldset">
+                    <legend>帖子内容</legend>
+                    <div class="sns-business-mode-list">
+                      <label class="sns-business-mode">
+                        <input id="phoneSnsPostModeAi" type="radio" name="snsPostCompositionMode" value="ai_expand" checked>
+                        <span><strong>AI 补充全文</strong><small>输入一个短主题，由 AI 帮你写成动态。</small></span>
+                      </label>
+                      <label class="sns-business-mode">
+                        <input id="phoneSnsPostModeManual" type="radio" name="snsPostCompositionMode" value="manual">
+                        <span><strong>自己写全文</strong><small>你写下的内容会原样发布。</small></span>
+                      </label>
+                    </div>
+                  </fieldset>
+
+                  <fieldset class="sns-business-fieldset">
+                    <legend>选择一张配图</legend>
+                    <div id="phoneSnsPresetImageList" class="sns-business-image-list" role="radiogroup" aria-label="预设配图">
+                      <button type="button" class="sns-business-image-option is-selected" data-sns-preset-image="practice" aria-pressed="true">
+                        <span class="sns-business-image-placeholder sns-image-practice" aria-hidden="true"></span>
+                        <span>练习日常</span>
+                      </button>
+                      <button type="button" class="sns-business-image-option" data-sns-preset-image="meal" aria-pressed="false">
+                        <span class="sns-business-image-placeholder sns-image-meal" aria-hidden="true">营养料理</span>
+                        <span>营养料理</span>
+                      </button>
+                      <button type="button" class="sns-business-image-option" data-sns-preset-image="school" aria-pressed="false">
+                        <span class="sns-business-image-placeholder sns-image-school" aria-hidden="true">校园一角</span>
+                        <span>校园一角</span>
+                      </button>
+                    </div>
+                  </fieldset>
+
+                  <label id="phoneSnsTopicField" class="sns-business-input-group" for="phoneSnsPostTopicInput">
+                    <span>短主题</span>
+                    <input id="phoneSnsPostTopicInput" type="text" maxlength="80" placeholder="例如：今天也完成了体能训练">
+                  </label>
+                  <label id="phoneSnsBodyField" class="sns-business-input-group" for="phoneSnsPostBodyInput" hidden>
+                    <span>正文</span>
+                    <textarea id="phoneSnsPostBodyInput" rows="5" maxlength="600" placeholder="写下想发布的内容"></textarea>
+                  </label>
+                  <p id="phoneSnsBusinessComposerStatus" class="sns-business-status" role="status"></p>
+                  <div class="sns-business-actions">
+                    <button id="phoneSnsBusinessCancelBtn" type="button" class="sns-business-secondary">暂不发布</button>
+                    <button id="phoneSnsBusinessPublishBtn" type="button" class="sns-business-primary">发布动态</button>
+                  </div>
+                </div>
+
+                <div id="phoneSnsBusinessPublished" class="sns-business-panel sns-business-published" hidden>
+                  <article id="phoneSnsBusinessPublishedPost" class="sns-post sns-business-post"></article>
+                  <section class="sns-business-comments" aria-labelledby="phoneSnsBusinessCommentsTitle">
+                    <h3 id="phoneSnsBusinessCommentsTitle">评论</h3>
+                    <div id="phoneSnsBusinessComments" class="sns-business-comment-list"></div>
+                  </section>
+                  <div id="phoneSnsBusinessInteraction" class="sns-business-interaction" hidden>
+                    <p id="phoneSnsBusinessInteractionPrompt" class="sns-business-interaction-prompt">请选择一条评论后再回复、点赞或忽略。</p>
+                    <label id="phoneSnsBusinessReplyField" class="sns-business-input-group" for="phoneSnsBusinessReplyInput" hidden>
+                      <span>回复内容</span>
+                      <input id="phoneSnsBusinessReplyInput" type="text" maxlength="160" placeholder="写一句简短回复">
+                    </label>
+                    <div class="sns-business-actions sns-business-interaction-actions">
+                      <button id="phoneSnsBusinessReplyBtn" type="button" class="sns-business-secondary">发送回复</button>
+                      <button id="phoneSnsBusinessLikeBtn" type="button" class="sns-business-primary">点赞</button>
+                      <button id="phoneSnsBusinessIgnoreBtn" type="button" class="sns-business-quiet">先不回应</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="phoneSnsBusinessResult" class="sns-business-panel sns-business-result" hidden>
+                  <div class="sns-business-result-image" id="phoneSnsBusinessResultImage" aria-label="本次发布的配图"></div>
+                  <div class="sns-business-result-copy">
+                    <span class="sns-business-kicker">营业回声</span>
+                    <h3 id="phoneSnsBusinessResultTitle">这条动态留下了不错的印象</h3>
+                    <p id="phoneSnsBusinessResultSummary"></p>
+                    <dl class="sns-business-result-meta">
+                      <div><dt>配图匹配</dt><dd id="phoneSnsBusinessImageMatch">待评价</dd></div>
+                      <div><dt>营业评价</dt><dd id="phoneSnsBusinessBonusTier">待评价</dd></div>
+                      <div><dt>粉丝变化</dt><dd id="phoneSnsBusinessFanGain">--</dd></div>
+                    </dl>
+                  </div>
+                  <p id="phoneSnsBusinessResultReason" class="sns-business-result-reason"></p>
+                  <button id="phoneSnsBusinessResultConfirmBtn" type="button" class="sns-business-primary sns-business-result-confirm">收下这次营业成果</button>
+                </div>
+              </section>
+              <div id="phoneSnsLocked" class="sns-locked" hidden>
+                <p>签约并开始游戏后开放初星圈。</p>
+              </div>
+              <div id="phoneSnsEmpty" class="sns-empty" hidden>
+                <p>今天还没有新动态。学园也许正在酝酿八卦。</p>
+              </div>
+              <div id="phoneSnsFeed" class="sns-feed" aria-live="polite"></div>
+            </div>
+          </div>
+
+          <div id="phoneWorldEngineApp" class="world-engine-app" hidden>
+            <header class="world-engine-head">
+              <div class="world-engine-brand">
+                <span class="world-engine-mark" aria-hidden="true">星</span>
+                <div>
+                  <h1 class="world-engine-title">初星世界引擎</h1>
+                  <p class="world-engine-subtitle">WORLD PULSE</p>
+                </div>
+              </div>
+              <div class="world-engine-head-actions">
+                <button id="worldEngineRefreshBtn" type="button" class="world-engine-icon-btn" aria-label="刷新世界引擎状态">
+                  <svg aria-hidden="true"><use href="#icon-refresh"></use></svg>
+                </button>
+                <button id="worldEngineSettingsBtn" type="button" class="world-engine-icon-btn" aria-label="打开世界引擎高级设置">
+                  <svg aria-hidden="true"><use href="#icon-settings"></use></svg>
+                </button>
+              </div>
+            </header>
+            <div id="worldEngineMainView" class="world-engine-view">
+              <nav id="worldEngineTabs" class="world-engine-tabs" aria-label="世界引擎视图">
+                <button type="button" class="world-engine-tab is-active" data-world-engine-tab="today" aria-selected="true">今日</button>
+                <button type="button" class="world-engine-tab" data-world-engine-tab="pressures" aria-selected="false">压力线</button>
+                <button type="button" class="world-engine-tab" data-world-engine-tab="runtime" aria-selected="false">运行</button>
+                <button type="button" class="world-engine-tab" data-world-engine-tab="events" aria-selected="false">事件</button>
+              </nav>
+              <div id="worldEngineContent" class="world-engine-scroll" aria-live="polite"></div>
+              <footer class="world-engine-action-bar">
+                <button id="worldEngineManualRunBtn" type="button" class="world-engine-manual-run">手动推演本日走向</button>
+              </footer>
+            </div>
+            <div id="worldEngineSettingsView" class="world-engine-view world-engine-settings-view" hidden>
+              <div class="world-engine-settings-titlebar">
+                <button id="worldEngineSettingsBackBtn" type="button" class="world-engine-settings-back" aria-label="返回世界引擎">
+                  <svg aria-hidden="true"><use href="#icon-chevron-left"></use></svg>
+                </button>
+                <div><strong>高级设置</strong><span>ENGINE CONTROL</span></div>
+              </div>
+              <div class="world-engine-settings-scroll">
+                <section class="world-engine-settings-section">
+                  <h2>叙事者比例</h2>
+                  <label class="world-engine-range-field" for="worldEngineHeroicWeight">
+                    <span><strong>王道故事</strong><small>偶像努力、成长与方法突破</small></span>
+                    <input id="worldEngineHeroicWeight" type="range" min="0" max="100" step="5" value="60">
+                  </label>
+                  <label class="world-engine-range-field" for="worldEngineRomanceWeight">
+                    <span><strong>恋爱故事</strong><small>关系、期待、边界与依赖</small></span>
+                    <input id="worldEngineRomanceWeight" type="range" min="0" max="100" step="5" value="40">
+                  </label>
+                  <div class="world-engine-style-disabled"><span><strong>怪文书</strong><small>首版尚未启用</small></span><b>0%</b></div>
+                  <p id="worldEngineStyleStatus" class="world-engine-settings-status">今日 60/40 · 尚未设置次日比例</p>
+                  <button id="worldEngineStyleSaveBtn" type="button" class="world-engine-settings-primary">保存次日比例</button>
+                </section>
+                <section class="world-engine-settings-section">
+                  <h2>事件密度</h2>
+                  <div id="worldEngineDensityModes" class="world-engine-density-modes" role="group" aria-label="次日事件密度">
+                    <button type="button" data-world-engine-density="low" aria-pressed="false">较少</button>
+                    <button type="button" data-world-engine-density="standard" aria-pressed="true">标准</button>
+                    <button type="button" data-world-engine-density="high" aria-pressed="false">较多</button>
+                    <button type="button" data-world-engine-density="custom" aria-pressed="false">自定义</button>
+                  </div>
+                  <div id="worldEngineDensityCustom" class="world-engine-density-custom" hidden>
+                    <label for="worldEngineDensityMinor"><span>轻微</span><input id="worldEngineDensityMinor" type="number" min="0" max="12" step="1" value="4"></label>
+                    <label for="worldEngineDensityModerate"><span>中等</span><input id="worldEngineDensityModerate" type="number" min="0" max="12" step="1" value="3"></label>
+                    <label for="worldEngineDensityMajor"><span>重大</span><input id="worldEngineDensityMajor" type="number" min="0" max="1" step="1" value="1"></label>
+                  </div>
+                  <p id="worldEngineDensityStatus" class="world-engine-settings-status">今日按当前计划运行 · 标准档将在次日生效</p>
+                  <button id="worldEngineDensitySaveBtn" type="button" class="world-engine-settings-primary">保存次日密度</button>
+                </section>
+                <section class="world-engine-settings-section">
+                  <h2>次 API</h2>
+                  <label class="world-engine-toggle" for="worldEngineApiEnabled">
+                    <span><strong>启用世界层生成</strong><small>公共世界、委托与 Director 共用</small></span>
+                    <input id="worldEngineApiEnabled" type="checkbox">
+                  </label>
+                  <label class="world-engine-field" for="worldEngineApiBaseUrl"><span>接口地址</span><input id="worldEngineApiBaseUrl" type="text" placeholder="https://api.openai.com/v1" spellcheck="false"></label>
+                  <label class="world-engine-field" for="worldEngineApiModel"><span>模型</span><input id="worldEngineApiModel" type="text" placeholder="gpt-4o-mini" spellcheck="false"></label>
+                  <label class="world-engine-field" for="worldEngineApiKey"><span>API Key（仅存浏览器本地）</span><input id="worldEngineApiKey" type="password" placeholder="sk-..." spellcheck="false" autocomplete="off"></label>
+                  <p id="worldEngineApiStatus" class="world-engine-settings-status">未配置次 API 时将使用静态世界池。</p>
+                  <div class="world-engine-settings-actions">
+                    <button id="worldEngineApiSaveBtn" type="button" class="world-engine-settings-primary">保存配置</button>
+                    <button id="worldEngineApiTestBtn" type="button" class="world-engine-settings-secondary">测试连接</button>
+                  </div>
+                </section>
+                <section class="world-engine-settings-section">
+                  <h2>手动操作</h2>
+                  <button id="worldEngineCommissionRegenBtn" type="button" class="world-engine-settings-command">重新生成本日委托</button>
+                  <p class="world-engine-settings-note">仅刷新委托内容，不会启动 Director 推演。</p>
+                  <button id="worldEngineStaleRecoveryBtn" type="button" class="world-engine-settings-danger" hidden>结束卡住的推演</button>
+                </section>
+                <section class="world-engine-settings-section">
+                  <h2>连接诊断</h2>
+                  <p id="worldEngineApiDebugSummary" class="world-engine-debug-summary">尚未发起次 API 请求</p>
+                  <pre id="worldEngineApiDebugLog" class="world-engine-debug-log">暂无次 API 收发记录。</pre>
+                </section>
+              </div>
+            </div>
+          </div>
+
+          <nav id="phoneNavBar" class="phone-navbar" hidden aria-label="手机功能栏">
+            <button id="phoneNavBackBtn" type="button" class="phone-nav-btn" aria-label="返回">
+              <svg aria-hidden="true"><use href="#icon-chevron-left"></use></svg>
+              <span class="phone-nav-label">返回</span>
+            </button>
+            <button id="phoneNavHomeBtn" type="button" class="phone-nav-btn" aria-label="主屏幕">
+              <svg aria-hidden="true"><use href="#icon-home"></use></svg>
+              <span class="phone-nav-label">主页</span>
+            </button>
+            <button id="phoneNavCloseBtn" type="button" class="phone-nav-btn" aria-label="收起手机">
+              <svg aria-hidden="true"><use href="#icon-chevron-down"></use></svg>
+              <span class="phone-nav-label">收起</span>
+            </button>
+          </nav>
+          <audio id="phoneMusicAudio" preload="metadata"></audio>
+        </div>
+      </div>
+      <button id="phoneCloseBtn" class="mini-phone-exit-btn" type="button">返回</button>
+    </div>
+  </section>
+
+  <section id="niaLiveOverlay" class="nia-live-overlay" hidden aria-label="N.I.A 网络直播营业">
+    <div class="nia-live-shell">
+      <header class="nia-live-header">
+        <div class="nia-live-brand">
+          <span class="nia-live-crest-box"><img class="nia-live-school-crest" src="./assets/select-bg/bg_logo.png" alt="初星学园"></span>
+          <span class="nia-live-platform-copy">
+            <strong class="nia-live-platform-name">HATSUBOSHI LIVE</strong>
+            <span id="niaLiveTopic">直播准备中</span>
+          </span>
+        </div>
+        <div class="nia-live-header-status">
+          <span class="nia-live-live-badge"><i aria-hidden="true"></i>LIVE</span>
+          <span id="niaLiveSegmentLabel" class="nia-live-segment">01 / 04</span>
+        </div>
+      </header>
+      <div class="nia-live-main">
+        <section id="niaLiveStage" class="nia-live-stage" aria-label="直播画面">
+          <div class="nia-live-program-mark" aria-hidden="true"><span>NEXT IDOL AUDITION</span><strong>OFFICIAL STREAM</strong></div>
+          <div class="nia-live-stage-light" aria-hidden="true"></div>
+          <img id="niaLiveStandee" class="nia-live-standee" src="" alt="担当偶像" draggable="false">
+          <div id="niaLiveStatus" class="nia-live-status">等待主 API 生成直播内容...</div>
+          <div id="niaLiveCaption" class="nia-live-caption" aria-live="polite"></div>
+          <button id="niaLiveStageContinue" class="nia-segment-advance-hint" type="button" hidden>继续下一段</button>
+          <section id="niaLiveResultPanel" class="nia-live-result" hidden aria-label="直播结算">
+            <p class="nia-live-result-kicker">BROADCAST COMPLETE</p>
+            <h2>直播结束</h2>
+            <div id="niaLiveResultSummary" class="nia-live-result-summary"></div>
+            <button id="niaLiveResultConfirmBtn" class="nia-live-action is-primary" type="button">确认结果</button>
+          </section>
+        </section>
+        <aside id="niaLiveCommentRail" class="nia-live-comments" aria-label="实时评论">
+          <img class="nia-live-comments-watermark" src="./assets/select-bg/bg_logo.png" alt="" aria-hidden="true" draggable="false">
+          <header><div><span class="nia-live-chat-mark" aria-hidden="true"></span><strong>实时评论</strong></div><span id="niaLiveCommentCount">0</span></header>
+          <div class="nia-live-pinned-notice">
+            <span>公式</span>
+            <p>欢迎来到初星学园官方直播。请遵守礼仪，一起为偶像应援。</p>
+          </div>
+          <div id="niaLiveComments" class="nia-live-comment-list" aria-live="polite"></div>
+        </aside>
+      </div>
+      <footer class="nia-live-footer">
+        <div class="nia-live-channel-identity">
+          <span class="nia-live-channel-mark"><img src="./assets/select-bg/bg_logo.png" alt=""></span>
+          <span class="nia-live-channel-copy"><strong>初星学园公式频道</strong><small>@HATSUBOSHI_GAKUEN</small></span>
+        </div>
+        <div class="nia-live-metrics">
+          <span><small>观看人数</small><strong id="niaLiveViewers">0</strong></span>
+          <span><small>直播热度</small><strong id="niaLiveHeat">0</strong></span>
+          <span><small>舆论压力</small><strong id="niaLivePressure">0%</strong></span>
+        </div>
+        <div class="nia-live-controls">
+          <button id="niaLiveRetryBtn" class="nia-live-action" type="button" hidden>重新生成本段</button>
+          <button id="niaLiveContinueBtn" class="nia-live-action is-primary" type="button" hidden>继续直播</button>
+        </div>
+      </footer>
+      <section id="niaLiveProducerDrawer" class="nia-live-producer-drawer" hidden aria-label="制作人现场指导">
+        <div class="nia-live-producer-head"><span>PRODUCER CALL</span><strong>现场出现了问题。你要怎么指导她？</strong></div>
+        <div id="niaLiveIncident" class="nia-live-incident"></div>
+        <div id="niaLiveProducerOptions" class="nia-live-producer-options"></div>
+        <form id="niaLiveProducerForm" class="nia-live-producer-form">
+          <label for="niaLiveProducerInput">自行给出指示</label>
+          <div><input id="niaLiveProducerInput" type="text" maxlength="1200" autocomplete="off" placeholder="输入制作人的现场方案"><button class="nia-live-action is-primary" type="submit">执行</button></div>
+        </form>
+      </section>
+    </div>
+  </section>
+
+  <section id="niaMiniLiveOverlay" class="nia-mini-live-overlay" hidden aria-label="N.I.A 迷你演出营业">
+    <div class="nia-mini-live-shell">
+      <header class="nia-mini-live-header">
+        <div><span>HATSUBOSHI MINI LIVE</span><strong id="niaMiniLiveTitle">选择演出场地</strong></div>
+        <span id="niaMiniLiveVenueLabel">N.I.A PROMOTION</span>
+      </header>
+      <main id="niaMiniLiveStage" class="nia-mini-live-stage" tabindex="0" aria-label="迷你演出舞台，演出中点击推进">
+        <div class="nia-mini-live-scrim" aria-hidden="true"></div>
+        <img id="niaMiniLiveStandee" class="nia-mini-live-standee" src="" alt="担当偶像" draggable="false">
+        <section id="niaMiniLiveVenuePanel" class="nia-mini-live-venue-panel" aria-labelledby="niaMiniLiveVenueTitle">
+          <p>VENUE SELECT</p>
+          <h2 id="niaMiniLiveVenueTitle">今天在哪里举办迷你演出？</h2>
+          <div id="niaMiniLiveVenueList" class="nia-mini-live-venue-list"></div>
+        </section>
+        <div id="niaMiniLiveStatus" class="nia-mini-live-status" aria-live="polite">请选择演出场地</div>
+        <div id="niaMiniLiveCaption" class="nia-mini-live-caption" aria-live="polite" hidden></div>
+        <section id="niaMiniLiveResultPanel" class="nia-mini-live-result" hidden aria-label="迷你演出结果">
+          <p>PERFORMANCE COMPLETE</p>
+          <h2>迷你演出结束</h2>
+          <div id="niaMiniLiveResultSummary"></div>
+          <button id="niaMiniLiveResultConfirmBtn" class="nia-mini-live-action is-primary" type="button">确认结果</button>
+        </section>
+      </main>
+      <footer class="nia-mini-live-footer">
+        <span id="niaMiniLiveProgress">等待场地确认</span>
+        <button id="niaMiniLiveRetryBtn" class="nia-mini-live-action" type="button" hidden>重新生成整场演出</button>
+      </footer>
+    </div>
+  </section>
+
+  <section id="niaRadioOverlay" class="nia-radio-overlay" hidden aria-label="初星放送部广播营业">
+    <div class="nia-radio-shell">
+      <header class="nia-radio-header">
+        <div class="nia-radio-brand"><span class="nia-radio-mic" aria-hidden="true">ON AIR</span><div><strong>初星放送部</strong><span id="niaRadioEpisodeTitle">校园广播特别回</span></div></div>
+        <div class="nia-radio-header-status"><span class="nia-radio-on-air"><i aria-hidden="true"></i>ON AIR</span><span id="niaRadioSegmentLabel">01 / 04</span></div>
+      </header>
+      <main class="nia-radio-main">
+        <section class="nia-radio-stage" aria-label="广播演播室">
+          <div class="nia-radio-stage-sign">HATSUBOSHI RADIO CLUB</div>
+          <div class="nia-radio-booth" aria-hidden="true"><span></span><span></span><span></span></div>
+          <img id="niaRadioHostStandee" class="nia-radio-standee nia-radio-host" src="./assets/novel-standees/mashiro-yu.png" alt="真诚优" draggable="false">
+          <img id="niaRadioGuestStandee" class="nia-radio-standee nia-radio-guest" src="" alt="担当偶像" draggable="false">
+          <img id="niaRadioAdditionalGuestStandee" class="nia-radio-standee nia-radio-additional-guest" src="" alt="追加嘉宾" draggable="false" hidden>
+          <div id="niaRadioCaption" class="nia-radio-caption" aria-live="polite"></div>
+          <button id="niaRadioStageContinue" class="nia-segment-advance-hint" type="button" hidden>继续下一段</button>
+          <section id="niaRadioResultPanel" class="nia-radio-result" hidden aria-label="广播结果">
+            <p>PROGRAM COMPLETE</p><h2>本期广播已收播</h2><div id="niaRadioResultSummary"></div>
+            <button id="niaRadioResultConfirmBtn" class="nia-radio-action is-primary" type="button">确认结果</button>
+          </section>
+        </section>
+        <aside class="nia-radio-rail" aria-label="广播记录">
+          <div class="nia-radio-rail-head"><strong>节目记录</strong><span id="niaRadioHistoryCount">0</span></div>
+          <button id="niaRadioHistoryToggle" class="nia-radio-action nia-radio-history-toggle" type="button" aria-expanded="false">查看历史台词</button>
+          <div id="niaRadioHistoryDrawer" class="nia-radio-history" hidden><div id="niaRadioHistoryList"></div></div>
+          <div class="nia-radio-rail-note"><span>本期主题</span><strong id="niaRadioTopic">节目准备中</strong><small id="niaRadioListenerLetter"></small></div>
+        </aside>
+      </main>
+      <footer class="nia-radio-footer">
+        <span id="niaRadioStatus">等待主 API 生成广播内容...</span>
+        <div class="nia-radio-controls"><button id="niaRadioRetryBtn" class="nia-radio-action" type="button" hidden>重新生成本段</button><button id="niaRadioContinueBtn" class="nia-radio-action is-primary" type="button" hidden>继续节目</button></div>
+      </footer>
+      <section id="niaRadioProducerCue" class="nia-radio-producer-cue" hidden aria-label="制作人临场指示">
+        <div><span>PRODUCER CUE</span><strong>请决定优如何接住这封来信</strong></div><p id="niaRadioProblem"></p><div id="niaRadioProducerOptions" class="nia-radio-producer-options"></div>
+        <form id="niaRadioProducerForm"><label for="niaRadioProducerInput">自定义指示</label><div><input id="niaRadioProducerInput" maxlength="1200" autocomplete="off" placeholder="输入你的临场方案"><button class="nia-radio-action is-primary" type="submit">执行</button></div></form>
+      </section>
+    </div>
+  </section>
+
+  <section id="liveTheater" class="live-theater-overlay" hidden>
+    <div class="live-theater-window">
+      <video id="liveVideo" class="live-video" preload="auto" playsinline></video>
+      
+      <div id="livePlayPrompt" class="live-play-prompt" hidden>
+        <div class="play-icon-ring">
+          <span class="play-arrow">▶</span>
+        </div>
+        <p>点击播放演出</p>
+      </div>
+
+      <div class="live-theater-hud">
+        <button id="liveVolumeBtn" class="live-hud-btn volume-btn" type="button" aria-label="切换静音"></button>
+        <button id="liveSkipBtn" class="live-hud-btn skip-btn" type="button">跳过演出</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="vnDebugOverlay" class="vn-debug-overlay" hidden aria-label="桥接诊断">
+    <section class="vn-debug-panel" role="dialog" aria-modal="true" aria-labelledby="vnDebugTitle">
+      <header class="vn-debug-head">
+        <div>
+          <p class="vn-debug-kicker">Bridge Diagnostics</p>
+          <h2 id="vnDebugTitle">桥接诊断</h2>
+        </div>
+        <button id="vnDebugCloseBtn" class="vn-debug-close" type="button" aria-label="关闭桥接诊断">×</button>
+      </header>
+      <div id="vnDebugContent" class="vn-debug-content"></div>
+    </section>
+  </section>
+
+  <div id="appModal" class="modal-backdrop" hidden>
+    <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-head">
+        <div>
+          <p id="modalKicker" class="ui-kicker">Module</p>
+          <h2 id="modalTitle">模块</h2>
+        </div>
+        <button id="closeModal" class="icon-button" type="button" aria-label="关闭模态框"><svg><use href="#icon-close"></use></svg></button>
+      </header>
+      <div id="modalTabs" class="modal-tabs" role="tablist"></div>
+      <div id="modalBody" class="modal-body"></div>
+    </section>
+  </div>
+
+  <div id="wipeTransition" class="wipe-transition" hidden>
+    <div class="wipe-stripe" style="--i:0"></div>
+    <div class="wipe-stripe" style="--i:1"></div>
+    <div class="wipe-stripe" style="--i:2"></div>
+    <div class="wipe-stripe" style="--i:3"></div>
+    <div class="wipe-stripe" style="--i:4"></div>
+    <div class="wipe-stripe" style="--i:5"></div>
+  </div>
+
+  <div id="niaEntryTransition" class="nia-entry-transition" hidden aria-hidden="true">
+    <div class="nia-entry-camera">
+      <div class="nia-entry-logo-card">
+      <div class="nia-entry-logo" role="img" aria-label="NIA">
+        <img class="nia-entry-logo-image" src="./UI/nia-logo.png" alt="" aria-hidden="true" draggable="false">
+        <img class="nia-entry-logo-shimmer" src="./UI/nia-logo.png" alt="" aria-hidden="true" draggable="false">
+      </div>
+      <div class="nia-entry-logo-subtitle" aria-label="NEXT IDOL AUDITION">
+        <svg class="nia-entry-subtitle-art" viewBox="0 329 2009 136" aria-hidden="true" focusable="false">
+          <defs>
+            <clipPath id="niaSubtitleClip0" clipPathUnits="userSpaceOnUse"><rect x="0" y="329" width="150" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip1" clipPathUnits="userSpaceOnUse"><rect x="150" y="329" width="160" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip2" clipPathUnits="userSpaceOnUse"><rect x="300" y="329" width="158" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip3" clipPathUnits="userSpaceOnUse"><rect x="454" y="329" width="134" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip4" clipPathUnits="userSpaceOnUse"><rect x="634" y="329" width="50" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip5" clipPathUnits="userSpaceOnUse"><rect x="689" y="329" width="153" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip6" clipPathUnits="userSpaceOnUse"><rect x="842" y="329" width="162" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip7" clipPathUnits="userSpaceOnUse"><rect x="1001" y="329" width="121" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip8" clipPathUnits="userSpaceOnUse"><rect x="1158" y="329" width="132" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip9" clipPathUnits="userSpaceOnUse"><rect x="1285" y="329" width="113" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip10" clipPathUnits="userSpaceOnUse"><rect x="1413" y="329" width="123" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip11" clipPathUnits="userSpaceOnUse"><rect x="1537" y="329" width="39" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip12" clipPathUnits="userSpaceOnUse"><rect x="1584" y="329" width="108" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip13" clipPathUnits="userSpaceOnUse"><rect x="1700" y="329" width="37" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip14" clipPathUnits="userSpaceOnUse"><rect x="1748" y="329" width="135" height="136"></rect></clipPath>
+            <clipPath id="niaSubtitleClip15" clipPathUnits="userSpaceOnUse"><rect x="1886" y="329" width="123" height="136"></rect></clipPath>
+          </defs>
+          <g class="nia-entry-subtitle-char" style="--char-index:0" clip-path="url(#niaSubtitleClip0)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:1" clip-path="url(#niaSubtitleClip1)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:2" clip-path="url(#niaSubtitleClip2)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:3" clip-path="url(#niaSubtitleClip3)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:4" clip-path="url(#niaSubtitleClip4)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:5" clip-path="url(#niaSubtitleClip5)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:6" clip-path="url(#niaSubtitleClip6)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:7" clip-path="url(#niaSubtitleClip7)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:8" clip-path="url(#niaSubtitleClip8)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:9" clip-path="url(#niaSubtitleClip9)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:10" clip-path="url(#niaSubtitleClip10)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:11" clip-path="url(#niaSubtitleClip11)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:12" clip-path="url(#niaSubtitleClip12)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:13" clip-path="url(#niaSubtitleClip13)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:14" clip-path="url(#niaSubtitleClip14)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+          <g class="nia-entry-subtitle-char" style="--char-index:15" clip-path="url(#niaSubtitleClip15)"><image href="./UI/nia-subtitle.png" width="2048" height="778"></image></g>
+        </svg>
+      </div>
+      <div class="nia-entry-logo-star" aria-hidden="true">
+        <img class="nia-entry-star-layer nia-entry-star-base" src="./UI/nia-yellow-star.png" alt="" draggable="false">
+        <img class="nia-entry-star-layer nia-entry-star-trail nia-entry-star-trail-one" src="./UI/nia-yellow-star.png" alt="" draggable="false">
+        <img class="nia-entry-star-layer nia-entry-star-trail nia-entry-star-trail-two" src="./UI/nia-yellow-star.png" alt="" draggable="false">
+        <img class="nia-entry-star-layer nia-entry-star-white" src="./UI/nia-yellow-star.png" alt="" draggable="false">
+        <img class="nia-entry-star-layer nia-entry-star-gold" src="./UI/nia-yellow-star.png" alt="" draggable="false">
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./world/cast-track.js"></script>
+  <script src="./world/events-pool.js"></script>
+  <script src="./world/buzz-pool.js"></script>
+  <script src="./world/campus-behavior.js"></script>
+  <script src="./world/injection.js"></script>
+  <script src="./world/daily-tick.js"></script>
+  <script src="./world/world-gen-api.js"></script>
+  <script src="./world/director-state.js"></script>
+  <script src="./world/director-api.js"></script>
+  <script src="./world/director-injection.js"></script>
+  <script src="./world/director-phone-view.js"></script>
+  <script src="./world/secondary-channel-owner.js"></script>
+  <script src="./world/storyteller/styles.js"></script>
+  <script src="./world/storyteller/observations.js"></script>
+  <script src="./world/storyteller/plan.js"></script>
+  <script src="./world/storyteller/incidents.js"></script>
+  <script src="./world/storyteller/initiative.js"></script>
+  <script src="./world/storyteller/notifications.js"></script>
+  <script src="./world/storyteller/injection.js"></script>
+  <script src="./world/storyteller/phone-view.js"></script>
+  <script src="./broadcast/prompts.js"></script>
+  <script src="./sandbox/idol-roster.js"></script>
+  <script src="./tasks/side-pool.js"></script>
+  <script src="./tasks/side-quest-api.js"></script>
+  <script src="./tasks/sandbox-tasks.js"></script>
+  <script src="./chronicle/sum-chronicle.js"></script>
+  <script src="./shop/gift-shop.js"></script>
+  <script src="./appearance/portrait-expression-presets.js"></script>
+  <script src="./appearance/portrait-wardrobe.js"></script>
+  <script src="./nia/routes/registry.js"></script>
+  <script src="./nia/routes/hanami-saki.js"></script>
+  <script src="./nia/routes/fujita-kotone.js"></script>
+  <script type="module" src="./nia-business-api.js?v=20260811-1"></script>
+  <script type="module" src="./nia-radio-business-api.js?v=20260811-1"></script>
+  <script type="module" src="./nia-tv-business-api.js?v=20260811-1"></script>
+  <script src="./nia-training-core.js"></script>
+  <script src="./nia-round-transition-core.js"></script>
+  <script src="./nia-evening-core.js"></script>
+  <script src="./nia-producer-work-core.js"></script>
+  <script src="./nia-live-business-core.js"></script>
+  <script src="./nia-radio-business-core.js"></script>
+  <script src="./nia-tv-business-core.js"></script>
+  <script src="./nia-sns-business-core.js"></script>
+  <script type="module" src="./nia-sns-business-api.js"></script>
+  <script src="./nia-mini-live-core.js"></script>
+  <script type="module" src="./nia-mini-live-api.js"></script>
+  <script src="./nia-audition-core.js"></script>
+  <script type="module" src="./nia-audition-api.js"></script>
+  <script src="./nia-fan-milestone-core.js"></script>
+  <script type="module" src="./nia-fan-milestone-api.js"></script>
+  <script src="./nia-schedule-share-core.js"></script>
+  <script src="./hcg-tags.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

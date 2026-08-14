@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>N.I.A 模式</title>
+  <link rel="stylesheet" href="./nia-prototype.css?v=20260809-3">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="standalone-warning" id="standaloneWarning" hidden>
+      <strong>当前是独立界面预览</strong>
+      <p>可以浏览档案和编辑草案；正式建立企划需要从“初”扩展的 N.I.A 模式进入。</p>
+      <a href="http://127.0.0.1:8000/" target="_blank" rel="noopener">打开 SillyTavern（8000）</a>
+    </section>
+    <section class="desk" data-focus="tablet" aria-label="N.I.A 偶像企划档案">
+      <div class="episode"><small>NEXT IDOL AUDITION</small><b>第 1 轮企划</b></div>
+      <div class="book" aria-hidden="true">LESSON<br>NOTES</div>
+      <div class="pen" aria-hidden="true"></div>
+      <div class="cup" aria-hidden="true">☕</div>
+      <article
+        class="desk-phone mini-phone-bezel"
+        id="niaDeskPhone"
+        data-terminal="phone"
+        role="button"
+        tabindex="0"
+        aria-label="打开制作人手机预览"
+        aria-pressed="false"
+      >
+        <div class="mini-phone-notch" aria-hidden="true"></div>
+        <div class="mini-phone-screen">
+          <div class="mini-phone-statusbar is-home" aria-hidden="true">
+            <span class="mini-phone-clock">8:00</span>
+            <span class="mini-phone-status-icons">
+              <span class="mini-phone-signal"></span>
+              <span class="mini-phone-wifi"></span>
+              <span class="mini-phone-battery"></span>
+            </span>
+          </div>
+          <div class="phone-home-view">
+            <div class="phone-home-wallpaper" aria-hidden="true"></div>
+            <div class="phone-home-content">
+              <header class="phone-home-head">
+                <p class="phone-home-date">8月1日 星期六</p>
+                <p class="phone-home-greeting">初星通讯</p>
+              </header>
+              <div class="phone-app-grid" role="list" aria-label="应用">
+                <button type="button" class="phone-app-icon" data-phone-app="line" role="listitem"><span class="phone-app-icon-badge" style="--app-color:#06c755">L</span><span class="phone-app-icon-label">LINE</span></button>
+                <button type="button" class="phone-app-icon" data-phone-app="music" role="listitem"><span class="phone-app-icon-badge" style="--app-color:#1db954">M</span><span class="phone-app-icon-label">音乐</span></button>
+                <button type="button" class="phone-app-icon" data-phone-app="broadcast" role="listitem"><span class="phone-app-icon-badge" style="--app-color:#ff8a4c">B</span><span class="phone-app-icon-label">广播部</span></button>
+                <button type="button" class="phone-app-icon" data-phone-app="sns" role="listitem"><span class="phone-app-icon-badge" style="background:linear-gradient(135deg,#ff6b8a,#f9c584)">星</span><span class="phone-app-icon-label">初星圈</span></button>
+                <button type="button" class="phone-app-icon" data-phone-app="world-engine" role="listitem"><span class="phone-app-icon-badge" style="background:linear-gradient(135deg,#167c80,#22324a)">星</span><span class="phone-app-icon-label">初星世界引擎</span></button>
+                <div class="phone-app-slot phone-app-slot-empty" aria-hidden="true"><span class="phone-app-slot-badge">+</span><span class="phone-app-icon-label">添加应用</span></div>
+              </div>
+            </div>
+            <div class="phone-home-dock" aria-label="Dock">
+              <div class="phone-dock-apps">
+                <button type="button" class="phone-app-icon" data-phone-app="line"><span class="phone-app-icon-badge" style="--app-color:#06c755">L</span><span class="phone-app-icon-label">LINE</span></button>
+                <button type="button" class="phone-app-icon" data-phone-app="music"><span class="phone-app-icon-badge" style="--app-color:#1db954">M</span><span class="phone-app-icon-label">音乐</span></button>
+                <button type="button" class="phone-app-icon" data-phone-app="broadcast"><span class="phone-app-icon-badge" style="--app-color:#ff8a4c">B</span><span class="phone-app-icon-label">广播部</span></button>
+                <button type="button" class="phone-app-icon" data-phone-app="sns"><span class="phone-app-icon-badge" style="background:linear-gradient(135deg,#ff6b8a,#f9c584)">星</span><span class="phone-app-icon-label">初星圈</span></button>
+              </div>
+            </div>
+          </div>
+          <section class="producer-work-phone-view" id="producerWorkPhoneView" hidden aria-label="线上运营工作表">
+            <header class="producer-work-phone-head">
+              <span id="workPhoneKicker">HATSUBOSHI SNS</span>
+              <strong id="workPhoneTitle">发布准备</strong>
+            </header>
+            <div class="producer-work-phone-body">
+              <label id="workPhoneMaterialLabel" for="workPhoneMaterial">使用素材</label>
+              <select id="workPhoneMaterial"></select>
+              <label id="workPhoneAngleLabel" for="workPhoneAngle">呈现角度</label>
+              <select id="workPhoneAngle">
+                <option>实力与自律</option>
+                <option>自然可爱反差</option>
+                <option>制作团队观察</option>
+                <option>保留素材原貌</option>
+              </select>
+              <label id="workPhoneVoiceLabel" for="workPhoneVoice">发布语气</label>
+              <select id="workPhoneVoice">
+                <option>咲季本人语气</option>
+                <option>制作团队视角</option>
+                <option>节目预告语气</option>
+              </select>
+              <label id="workPhoneCommentsLabel" for="workPhoneComments">评论处理</label>
+              <select id="workPhoneComments">
+                <option>先观察代表性反馈</option>
+                <option>回应事实误解</option>
+                <option>暂不主动回应</option>
+              </select>
+              <label id="workPhoneFreeTextLabel" for="workPhoneFreeText">制作人补充</label>
+              <textarea id="workPhoneFreeText" placeholder="补充剪辑、文案或沟通方式"></textarea>
+              <button class="phone-work-submit" id="workPhoneSubmit" type="button">确认发布方案</button>
+            </div>
+          </section>
+        </div>
+      </article>
+      <article class="tablet" id="tablet" data-terminal="tablet" tabindex="0" aria-label="打开平板企划终端">
+        <div class="camera" aria-hidden="true"></div>
+        <div class="screen" id="tabletScreen" aria-label="可上下滚动阅览的偶像企划档案">
+          <section class="paper-page profile-page" id="idolProfilePage">
+            <div class="page-meta"><span>HATSUBOSHI ACADEMY / IDOL FILE</span><span>01</span></div>
+            <header class="profile-header">
+              <div class="portrait"><img src="./assets/avatars/hanami-saki.png" alt="花海咲季"></div>
+              <div class="identity"><p><small>学年</small><b>1年1组</b></p><p><small>姓名</small><strong>花海 咲季</strong></p></div>
+              <em>HATSUBOSHI<br>ACADEMY</em>
+            </header>
+            <div class="radar" aria-label="偶像能力雷达图">
+              <svg viewBox="0 0 260 260" role="img" aria-label="歌唱、表现、魅力、运动与舞蹈能力"><g class="rings"><polygon points="130,38 217,102 184,204 76,204 43,102"/><polygon points="130,56 200,107 173,188 87,188 60,107"/><polygon points="130,75 182,113 162,167 98,167 78,113"/><polygon points="130,94 165,119 151,151 109,151 95,119"/></g><g class="axes"><path d="M130 130V38M130 130L217 102M130 130L184 204M130 130L76 204M130 130L43 102"/></g><polygon class="radar-value" points="130,58 187,111 167,181 83,195 58,107"/></svg>
+              <span class="radar-label label-voice">歌唱技巧</span><span class="radar-label label-expression">表现技巧</span><span class="radar-label label-charm">偶像魅力</span><span class="radar-label label-athletic">运动能力</span><span class="radar-label label-dance">舞蹈技巧</span>
+            </div>
+            <div class="profile-report"><p>新生入学考试中成绩排名第一，是一个好胜心强、<b>对失败的前途动摇</b>的优等生。</p><p>优秀的身体能力，即便在全校学生中也能跻身前 0%。</p><p>虽然没有经验，但理解能力很强，成长迅速。从已经趋于完善的能力来看，似乎拥有很大的成长空间……</p></div>
+            <button class="continue-prompt" id="continueToPlanning" type="button"><span>继续阅览</span><strong>企划草案</strong><i aria-hidden="true">↓</i></button>
+          </section>
+          <section class="paper-page planning-page" id="planningDraftPage">
+            <div class="page-meta"><span id="planningRoundMeta">PLANNING SHEET / ROUND 01</span><span>02</span></div>
+            <section class="panel main-panel">
+              <div class="stage is-active" id="draftStage" data-stage="draft">
+                <div class="section-head"><div><p class="eyebrow">PLANNING DAY</p><h1 id="planningDraftTitle">第一轮企划草案</h1></div><span class="status-chip">制作人填写</span></div>
+                <div id="fixedOutingSummary" class="plan-summary" hidden></div>
+                <label for="goalInput">本轮希望达成的目标</label><textarea id="goalInput">让粉丝能够见到咲季的可爱之处</textarea>
+                <label for="imageInput">希望观众如何认识咲季</label><textarea id="imageInput">不仅作为偶像实力强大，同时有着独属于咲季的独特魅力，不仅是可靠的姐姐，同时也是被夸就飘飘然，特别好哄的可爱偶像</textarea>
+                <fieldset class="business-method-fieldset" id="businessMethodFieldset">
+                  <legend>准备通过什么方式实现</legend>
+                  <p class="business-method-hint">选择本轮两个营业日分别采用的正式营业方式（最多两种）。</p>
+                  <p id="businessLevelRule" class="business-level-rule">营业等级：第二轮且粉丝达到 5,000 后，直播、广播和电视节目自动采用 Lv2；初星圈目前固定为 Lv1。</p>
+                  <label class="business-method-option" for="businessMethodOnlineLive">
+                    <input id="businessMethodOnlineLive" type="checkbox" name="businessMethod" value="online_live" checked>
+                    <span class="business-method-copy"><strong>线上预热直播</strong><small>用实时互动展示日常状态，为后续正式营业积累观众印象。</small></span>
+                  </label>
+                  <label class="business-method-option" for="businessMethodSnsPost">
+                    <input id="businessMethodSnsPost" type="checkbox" name="businessMethod" value="sns_post" checked>
+                    <span class="business-method-copy"><strong>初星圈发帖营业</strong><small>选择预设配图发布一篇帖子，观察评论并完成一次互动。</small></span>
+                  </label>
+                  <label class="business-method-option" for="businessMethodSchoolRadio">
+                    <input id="businessMethodSchoolRadio" type="checkbox" name="businessMethod" value="school_radio">
+                    <span class="business-method-copy"><strong>初星放送部广播</strong><small>先在制作人工作日完成广播企划，再以校园广播完成正式亮相。</small></span>
+                  </label>
+                  <label class="business-method-option" for="businessMethodMiniLive">
+                    <input id="businessMethodMiniLive" type="checkbox" name="businessMethod" value="mini_live">
+                    <span class="business-method-copy"><strong>迷你演出</strong><small>在商店街、学园礼堂等场地举办短演出，用现场表现直接吸引新观众。</small></span>
+                  </label>
+                  <div class="business-method-detail" id="miniLiveVenueField" hidden>
+                    <label for="miniLiveVenueSelect">迷你演出地点</label>
+                    <select id="miniLiveVenueSelect">
+                      <option value="shopping_street">商店街临时舞台</option>
+                      <option value="junior_school_auditorium">初星学园中等部</option>
+                      <option value="shopping_mall">购物中心中庭</option>
+                      <option value="campus_courtyard">初星学园校园中庭</option>
+                    </select>
+                    <small>地点会随企划固定，营业当天将直接开始演出。</small>
+                  </div>
+                  <label class="business-method-option business-method-locked" for="businessMethodTvProgram">
+                    <input id="businessMethodTvProgram" type="checkbox" name="businessMethod" value="tv_program" data-unlock-round="2" disabled>
+                <span class="business-method-copy"><strong>电视综艺参演</strong><small>第二轮起解锁：参加《偶像生活访谈》，在临场指示中展现舞台外的真实魅力。</small></span>
+                    <span class="business-method-lock" aria-hidden="true">第二轮解锁</span>
+                  </label>
+                </fieldset>
+                <div class="action-row"><span class="api-status" id="apiStatus">正在确认酒馆连接...</span><button class="primary-btn" id="compileBtn">请亚纱里老师完善</button></div>
+              </div>
+              <div class="stage plan-receipt" id="planReceipt" data-stage="plan_ready">
+                <div class="section-head"><div><p class="eyebrow">APPROVED PLAN</p><h2 id="planningReceiptTitle">第一轮企划已建立</h2></div><span class="status-chip">已存档</span></div>
+                <div class="plan-summary"><article><span>期望公众印象</span><strong id="compiledImage"></strong></article><article><span>执行原则</span><strong id="compiledPrinciple"></strong></article><article><span>企划主轴</span><strong id="compiledSpine"></strong></article></div>
+                <div class="planned-days"><h3 id="plannedDaysTitle">五日计划顺序</h3><ol id="plannedDaysList"></ol></div>
+                <div class="action-row plan-confirm-row"><span class="api-status">确认修改后的企划与日程安排</span><button class="primary-btn" id="niaTrainingStartBtn" type="button">确认企划，开始育成</button></div>
+              </div>
+            </section>
+          </section>
+          <section class="paper-page producer-work-page" id="producerWorkPage" hidden>
+            <div class="page-meta"><span>PRODUCER WORK / DAILY BOARD</span><span id="producerWorkDayNumber">01</span></div>
+            <header class="producer-work-titlebar">
+              <div><p class="eyebrow">PRODUCER WORKDAY</p><h1 id="producerWorkTitle">制作人工作日</h1></div>
+              <span class="status-chip" id="producerWorkStatus">日程安排</span>
+            </header>
+            <div class="producer-work-layout">
+              <section class="work-schedule" aria-labelledby="workScheduleTitle">
+                <header><h2 id="workScheduleTitle">今日行程</h2><small>上午 / 下午 / 傍晚</small></header>
+                <div class="work-period-list" id="workPeriodList"></div>
+                <button class="primary-btn work-schedule-confirm" id="workScheduleConfirm" type="button">确认日程</button>
+                <p class="work-feedback" id="workFeedback" aria-live="polite"></p>
+              </section>
+              <section class="work-task-column" aria-labelledby="workTaskTitle">
+                <header><h2 id="workTaskTitle">待办文件</h2><small>选择文件查看详情</small></header>
+                <div class="work-task-list" id="workTaskList"></div>
+              </section>
+            </div>
+            <section class="work-dossier" id="workDossier" aria-live="polite">
+              <div class="work-dossier-empty">从右侧选择一项待办，查看资料并安排时段。</div>
+            </section>
+            <section class="work-execution" id="workExecution" hidden>
+              <header><div><p class="eyebrow" id="workExecutionPeriod">上午</p><h2 id="workExecutionTitle">开始工作</h2></div><span id="workExecutionCategory"></span></header>
+              <div class="work-briefing" id="workBriefing"></div>
+              <section class="radio-plan-editor" id="radioPlanEditor" hidden aria-labelledby="radioPlanEditorTitle">
+                <header class="radio-plan-editor-head">
+                  <div><p class="eyebrow">HATSUBOSHI RADIO</p><h3 id="radioPlanEditorTitle">本期广播企划</h3></div>
+                  <span>企划确认后交由 AI 编写执行剧情</span>
+                </header>
+                  <dl class="radio-plan-fixed">
+                  <div><dt>节目</dt><dd>初星放送部</dd></div>
+                  <div><dt>主持</dt><dd>真诚优</dd></div>
+                  <div><dt>嘉宾</dt><dd id="radioPlanGuest">担当偶像</dd></div>
+                  </dl>
+                  <fieldset class="radio-plan-focus" id="radioPlanAdditionalGuestFields" hidden><legend>Lv2 第二嘉宾</legend>
+                    <label><input type="radio" name="radioPlanAdditionalGuestMode" value="random" checked><span>随机安排其他偶像</span></label>
+                    <label><input type="radio" name="radioPlanAdditionalGuestMode" value="specified"><span>指定第二嘉宾</span></label>
+                    <select id="radioPlanAdditionalGuest" aria-label="指定第二嘉宾" disabled></select>
+                  </fieldset>
+                <fieldset class="radio-plan-mode" aria-label="企划填写方式">
+                  <label for="radioPlanModeQuick"><input id="radioPlanModeQuick" type="radio" name="radioPlanMode" value="quick" checked><span>快速企划</span></label>
+                  <label for="radioPlanModeCustom"><input id="radioPlanModeCustom" type="radio" name="radioPlanMode" value="custom"><span>自定义企划</span></label>
+                </fieldset>
+                <div class="radio-plan-fields" id="radioPlanQuickFields">
+                  <label for="radioPlanTheme">本期主题</label>
+                  <select id="radioPlanTheme">
+                    <option value="近期训练与自律">近期训练与自律</option>
+                    <option value="公众形象反差">公众形象反差</option>
+                    <option value="姐妹关系与竞争">姐妹关系与竞争</option>
+                    <option value="N.I.A目标与舞台">N.I.A目标与舞台</option>
+                  </select>
+                  <label for="radioPlanGoal">企划目标</label>
+                  <select id="radioPlanGoal">
+                    <option>建立新人偶像的基础认知</option>
+                    <option>展示实力之外的自然反差</option>
+                    <option>回收近期训练与营业成果</option>
+                    <option>为下一次试镜进行预热</option>
+                  </select>
+                  <fieldset class="radio-plan-focus"><legend>访谈重点</legend>
+                    <label><input type="checkbox" name="radioPlanFocus" value="近期训练成果" checked><span>近期训练成果</span></label>
+                    <label><input type="checkbox" name="radioPlanFocus" value="日常自律与料理"><span>日常自律与料理</span></label>
+                    <label><input type="checkbox" name="radioPlanFocus" value="被夸奖后的真实反应" checked><span>被夸奖后的真实反应</span></label>
+                    <label><input type="checkbox" name="radioPlanFocus" value="与妹妹的竞争关系"><span>与妹妹的竞争关系</span></label>
+                    <label><input type="checkbox" name="radioPlanFocus" value="N.I.A目标与舞台期待"><span>N.I.A目标与舞台期待</span></label>
+                  </fieldset>
+                </div>
+                <div class="radio-plan-fields" id="radioPlanCustomFields" hidden>
+                  <label for="radioPlanCustomTitle">本期标题</label>
+                  <input id="radioPlanCustomTitle" maxlength="200" placeholder="例如：第一名的自律生活特别回">
+                  <label for="radioPlanCustomGoal">企划目标</label>
+                  <textarea id="radioPlanCustomGoal" maxlength="600" placeholder="希望这期节目让听众形成怎样的认识"></textarea>
+                  <label for="radioPlanCustomFocus">访谈重点</label>
+                  <textarea id="radioPlanCustomFocus" maxlength="600" placeholder="希望主持人围绕哪些经历或话题展开"></textarea>
+                </div>
+              </section>
+              <fieldset class="work-preset-field" id="workPresetField"><legend>制作人的行动</legend><div id="workPresetList"></div></fieldset>
+              <label for="workFreeText">自由方案</label>
+              <textarea id="workFreeText" placeholder="也可以写下自己的处理方法"></textarea>
+              <div class="action-row"><span class="api-status" id="workApiStatus"></span><button class="primary-btn" id="workExecuteBtn" type="button">执行当前安排</button></div>
+            </section>
+            <footer class="work-output-strip" id="workOutputStrip" aria-label="今日工作成果"></footer>
+          </section>
+        </div>
+      </article>
+    </section>
+  </main>
+  <section
+    class="nia-briefing-overlay"
+    id="niaBriefingOverlay"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="niaBriefingSpeaker"
+    aria-describedby="niaBriefingText"
+    hidden
+  >
+    <img class="nia-briefing-standee" src="./assets/novel-standees/asari-sensei.png" alt="亚纱里老师">
+    <div class="nia-briefing-dialogue" id="niaBriefingDialogue">
+      <header class="nia-briefing-header">
+        <strong id="niaBriefingSpeaker">亚纱里老师</strong>
+        <span id="niaBriefingProgress" aria-label="讲解进度">1 / 4</span>
+      </header>
+      <p id="niaBriefingText" aria-live="polite"></p>
+      <button class="nia-briefing-next" id="niaBriefingNextBtn" type="button">继续</button>
+    </div>
+  </section>
+  <script type="module" src="./nia-prototype.js?v=20260811-1"></script>
+</body>
+</html>

@@ -1,0 +1,959 @@
+<div id="hatsu-loader" style="padding:20px;color:white;background:#111;border-radius:12px;">
+  <h2>Hatsu 前端加载中……</h2>
+  <p>如果一直停在这里，请打开控制台查看报错。</p>
+</div>
+
+<script>
+(async function () {
+  window.addEventListener('error', (event) => {
+    console.error('[st.html Error] ', event.error || event.message);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[st.html Rejection] ', event.reason);
+  });
+
+  window.isHatsuLoaderST = true;
+  window.hatsuFloorsHidden = true;
+  document.documentElement.style.setProperty('--hatsu-viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
+  function updateHatsuViewportHeight() {
+    document.documentElement.style.setProperty('--hatsu-viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
+  }
+  window.visualViewport?.addEventListener('resize', updateHatsuViewportHeight);
+  window.addEventListener('resize', updateHatsuViewportHeight);
+  
+  const BASE = 'https://hatsuboshi.vercel.app/';
+
+  function abs(path) {
+    return new URL(path, BASE).href;
+  }
+
+  function shouldRewriteUrl(url) {
+    return url &&
+      !url.startsWith('#') &&
+      !url.startsWith('data:') &&
+      !url.startsWith('blob:') &&
+      !/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url);
+  }
+
+  function showError(err) {
+    console.error('[Hatsu ST Loader] 加载失败：', err);
+    document.body.innerHTML =
+      '<div style="padding:20px;color:#ff6666;background:#111;border-radius:12px;">' +
+      '<h2>Hatsu 前端加载失败</h2>' +
+      '<p>请打开 F12 控制台查看具体报错。</p>' +
+      '<pre style="white-space:pre-wrap;">' + String(err && err.message ? err.message : err) + '</pre>' +
+      '</div>';
+  }
+
+  try {
+    const htmlRes = await fetch(abs('index.html'), { cache: 'no-store' });
+    if (!htmlRes.ok) {
+      throw new Error('index.html 加载失败：HTTP ' + htmlRes.status);
+    }
+
+    const htmlText = await htmlRes.text();
+    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+
+    // 加载远程 CSS
+    document.querySelectorAll('[data-hatsu-remote-style]').forEach(el => el.remove());
+
+    const styleLink = document.createElement('link');
+    styleLink.rel = 'stylesheet';
+    styleLink.href = abs('style.css');
+    styleLink.setAttribute('data-hatsu-remote-style', 'true');
+    document.head.appendChild(styleLink);
+
+    // 删除 index.html 里原来的 script，避免相对路径错误
+    doc.body.querySelectorAll('script').forEach(s => s.remove());
+
+    // 创建全屏覆盖层
+    const overlay = document.createElement('div');
+    overlay.id = 'hatsu-fullscreen-overlay';
+
+    overlay.innerHTML = `
+      <div id="hatsu-floating-controls">
+        <button id="hatsu-real-fullscreen-btn" type="button">浏览器全屏</button>
+        <button id="hatsu-toggle-floors-btn" type="button" style="display: none;">取消隐藏下方楼层</button>
+      </div>
+
+      <div id="hatsu-fullscreen-content">
+        <div id="hatsu-st-page"></div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    function ensureHatsuOverlayMounted() {
+      if (!document.body) return;
+      if (!document.getElementById('hatsu-fullscreen-overlay')) {
+        document.body.appendChild(overlay);
+      }
+    }
+
+    const overlayMountObserver = new MutationObserver(() => {
+      ensureHatsuOverlayMounted();
+    });
+    overlayMountObserver.observe(document.body, { childList: true });
+
+    const page = overlay.querySelector('#hatsu-st-page');
+    page.innerHTML = doc.body.innerHTML;
+
+    // 修正 HTML 里的 src
+    page.querySelectorAll('[src]').forEach(el => {
+      const src = el.getAttribute('src');
+      if (shouldRewriteUrl(src)) {
+        el.setAttribute('src', abs(src));
+      }
+    });
+
+    // 修正 href，但不动 #icon-star 这种 SVG 内部引用
+    page.querySelectorAll('[href]').forEach(el => {
+      const href = el.getAttribute('href');
+      if (shouldRewriteUrl(href)) {
+        el.setAttribute('href', abs(href));
+      }
+    });
+
+    // 全屏外壳样式：不改你的内部 UI，只让外层覆盖整个酒馆
+    const fullStyle = document.createElement('style');
+    fullStyle.setAttribute('data-hatsu-fullscreen-style', 'true');
+    fullStyle.textContent = `
+      #hatsu-fullscreen-overlay {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 999999 !important;
+        background: #101016 !important;
+        color: #242126 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100vw !important;
+        height: var(--hatsu-viewport-height, 100dvh) !important;
+        max-height: var(--hatsu-viewport-height, 100dvh) !important;
+        overflow: hidden !important;
+      }
+
+      #hatsu-floating-controls {
+        position: fixed !important;
+        top: 16px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        z-index: 2147483647 !important;
+        display: flex !important;
+        gap: 10px !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+
+      #hatsu-floating-controls button {
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border-radius: 20px !important;
+        padding: 8px 16px !important;
+        color: white !important;
+        background: rgba(20, 20, 26, 0.6) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+        cursor: pointer !important;
+        font-size: 13px !important;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        font-weight: 500 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+        transition: all 0.2s ease !important;
+        outline: none !important;
+      }
+
+      #hatsu-floating-controls button:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
+        border-color: rgba(255, 255, 255, 0.3) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35) !important;
+      }
+
+      #hatsu-floating-controls button:active {
+        transform: translateY(0) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+      }
+
+      #hatsu-fullscreen-content {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow: auto !important;
+        overscroll-behavior: contain !important;
+        -webkit-overflow-scrolling: touch !important;
+        background:
+          radial-gradient(circle at 18% 10%, rgba(255, 79, 154, 0.18), transparent 28%),
+          radial-gradient(circle at 84% 6%, rgba(38, 169, 244, 0.2), transparent 30%),
+          linear-gradient(135deg, #fff7f0 0%, #f2f7ff 48%, #fff6dd 100%) !important;
+      }
+
+      #hatsu-st-page {
+        width: min(100%, 1180px) !important;
+        min-height: var(--hatsu-viewport-height, 100dvh) !important;
+        margin: 0 auto !important;
+      }
+
+      @media (max-width: 560px) {
+        #hatsu-floating-controls {
+          top: 8px !important;
+          left: 50% !important;
+          gap: 6px !important;
+          transform: translateX(-50%) scale(0.88) !important;
+          transform-origin: center top !important;
+        }
+
+        #hatsu-floating-controls button {
+          min-height: 34px !important;
+          padding: 7px 10px !important;
+          font-size: 12px !important;
+          border-radius: 999px !important;
+        }
+
+        #hatsu-st-page {
+          width: 100% !important;
+          max-width: 100vw !important;
+          margin: 0 !important;
+        }
+      }
+
+      /* 隐式生成：处于初星学园聊天时，隐藏除第一楼（开场白）外的所有聊天气泡和输入状态 */
+      body.hatsuboshi-active.hatsuboshi-floor-hide-enabled .mes[mesid]:not([mesid="0"]) {
+        display: none !important;
+      }
+      body.hatsuboshi-active .writing_indicator {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(fullStyle);
+
+    // 注入隐藏规则到父窗口的 head
+    try {
+      if (window.parent && window.parent.document && window.parent.document.head) {
+        const parentDoc = window.parent.document;
+        if (!parentDoc.getElementById('hatsuboshi-parent-styles')) {
+          const parentStyle = parentDoc.createElement('style');
+          parentStyle.id = 'hatsuboshi-parent-styles';
+          parentStyle.textContent = `
+            body.hatsuboshi-active.hatsuboshi-floor-hide-enabled .mes[mesid]:not([mesid="0"]) {
+              display: none !important;
+            }
+            body.hatsuboshi-active .writing_indicator {
+              display: none !important;
+            }
+          `;
+          parentDoc.head.appendChild(parentStyle);
+        }
+      }
+    } catch (e) {
+      console.warn('[st.html] Failed to inject styles into parent document:', e);
+    }
+
+    // 浏览器真正全屏：必须点击按钮才能触发
+    document.getElementById('hatsu-real-fullscreen-btn')?.addEventListener('click', async () => {
+      try {
+        if (!document.fullscreenElement) {
+          await overlay.requestFullscreen();
+        } else {
+          await document.exitFullscreen();
+        }
+      } catch (err) {
+        console.error('[Hatsu] 浏览器全屏失败：', err);
+      }
+    });
+
+    // 绑定隐藏/恢复楼层按钮点击事件
+    document.getElementById('hatsu-toggle-floors-btn')?.addEventListener('click', () => {
+      window.hatsuFloorsHidden = !window.hatsuFloorsHidden;
+      updateInPageHatsuClass();
+    });
+
+    // 读取 app.js，并修正里面的 ./assets/
+    const jsRes = await fetch(abs('app.js'), { cache: 'no-store' });
+    if (!jsRes.ok) {
+      throw new Error('app.js 加载失败：HTTP ' + jsRes.status);
+    }
+
+    let jsText = await jsRes.text();
+
+    jsText = jsText
+      .replaceAll('"./assets/', '"' + abs('assets/'))
+      .replaceAll("'./assets/", "'" + abs('assets/'))
+      .replaceAll('`./assets/', '`' + abs('assets/'));
+
+    const script = document.createElement('script');
+    script.textContent = jsText + '\n//# sourceURL=' + abs('app.js');
+    page.appendChild(script);
+
+    // 清掉原来的加载提示
+    const loader = document.getElementById('hatsu-loader');
+    if (loader) loader.remove();
+
+    // ── 初始化内嵌直接桥接服务（如果用户禁用了本地酒馆扩展） ──
+    let bridgeReadyPromise = null;
+    if (!window.__hatsuboshiProduceLoaded) {
+      window.__hatsuboshiProduceLoaded = true;
+
+      let resolveBridgeReady;
+      bridgeReadyPromise = new Promise((resolve) => {
+        resolveBridgeReady = resolve;
+      });
+
+      const startBridge = () => {
+        initInPageBridge().then(resolveBridgeReady).catch(resolveBridgeReady);
+      };
+
+      if (document.readyState === 'complete') {
+        setTimeout(startBridge, 200);
+      } else {
+        window.addEventListener('load', startBridge);
+      }
+
+      // 1. 同步注册消息监听，监测 iframe 窗口与外层大窗口的消息
+      const messageHandler = async (event) => {
+        const data = event.data || {};
+        if (data.source !== 'hatsuboshi-produce') return;
+
+        console.log('[st.html] received message from app.js:', data.type);
+
+        // 等待桥接模块（SillyTavern APIs）异步加载完毕后再处理消息
+        await bridgeReadyPromise;
+
+        if (data.type === 'getCharacter') {
+          postCharacterToFrame();
+        }
+        if (data.type === 'sendPrompt') {
+          const reqId = String(data.requestId || '');
+          if (useTransactionalBridge) {
+            queuePromptTask(() => runTransactionalPrompt(data.prompt, reqId));
+          } else {
+            clearReplyCandidateState();
+            pendingRequestId = reqId;
+            sendPromptToSillyTavern(data.prompt);
+          }
+        }
+        if (data.type === 'regenerate') {
+          const reqId = String(data.requestId || '');
+          if (useTransactionalBridge) {
+            const cachedPrompt = requestPromptCache.get(reqId);
+            if (cachedPrompt) {
+              queuePromptTask(() => runTransactionalPrompt(cachedPrompt, reqId));
+            }
+          } else {
+            clearReplyCandidateState();
+            pendingRequestId = reqId;
+            const mainDoc = window.parent?.document || document;
+            const regenBtn = mainDoc.getElementById('option_regenerate');
+            if (regenBtn) {
+              const jQuery = window.parent?.jQuery || window.jQuery;
+              if (jQuery) {
+                jQuery(regenBtn).trigger('click');
+              } else {
+                regenBtn.click();
+              }
+            }
+          }
+        }
+        if (data.type === 'aiReplyAck') {
+          if (!useTransactionalBridge) {
+            handleReplyAck(data);
+          }
+        }
+        if (data.type === 'saveState') {
+          saveChatState(data.state);
+        }
+      };
+
+      window.addEventListener('message', messageHandler);
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.addEventListener('message', messageHandler);
+        }
+      } catch (e) {
+        console.warn('[st.html] Cannot register message listener on parent window:', e);
+      }
+    }
+
+    async function initInPageBridge() {
+      try {
+        let attempts = 0;
+        let globalST = null;
+        while (attempts < 50) {
+          try {
+            globalST = getSillyTavernGlobal();
+          } catch (e) {}
+          if (globalST && typeof globalST.getContext === 'function') {
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+          attempts++;
+        }
+        if (!globalST || typeof globalST.getContext !== 'function') {
+          throw new Error('SillyTavern global API (window.SillyTavern.getContext) not found.');
+        }
+
+        const context = getContext();
+
+        // 旧事件桥接仅在非事务模式启用
+        if (!useTransactionalBridge) {
+          bindSillyTavernReplyBridge();
+        }
+
+        // 立即发送一次角色数据（以防 app.js 已经在那等着了）
+        postCharacterToFrame();
+
+        // 监听聊天切换事件来同步数据与设置 body class
+        const eventSource = context.eventSource;
+        const eventTypes = context.eventTypes;
+        if (eventSource && eventTypes) {
+          eventSource.on(eventTypes.CHAT_CHANGED, () => {
+            clearPendingReplyRequest();
+            postCharacterToFrame();
+            updateInPageHatsuClass();
+          });
+          if (eventTypes.CHAT_COMPLETION_PROMPT_READY) {
+            eventSource.on(eventTypes.CHAT_COMPLETION_PROMPT_READY, pruneHatsuChatCompletionPayload);
+          }
+        }
+
+        updateInPageHatsuClass();
+        bindChatDomObserver();
+        console.log('[Hatsu ST Loader] 零安装直接桥接（In-page Bridge）启动成功。');
+      } catch (err) {
+        console.error('[Hatsu ST Loader] 启动直接桥接失败：', err);
+        alert('[st.html Bridge Import Error] ' + String(err.stack || err.message || err));
+      }
+    }
+
+    // ── 桥接辅助函数 ──
+    const CHAT_STATE_METADATA_KEY = 'hatsuboshi_produce_state_v1';
+    const HATSU_COMMIT_EVENT_NAME = 'hatsuAssistantCommitted';
+    const useCommittedReplyEvent = window.HatsuBridgeUseCommittedReplyEvent === true;
+    const useTransactionalBridge = window.HatsuBridgeTransactional === true;
+    let pendingRequestId = '';
+    let pendingPromptSentAt = 0;
+    let pendingPromptChatLength = 0;
+    let pendingCandidateInFlight = false;
+    let pendingCandidateMessageId = -1;
+    let pendingReplyRetryTimer = 0;
+    let pendingStreamFinalizeTimer = 0;
+    let pendingStreamMessageId = -1;
+    const requestPromptCache = new Map();
+    let promptTaskQueue = Promise.resolve();
+
+    function getSillyTavernGlobal() {
+      const candidates = [];
+      try {
+        if (window.parent && window.parent !== window) candidates.push(window.parent.SillyTavern);
+      } catch (e) {}
+      try {
+        candidates.push(window.SillyTavern);
+      } catch (e) {}
+      return candidates.find(api => api && typeof api.getContext === 'function') || null;
+    }
+
+    function getContext() {
+      try {
+        return getSillyTavernGlobal()?.getContext?.() || null;
+      } catch (e) {
+        console.warn('[st.html] getContext failed:', e);
+        return null;
+      }
+    }
+
+    function getCurrentContextInfo() {
+      const context = getContext();
+      const characterId = context?.characterId;
+      const character = Array.isArray(context?.characters) && Number.isInteger(Number(characterId))
+        ? context.characters[Number(characterId)]
+        : null;
+      const groupId = context?.groupId || context?.groups?.selected || '';
+      const chatId = context?.chatId
+        || context?.chatMetadata?.chat_id
+        || context?.chatMetadata?.file_name
+        || context?.chatMetadata?.fileName
+        || context?.chatFile
+        || 'default-chat';
+      
+      const mainDoc = window.parent?.document || document;
+      const characterName = character?.name || context?.name2 || mainDoc.querySelector('#avatar_div .ch_name')?.textContent?.trim() || '';
+      const actorScope = groupId
+        ? `group-${groupId}`
+        : `char-${Number.isInteger(Number(characterId)) ? characterId : characterName.replace(new RegExp("[\\\\/:*?\\\"<>|\\s]+", "g"), '_')}`;
+      
+      console.log('[st.html] getCurrentContextInfo contextName2:', context?.name2, 'charName:', character?.name, 'resolvedName:', characterName);
+
+      return {
+        character: {
+          name: characterName,
+          avatar: character?.avatar || character?.avatarFileName || ''
+        },
+        saveScope: `${actorScope}-chat-${chatId.replace(new RegExp("[\\\\/:*?\\\"<>|\\s]+", "g"), '_')}`
+      };
+    }
+
+    function updateInPageHatsuClass() {
+      const contextInfo = getCurrentContextInfo();
+      const characterName = contextInfo.character?.name || '';
+      const isHatsu = characterName.includes('初星学园') || characterName.includes('初星') || characterName.includes('Hatsuboshi');
+      
+      const targets = [document.body];
+      try {
+        if (window.parent?.document?.body) {
+          targets.push(window.parent.document.body);
+        }
+      } catch (e) {}
+
+      const mainDoc = window.parent?.document || document;
+      const openingFloorMounted = Boolean(mainDoc.querySelector('.mes[mesid="0"]'));
+      const shouldHide = isHatsu && window.hatsuFloorsHidden !== false && openingFloorMounted;
+
+      targets.forEach(body => {
+        if (isHatsu) {
+          body.classList.add('hatsuboshi-active');
+        } else {
+          body.classList.remove('hatsuboshi-active');
+        }
+        body.classList.toggle('hatsuboshi-floor-hide-enabled', shouldHide);
+      });
+
+      const btn = document.getElementById('hatsu-toggle-floors-btn');
+      if (btn) {
+        if (isHatsu) {
+          btn.style.display = 'block';
+          btn.textContent = shouldHide
+            ? '取消隐藏下方楼层'
+            : openingFloorMounted
+              ? '继续隐藏下方楼层'
+              : '0L未挂载，已暂停隐藏';
+        } else {
+          btn.style.display = 'none';
+        }
+      }
+    }
+
+    function getSavedChatState() {
+      const context = getContext();
+      const envelope = context?.chatMetadata?.[CHAT_STATE_METADATA_KEY];
+      if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return null;
+      return envelope.state;
+    }
+
+    function saveChatState(state) {
+      const context = getContext();
+      const metadata = context?.chatMetadata;
+      if (!metadata) return;
+      metadata[CHAT_STATE_METADATA_KEY] = {
+        version: 1,
+        updatedAt: Date.now(),
+        state: JSON.parse(JSON.stringify(state)),
+      };
+      context.saveMetadataDebounced?.();
+    }
+
+    function queuePromptTask(task) {
+      promptTaskQueue = promptTaskQueue
+        .then(() => task())
+        .catch((error) => {
+          console.error('[st.html] prompt task failed:', error);
+        });
+      return promptTaskQueue;
+    }
+
+    async function createSilentChatMessage(role, text, requestId) {
+      const context = getContext();
+      if (!context || !Array.isArray(context.chat)) throw new Error('chat context unavailable');
+      const message = {
+        name: role === 'user' ? String(context.name1 || 'User') : String(context.name2 || 'Assistant'),
+        is_user: role === 'user',
+        is_system: false,
+        send_date: Date.now(),
+        mes: String(text || ''),
+        extra: {
+          hatsuRequestId: String(requestId || ''),
+          hatsuTxnRole: role,
+          hatsuTxnAt: Date.now()
+        }
+      };
+      context.chat.push(message);
+      const messageId = context.chat.length - 1;
+      context.chatMetadata && (context.chatMetadata.tainted = true);
+      try {
+        context.addOneMessage?.(message, { forceId: messageId, scroll: true });
+      } catch (error) {
+        console.warn('[st.html] addOneMessage failed:', error);
+      }
+      try {
+        const eventSource = context.eventSource;
+        const eventTypes = context.eventTypes;
+        if (eventSource && eventTypes) {
+          if (role === 'user') {
+            await eventSource.emit(eventTypes.MESSAGE_SENT, messageId);
+            await eventSource.emit(eventTypes.USER_MESSAGE_RENDERED, messageId);
+          } else {
+            await eventSource.emit(eventTypes.MESSAGE_RECEIVED, messageId, 'normal');
+            await eventSource.emit(eventTypes.CHARACTER_MESSAGE_RENDERED, messageId, 'normal');
+          }
+        }
+      } catch (error) {
+        console.warn('[st.html] message render events failed:', error);
+      }
+      return messageId;
+    }
+
+    function rollbackSilentUserMessage(index, requestId) {
+      const context = getContext();
+      if (!context || !Array.isArray(context.chat)) return;
+      const idx = Number(index);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= context.chat.length) return;
+      const message = context.chat[idx];
+      if (!message?.is_user) return;
+      if (String(message?.extra?.hatsuRequestId || '') !== String(requestId || '')) return;
+      context.chat.splice(idx, 1);
+    }
+
+    async function persistChatSilently() {
+      const context = getContext();
+      await context?.saveChat?.();
+    }
+
+    function postCommittedReply(requestId, text, options = {}) {
+      const payload = {
+        source: 'hatsuboshi-produce-host',
+        type: 'aiReplyCommitted',
+        requestId: String(requestId || ''),
+        text: String(text || ''),
+        rawText: String(text || ''),
+        renderedText: '',
+        isFinal: options.isFinal !== false
+      };
+      window.postMessage(payload, '*');
+      dispatchCommittedReplyEvent(payload);
+      if (String(pendingRequestId || '') === String(requestId || '')) {
+        clearPendingReplyRequest();
+      }
+    }
+
+    async function runTransactionalPrompt(prompt, requestId) {
+      const context = getContext();
+      const promptText = String(prompt || '').trim();
+      const reqId = String(requestId || '');
+      if (!context || !promptText || !reqId) return;
+      requestPromptCache.set(reqId, promptText);
+      pendingRequestId = reqId;
+      clearReplyCandidateState();
+      const userIndex = await createSilentChatMessage('user', promptText, reqId);
+      await persistChatSilently();
+      let generatedText = '';
+      try {
+        const generated = await context.generate?.('quiet');
+        generatedText = String(generated || '').trim();
+      } catch (error) {
+        rollbackSilentUserMessage(userIndex, reqId);
+        await persistChatSilently();
+        postCommittedReply(reqId, '', { isFinal: true });
+        throw error;
+      }
+      if (!generatedText) {
+        rollbackSilentUserMessage(userIndex, reqId);
+        await persistChatSilently();
+        postCommittedReply(reqId, '', { isFinal: true });
+        return;
+      }
+      await createSilentChatMessage('assistant', generatedText, reqId);
+      await persistChatSilently();
+      postCommittedReply(reqId, generatedText, { isFinal: true });
+    }
+
+    function postCharacterToFrame() {
+      const contextInfo = getCurrentContextInfo();
+      const savedState = getSavedChatState();
+      console.log('[st.html] postCharacterToFrame sending payload:', contextInfo.character, 'hasSavedState:', Boolean(savedState));
+      const payload = {
+        source: 'hatsuboshi-produce-host',
+        type: 'character',
+        character: contextInfo.character,
+        saveScope: contextInfo.saveScope,
+        hasSavedState: Boolean(savedState),
+        savedState,
+      };
+      window.postMessage(payload, '*');
+    }
+
+    function sendPromptToSillyTavern(prompt) {
+      const text = String(prompt || '').trim();
+      if (!text) return;
+      
+      const mainDoc = window.parent?.document || document;
+      const textarea = mainDoc.querySelector('#send_textarea');
+      const sendButton = mainDoc.querySelector('#send_but');
+      if (textarea && sendButton) {
+        textarea.value = text;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        pendingPromptSentAt = Date.now();
+        const context = getContext();
+        pendingPromptChatLength = Array.isArray(context?.chat) ? context.chat.length : 0;
+        sendButton.click();
+      }
+    }
+
+    function bindSillyTavernReplyBridge() {
+      try {
+        const context = getContext();
+        if (!context) return;
+        const eventSource = context.eventSource;
+        const eventTypes = context.eventTypes;
+        if (!eventSource || !eventTypes) return;
+        
+        eventSource.on(eventTypes.CHARACTER_MESSAGE_RENDERED, (messageId) => {
+          sendLatestAiReplyToFrame(messageId, false);
+        });
+
+        const handleGenerationEnd = () => {
+          const latestMessageId = getContext()?.chat?.length - 1;
+          if (latestMessageId >= 0) {
+            sendLatestAiReplyToFrame(latestMessageId, true);
+          }
+        };
+
+        if (eventTypes.GENERATION_STARTED) {
+          eventSource.on(eventTypes.GENERATION_STARTED, () => {
+            clearReplyCandidateState();
+          });
+        }
+        if (eventTypes.STREAM_TOKEN_RECEIVED) {
+          eventSource.on(eventTypes.STREAM_TOKEN_RECEIVED, () => {
+            const latestMessageId = getContext()?.chat?.length - 1;
+            if (latestMessageId >= 0) {
+              sendLatestAiReplyToFrame(latestMessageId, false);
+            }
+          });
+        }
+        if (eventTypes.GENERATION_STOPPED) {
+          eventSource.on(eventTypes.GENERATION_STOPPED, handleGenerationEnd);
+        }
+        if (eventTypes.MESSAGE_RECEIVED) {
+          eventSource.on(eventTypes.MESSAGE_RECEIVED, (messageId) => {
+            sendLatestAiReplyToFrame(messageId, true);
+          });
+        }
+        if (eventTypes.MESSAGE_SWIPED) {
+          eventSource.on(eventTypes.MESSAGE_SWIPED, (messageId) => {
+            sendLatestAiReplyToFrame(messageId, true);
+          });
+        }
+      } catch (error) {
+        console.warn('[初星直接桥接] 无法绑定角色回复监听。', error);
+      }
+    }
+
+    function sendLatestAiReplyToFrame(messageId, isFinal = true) {
+      if (!pendingRequestId) return;
+      collectAndSendAiReply(messageId, isFinal);
+    }
+
+    function dispatchCommittedReplyEvent(payload) {
+      try {
+        window.dispatchEvent(new CustomEvent(HATSU_COMMIT_EVENT_NAME, { detail: payload }));
+      } catch (error) {
+        console.warn('[st.html] dispatch commit event failed:', error);
+      }
+    }
+
+    function getMessageRawText(message) {
+      if (!message || message.is_user) return '';
+      const swipeIndex = Number.isInteger(message.swipe_id) ? message.swipe_id : 0;
+      let rawText = '';
+      if (Array.isArray(message.swipes) && message.swipes.length > 0) {
+        rawText = String(message.swipes[swipeIndex] || message.swipes[0] || '');
+      }
+      if (!rawText) {
+        rawText = typeof message.mes === 'string' ? message.mes : '';
+      }
+      return rawText;
+    }
+
+    function findLatestUsableAiReplyId(preferredId) {
+      const context = getContext();
+      const chat = context?.chat;
+      if (!Array.isArray(chat)) return Number(preferredId);
+      const startIndex = Math.max(1, pendingPromptChatLength);
+      const preferredIndex = Number(preferredId);
+      if (Number.isInteger(preferredIndex) && preferredIndex >= startIndex) {
+        const preferredMessage = chat[preferredIndex];
+        if (preferredMessage && !preferredMessage.is_user && getMessageRawText(preferredMessage).trim()) {
+          return preferredIndex;
+        }
+      }
+      for (let index = chat.length - 1; index >= startIndex; index -= 1) {
+        const message = chat[index];
+        if (message && !message.is_user && getMessageRawText(message).trim()) return index;
+      }
+      return preferredIndex;
+    }
+
+    function collectAndSendAiReply(messageId, isFinal = true) {
+      if (Number(messageId) === 0) return;
+      if (isFinal && pendingCandidateInFlight) return;
+      
+      const context = getContext();
+      const replyMessageId = findLatestUsableAiReplyId(messageId);
+      const message = context?.chat?.[replyMessageId];
+      if (!message || message.is_user) {
+        // generation stopped 可能早于 assistant 消息真正落到 chat，给一次短延迟重试兜底
+        if (isFinal) {
+          const latestId = Array.isArray(context?.chat) ? context.chat.length - 1 : Number(messageId);
+          if (Number.isInteger(latestId) && latestId >= 0) {
+            scheduleReplyRetry(latestId, 350);
+          }
+        }
+        return;
+      }
+
+      const rawText = getMessageRawText(message);
+      const mainDoc = window.parent?.document || document;
+      const renderedText = mainDoc.querySelector(`.mes[mesid="${replyMessageId}"] .mes_text`)?.innerText || '';
+      const text = rawText.length > renderedText.length ? rawText : renderedText;
+
+      if (!isFinal) {
+        // 部分宿主环境偶发不触发 GENERATION_STOPPED/MESSAGE_RECEIVED，防止前端永远停留在“生成中”
+        scheduleStreamFinalize(replyMessageId, 1400);
+      }
+
+      if (text.trim().length > 0 || isFinal) {
+        const payload = {
+          source: 'hatsuboshi-produce-host',
+          type: useCommittedReplyEvent && isFinal ? 'aiReplyCommitted' : 'aiReply',
+          requestId: pendingRequestId,
+          text,
+          rawText,
+          renderedText,
+          isFinal
+        };
+        window.postMessage(payload, '*');
+        if (useCommittedReplyEvent && isFinal) {
+          dispatchCommittedReplyEvent(payload);
+        }
+        
+        if (isFinal) {
+          clearStreamFinalizeTimer();
+          pendingCandidateInFlight = true;
+          pendingCandidateMessageId = Number(replyMessageId);
+          scheduleReplyRetry(replyMessageId, 2500);
+        }
+      }
+    }
+
+    function scheduleStreamFinalize(messageId, delay = 1200) {
+      if (!pendingRequestId) return;
+      if (!Number.isInteger(Number(messageId)) || Number(messageId) < 0) return;
+      if (pendingStreamFinalizeTimer) window.clearTimeout(pendingStreamFinalizeTimer);
+      pendingStreamMessageId = Number(messageId);
+      pendingStreamFinalizeTimer = window.setTimeout(() => {
+        pendingStreamFinalizeTimer = 0;
+        const fallbackMessageId = pendingStreamMessageId;
+        pendingStreamMessageId = -1;
+        if (!pendingRequestId) return;
+        collectAndSendAiReply(fallbackMessageId, true);
+      }, delay);
+    }
+
+    function clearStreamFinalizeTimer() {
+      if (pendingStreamFinalizeTimer) window.clearTimeout(pendingStreamFinalizeTimer);
+      pendingStreamFinalizeTimer = 0;
+      pendingStreamMessageId = -1;
+    }
+
+    let chatDomObserver = null;
+    let chatDomUpdateTimer = 0;
+    function bindChatDomObserver() {
+      if (chatDomObserver) return;
+      let mainDoc = document;
+      try {
+        mainDoc = window.parent?.document || document;
+      } catch (e) {}
+      const target = mainDoc.body;
+      if (!target) return;
+      chatDomObserver = new MutationObserver(() => {
+        if (chatDomUpdateTimer) return;
+        chatDomUpdateTimer = window.setTimeout(() => {
+          chatDomUpdateTimer = 0;
+          updateInPageHatsuClass();
+        }, 150);
+      });
+      chatDomObserver.observe(target, { childList: true, subtree: true });
+    }
+
+    function isHatsuFrontendPromptMessage(message) {
+      if (!message || message.role !== 'user') return false;
+      const content = Array.isArray(message.content)
+        ? message.content.map(part => typeof part === 'string' ? part : part?.text || '').join('\n')
+        : String(message.content || '');
+      return content.includes('初星育成系统') || content.includes('【初星学园 Galgame 渲染规则契约】');
+    }
+
+    function pruneHatsuChatCompletionPayload(eventData) {
+      if (!eventData || eventData.dryRun || !Array.isArray(eventData.chat)) return;
+      const contextInfo = getCurrentContextInfo();
+      const characterName = contextInfo.character?.name || '';
+      const isHatsu = characterName.includes('初星学园') || characterName.includes('初星') || characterName.includes('Hatsuboshi');
+      if (!isHatsu) return;
+
+      const lastHatsuUserPromptIndex = eventData.chat.reduce((lastIndex, message, index) => {
+        return isHatsuFrontendPromptMessage(message) ? index : lastIndex;
+      }, -1);
+      if (lastHatsuUserPromptIndex === -1) return;
+
+      const filtered = eventData.chat.filter((message, index) => {
+        return !isHatsuFrontendPromptMessage(message) || index === lastHatsuUserPromptIndex;
+      });
+      eventData.chat.splice(0, eventData.chat.length, ...filtered);
+    }
+
+    function resolveReplyAck(data, activeRequestId) {
+      if (!data?.requestId || data.requestId !== activeRequestId) return 'ignore';
+      if (data.accepted) {
+        return data.isFinal !== false ? 'accept' : 'ignore';
+      }
+      return data.retry ? 'retry' : 'cancel';
+    }
+
+    function handleReplyAck(data) {
+      const resolution = resolveReplyAck(data, pendingRequestId);
+      if (resolution === 'ignore') return;
+      if (resolution === 'accept' || resolution === 'cancel') {
+        clearPendingReplyRequest();
+        return;
+      }
+      pendingCandidateInFlight = false;
+      scheduleReplyRetry(pendingCandidateMessageId);
+    }
+
+    function scheduleReplyRetry(messageId, delay = 600) {
+      if (!pendingRequestId) return;
+      if (!Number.isInteger(Number(messageId)) || Number(messageId) < 0) return;
+      if (pendingReplyRetryTimer) window.clearTimeout(pendingReplyRetryTimer);
+      pendingReplyRetryTimer = window.setTimeout(() => {
+        pendingReplyRetryTimer = 0;
+        pendingCandidateInFlight = false;
+        collectAndSendAiReply(Number(messageId), true);
+      }, delay);
+    }
+
+    function clearReplyCandidateState() {
+      if (pendingReplyRetryTimer) window.clearTimeout(pendingReplyRetryTimer);
+      pendingReplyRetryTimer = 0;
+      clearStreamFinalizeTimer();
+      pendingCandidateInFlight = false;
+      pendingCandidateMessageId = -1;
+    }
+
+    function clearPendingReplyRequest() {
+      clearReplyCandidateState();
+      pendingPromptSentAt = 0;
+      pendingPromptChatLength = 0;
+      pendingRequestId = '';
+    }
+  } catch (err) {
+    showError(err);
+  }
+})();
+</script>

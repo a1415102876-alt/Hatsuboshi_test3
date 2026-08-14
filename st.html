@@ -1,0 +1,3373 @@
+<div id="hatsu-loader" data-asset-base="" style="padding:20px;color:white;background:#111;border-radius:12px;">
+  <h2>Hatsu 前端加载中……</h2>
+  <p>如果一直停在这里，请打开控制台查看报错。</p>
+</div>
+
+<script>
+(async function () {
+  window.addEventListener('error', (event) => {
+    console.error('[st.html Error] ', event.error || event.message);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('[st.html Rejection] ', event.reason);
+  });
+
+  window.isHatsuLoaderST = true;
+  /* HATSU_WORKER_INJECT_ASSET_BASE */
+
+  function readLoaderAssetBaseAttr() {
+    const loader = document.getElementById("hatsu-loader");
+    return String(loader?.getAttribute("data-asset-base") || "").trim();
+  }
+
+  function absorbLoaderAssetBase() {
+    const fromAttr = readLoaderAssetBaseAttr();
+    if (fromAttr) window.HATSU_ASSET_BASE = fromAttr;
+  }
+  absorbLoaderAssetBase();
+
+  document.documentElement.style.setProperty('--hatsu-viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
+  function updateHatsuViewportHeight() {
+    document.documentElement.style.setProperty('--hatsu-viewport-height', `${window.visualViewport?.height || window.innerHeight}px`);
+  }
+  window.visualViewport?.addEventListener('resize', updateHatsuViewportHeight);
+  window.addEventListener('resize', updateHatsuViewportHeight);
+  
+  function resolveAssetBase() {
+    const override = String(window.HATSU_ASSET_BASE || "").trim();
+    if (override) {
+      return override.endsWith("/") ? override : `${override}/`;
+    }
+    try {
+      const pageUrl = new URL(window.location.href);
+      if (pageUrl.protocol === "file:") {
+        return new URL("./", pageUrl).href;
+      }
+      if (pageUrl.protocol === "http:" || pageUrl.protocol === "https:") {
+        const host = pageUrl.hostname;
+        if (/hatsuboshi\.vercel\.app$/i.test(host) || /\.workers\.dev$/i.test(host)) {
+          return new URL("./", pageUrl).href;
+        }
+        return new URL("./", pageUrl).href;
+      }
+    } catch (e) {
+      console.warn("[Hatsu ST Loader] resolveAssetBase failed:", e);
+    }
+    return "https://hatsuboshi.vercel.app/";
+  }
+
+  function isDeprecatedRemoteBase(base) {
+    const normalized = String(base || "").trim().toLowerCase();
+    return normalized.includes("hatsuboshi.vercel.app");
+  }
+
+  async function probeAssetBase(base) {
+    try {
+      const url = new URL("index.html", base);
+      const res = await fetch(url, { cache: "no-store", method: "HEAD" });
+      if (res.ok) return true;
+      const getRes = await fetch(url, { cache: "no-store", method: "GET" });
+      return getRes.ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isJavaScriptResponse(response, sourceText) {
+    const contentType = String(response?.headers?.get?.("content-type") || "").toLowerCase();
+    const prefix = String(sourceText || "").trimStart().slice(0, 160).toLowerCase();
+    if (contentType.includes("text/html") || contentType.includes("application/xhtml+xml")) return false;
+    return !prefix.startsWith("<!doctype html")
+      && !prefix.startsWith("<html")
+      && !prefix.startsWith("<head")
+      && !prefix.startsWith("<body");
+  }
+
+  function convertNiaBusinessModuleToClassic(sourceText) {
+    const source = String(sourceText || "");
+    if (/^\s*import\s/m.test(source)) throw new Error("business_api_import_not_supported");
+    const classicSource = source.replace(
+      /^\s*export\s+(?=(?:async\s+)?function\s|class\s|const\s|let\s|var\s)/gm,
+      ""
+    );
+    if (/^\s*export\s/m.test(classicSource)) throw new Error("business_api_export_not_supported");
+    return classicSource;
+  }
+
+  async function probeEmbedAssetBase(base) {
+    if (!await probeAssetBase(base)) return false;
+    try {
+      const modUrl = new URL("world/cast-track.js", base);
+      const getRes = await fetch(modUrl, { cache: "no-store", method: "GET" });
+      if (!getRes.ok) return false;
+      const sourceText = await getRes.text();
+      if (!isJavaScriptResponse(getRes, sourceText)) {
+        console.warn("[Hatsu ST Loader] module probe response returned HTML:", modUrl.href);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function isHostedAssetPage() {
+    try {
+      const host = window.location.hostname;
+      return /hatsuboshi\.vercel\.app$/i.test(host) || /\.workers\.dev$/i.test(host);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function guessStLocalAssetBases() {
+    const bases = [];
+    try {
+      const origin = window.location.origin;
+      const path = window.location.pathname || "";
+      bases.push(new URL("./", window.location.href).href);
+      const pathMatch = path.match(/^(.*\/hatsu-produce-local)\//i);
+      if (pathMatch) {
+        bases.push(`${origin}${pathMatch[1]}/`);
+      }
+      bases.push(`${origin}/hatsu-produce-local/`);
+      bases.push(`${origin}/public/hatsu-produce-local/`);
+    } catch (e) {}
+    return bases;
+  }
+
+  async function pickAssetBase() {
+    absorbLoaderAssetBase();
+    const normalize = (base) => base.endsWith("/") ? base : `${base}/`;
+    let override = String(window.HATSU_ASSET_BASE || "").trim();
+    if (!override) {
+      override = readLoaderAssetBaseAttr();
+      if (override) window.HATSU_ASSET_BASE = override;
+    }
+    const localEmbed = Boolean(window.isHatsuLoaderST) && !isHostedAssetPage();
+    if (localEmbed && override && isDeprecatedRemoteBase(override)) {
+      console.warn("[Hatsu ST Loader] 酒馆内嵌忽略 Vercel 资源根，改用本地或 Workers：", override);
+      override = "";
+      window.HATSU_ASSET_BASE = "";
+    }
+    if (override) {
+      const base = normalize(override);
+      if (localEmbed) {
+        if (await probeEmbedAssetBase(base)) return base;
+      } else if (await probeAssetBase(base)) {
+        return base;
+      }
+    }
+    if (isHostedAssetPage()) {
+      const base = resolveAssetBase();
+      if (base && await probeAssetBase(base)) return base;
+    }
+    if (!localEmbed) {
+      const base = resolveAssetBase();
+      if (base && await probeAssetBase(base)) return base;
+      const fallback = "https://hatsuboshi.vercel.app/";
+      if (!isDeprecatedRemoteBase(override) && override !== fallback && await probeAssetBase(fallback)) {
+        console.warn("[Hatsu ST Loader] 本地资源不可用，回退到 CDN：", fallback);
+        return fallback;
+      }
+    }
+    if (localEmbed) {
+      for (const candidate of guessStLocalAssetBases()) {
+        if (!candidate) continue;
+        const base = normalize(candidate);
+        if (await probeEmbedAssetBase(base)) {
+          console.warn("[Hatsu ST Loader] 酒馆内嵌使用本地资源：", base);
+          return base;
+        }
+      }
+      const knownBases = ["https://hatsuboshitest.a1415102876.workers.dev/"];
+      for (const candidate of knownBases) {
+        const base = normalize(candidate);
+        if (await probeEmbedAssetBase(base)) {
+          console.warn("[Hatsu ST Loader] 酒馆内嵌使用 Workers 资源根：", base);
+          return base;
+        }
+      }
+      const fallback = normalize(knownBases[0]);
+      console.warn("[Hatsu ST Loader] 酒馆内嵌使用默认 Workers 资源根：", fallback);
+      return fallback;
+    }
+    return null;
+  }
+
+  if (window.location.protocol === 'file:') {
+    showFileProtocolHelp();
+    return;
+  }
+
+  const BASE = await pickAssetBase();
+  if (!BASE) {
+    showError(new Error(
+      "无法确定资源地址。酒馆内 $.load(st.html) 时请设置 window.HATSU_ASSET_BASE 为 Workers 地址，或改用 iframe。"
+    ));
+    return;
+  }
+  console.log('[Hatsu ST Loader] BASE =', BASE);
+
+  function abs(path) {
+    return new URL(path, BASE).href;
+  }
+
+  // 与 PlayList、Live 视频同一 R2 桶；除头像外的大图资源走 CDN，头像仍走 Workers 本地。
+  const R2_MEDIA_CDN = "https://pub-cfdeb8f85de84d8193695eca002e7880.r2.dev";
+  // R2 同名覆盖不会自动让浏览器丢弃旧图片缓存；替换媒体文件后递增此版本号。
+  const R2_MEDIA_VERSION = "20260811-1";
+
+  function withR2MediaVersion(url) {
+    return url + (url.includes("?") ? "&" : "?") + `v=${R2_MEDIA_VERSION}`;
+  }
+
+  function r2MediaUrl(path) {
+    const clean = String(path || "").replace(/^\.\//, "");
+    return R2_MEDIA_CDN + "/" + clean.split("/").map(encodeURIComponent).join("/");
+  }
+
+  function isLocalAvatarAsset(path) {
+    const clean = String(path || "").replace(/^\.\//, "");
+    return clean.startsWith("assets/avatars/");
+  }
+
+  function rewriteAssetRef(path) {
+    if (!path) return path;
+    const normalized = String(path).replace(/^\.\//, "");
+    if (!normalized.startsWith("assets/")) {
+      return shouldRewriteUrl(path) ? abs(path) : path;
+    }
+    if (isLocalAvatarAsset(path)) return abs(normalized);
+    return withR2MediaVersion(r2MediaUrl(normalized));
+  }
+
+  window.HATSU_RESOLVE_ASSET_URL = rewriteAssetRef;
+
+  function rewriteAssetsInText(text) {
+    return text.replace(/(["'`])\.\/assets\/([^"'`]+)/g, (match, quote, relativePath) => {
+      // Template expressions must be resolved after app.js evaluates; encoding
+      // `${name}` here turns it into a literal, nonexistent R2 object key.
+      if (quote === "`" && relativePath.includes("${")) return match;
+      const normalized = `assets/${relativePath}`;
+      const target = isLocalAvatarAsset(normalized)
+        ? abs(normalized)
+        : withR2MediaVersion(r2MediaUrl(normalized));
+      return quote + target;
+    });
+  }
+
+  function rewriteAssetsInCss(text) {
+    return text.replace(/url\((['"]?)(\.\/assets\/[^'")]+)\1\)/gi, (match, quote, path) => {
+      const target = rewriteAssetRef(path);
+      return `url(${quote}${target}${quote})`;
+    });
+  }
+
+  function shouldRewriteUrl(url) {
+    return url &&
+      !url.startsWith('#') &&
+      !url.startsWith('data:') &&
+      !url.startsWith('blob:') &&
+      !/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(url);
+  }
+
+  function showFileProtocolHelp() {
+    const indexUrl = new URL('index.html', window.location.href).href;
+    const httpUrl = 'http://127.0.0.1:8000/hatsu-produce-local/st.html';
+    document.getElementById('hatsu-loader')?.remove();
+    document.body.innerHTML =
+      '<div style="max-width:560px;margin:40px auto;padding:24px 22px;color:#f5f5f7;background:#16161c;border:1px solid rgba(255,255,255,0.12);border-radius:16px;line-height:1.65;font:15px/1.65 system-ui,sans-serif;">' +
+      '<h2 style="margin:0 0 12px;font-size:22px;color:#ff8ab9;">无法用 file:// 打开 st.html</h2>' +
+      '<p style="margin:0 0 14px;color:rgba(255,255,255,0.82);">你当前是<strong>双击本地文件</strong>打开。st.html 需要用 <code style="color:#9fd4ff;">fetch</code> 加载 index.html、app.js 等模块，浏览器在 file:// 下会拦截，界面会空白、偶像列表不显示。</p>' +
+      '<p style="margin:0 0 8px;font-weight:700;color:#fff;">方式一：单机试玩（无酒馆桥接）</p>' +
+      '<p style="margin:0 0 14px;"><a href="' + indexUrl + '" style="color:#7ee0ff;">打开同目录 index.html</a></p>' +
+      '<p style="margin:0 0 8px;font-weight:700;color:#fff;">方式二：酒馆完整功能（推荐）</p>' +
+      '<p style="margin:0 0 6px;color:rgba(255,255,255,0.82);">先启动 SillyTavern，在地址栏打开：</p>' +
+      '<p style="margin:0 0 14px;"><code style="display:block;padding:10px 12px;background:rgba(0,0,0,0.35);border-radius:10px;color:#9fd4ff;word-break:break-all;">' + httpUrl + '</code></p>' +
+      '<p style="margin:0;color:rgba(255,255,255,0.55);font-size:13px;">不要用 <code>file:\\</code> 路径，也不要把本地路径和 http 地址拼在一起。</p>' +
+      '</div>';
+  }
+
+  function showError(err) {
+    console.error('[Hatsu ST Loader] 加载失败：', err);
+    const hint = String(window.location.protocol) === "file:"
+      ? "<p><strong>提示：</strong>请勿用 file:// 直接打开 st.html。请通过 SillyTavern 本地服务访问，或运行 <code>npx serve .</code> 后打开 <code>http://localhost:3000/st.html</code>；本地开发也可直接用 <code>index.html</code>。</p>"
+      : "<p>请确认 hatsu-produce-local 目录可通过 HTTP 访问，且 index.html / app.js 未被拦截。</p>";
+    document.body.innerHTML =
+      '<div style="padding:20px;color:#ff6666;background:#111;border-radius:12px;">' +
+      '<h2>Hatsu 前端加载失败</h2>' +
+      '<p>请打开 F12 控制台查看具体报错。</p>' +
+      hint +
+      '<pre style="white-space:pre-wrap;">' + String(err && err.message ? err.message : err) + '</pre>' +
+      '</div>';
+  }
+
+  try {
+    const htmlRes = await fetch(abs('index.html'), { cache: 'no-store' });
+    if (!htmlRes.ok) {
+      throw new Error('index.html 加载失败：HTTP ' + htmlRes.status);
+    }
+
+    const htmlText = await htmlRes.text();
+    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+
+    // 加载远程 CSS
+    document.querySelectorAll('[data-hatsu-remote-style]').forEach(el => el.remove());
+
+    const cssRes = await fetch(abs('style.css'), { cache: 'no-store' });
+    if (!cssRes.ok) {
+      throw new Error('style.css 加载失败：HTTP ' + cssRes.status);
+    }
+    const styleEl = document.createElement('style');
+    styleEl.setAttribute('data-hatsu-remote-style', 'true');
+    styleEl.textContent = rewriteAssetsInCss(await cssRes.text());
+    document.head.appendChild(styleEl);
+
+    // 删除 index.html 里原来的 script，避免相对路径错误
+    doc.body.querySelectorAll('script').forEach(s => s.remove());
+
+    // 创建全屏覆盖层
+    const overlay = document.createElement('div');
+    overlay.id = 'hatsu-fullscreen-overlay';
+
+    overlay.innerHTML = `
+      <div id="hatsu-floating-controls">
+        <button id="hatsu-real-fullscreen-btn" type="button">浏览器全屏</button>
+      </div>
+
+      <div id="hatsu-fullscreen-content">
+        <div id="hatsu-st-page"></div>
+      </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    function ensureHatsuOverlayMounted() {
+      if (!document.body) return;
+      if (!document.getElementById('hatsu-fullscreen-overlay')) {
+        document.body.appendChild(overlay);
+      }
+    }
+
+    const overlayMountObserver = new MutationObserver(() => {
+      ensureHatsuOverlayMounted();
+    });
+    overlayMountObserver.observe(document.body, { childList: true });
+
+    const page = overlay.querySelector('#hatsu-st-page');
+    page.innerHTML = doc.body.innerHTML;
+
+    // 修正 HTML 里的 src
+    page.querySelectorAll('[src]').forEach(el => {
+      const src = el.getAttribute('src');
+      if (shouldRewriteUrl(src)) {
+        el.setAttribute('src', rewriteAssetRef(src));
+      }
+    });
+
+    // 修正 href，但不动 #icon-star 这种 SVG 内部引用
+    page.querySelectorAll('[href]').forEach(el => {
+      const href = el.getAttribute('href');
+      if (shouldRewriteUrl(href)) {
+        el.setAttribute('href', rewriteAssetRef(href));
+      }
+    });
+
+    let bridgeReadyPromise = null;
+
+    // 全屏外壳样式：不改你的内部 UI，只让外层覆盖整个酒馆
+    const fullStyle = document.createElement('style');
+    fullStyle.setAttribute('data-hatsu-fullscreen-style', 'true');
+    fullStyle.textContent = `
+      #hatsu-fullscreen-overlay {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 999999 !important;
+        background: #101016 !important;
+        color: #242126 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100vw !important;
+        height: var(--hatsu-viewport-height, 100dvh) !important;
+        max-height: var(--hatsu-viewport-height, 100dvh) !important;
+        overflow: hidden !important;
+      }
+
+      #hatsu-floating-controls {
+        position: fixed !important;
+        top: 16px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        z-index: 2147483647 !important;
+        display: flex !important;
+        gap: 10px !important;
+        align-items: center !important;
+        justify-content: center !important;
+      }
+
+      #hatsu-floating-controls button {
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        border-radius: 20px !important;
+        padding: 8px 16px !important;
+        color: white !important;
+        background: rgba(20, 20, 26, 0.6) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+        cursor: pointer !important;
+        font-size: 13px !important;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+        font-weight: 500 !important;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25) !important;
+        transition: all 0.2s ease !important;
+        outline: none !important;
+      }
+
+      #hatsu-floating-controls button:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
+        border-color: rgba(255, 255, 255, 0.3) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35) !important;
+      }
+
+      #hatsu-floating-controls button:active {
+        transform: translateY(0) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+      }
+
+      #hatsu-fullscreen-content {
+        flex: 1 1 auto !important;
+        min-height: 0 !important;
+        overflow: auto !important;
+        overscroll-behavior: contain !important;
+        -webkit-overflow-scrolling: touch !important;
+        background:
+          radial-gradient(circle at 18% 10%, rgba(255, 79, 154, 0.18), transparent 28%),
+          radial-gradient(circle at 84% 6%, rgba(38, 169, 244, 0.2), transparent 30%),
+          linear-gradient(135deg, #fff7f0 0%, #f2f7ff 48%, #fff6dd 100%) !important;
+      }
+
+      #hatsu-st-page {
+        width: min(100%, 1180px) !important;
+        min-height: var(--hatsu-viewport-height, 100dvh) !important;
+        margin: 0 auto !important;
+      }
+
+      #hatsu-fullscreen-overlay .select-screen:not(.is-hidden) {
+        display: grid !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      #hatsu-fullscreen-overlay .select-panel {
+        min-height: 200px !important;
+      }
+
+      #hatsu-fullscreen-overlay .idol-list {
+        display: grid !important;
+        gap: 10px !important;
+        min-height: 120px !important;
+        overflow-y: auto !important;
+      }
+
+      #hatsu-fullscreen-overlay .idol-card {
+        display: grid !important;
+        grid-template-columns: 56px minmax(0, 1fr) !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        width: 100% !important;
+        min-height: 84px !important;
+        height: auto !important;
+        max-height: none !important;
+        padding: 12px 38px 12px 12px !important;
+        margin: 0 !important;
+        border: 2px solid rgba(255, 255, 255, 0.76) !important;
+        border-radius: 18px !important;
+        color: #242126 !important;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(249, 247, 255, 0.76)) !important;
+        box-shadow: 0 8px 18px rgba(37, 32, 52, 0.08) !important;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        pointer-events: auto !important;
+      }
+
+      #hatsu-fullscreen-overlay .idol-card .idol-card-copy {
+        display: block !important;
+        visibility: visible !important;
+      }
+
+      #hatsu-fullscreen-overlay .event-panel.task-panel,
+      #hatsu-fullscreen-overlay .event-panel.side-quest-panel {
+        display: flex !important;
+        flex-direction: column !important;
+        min-height: min(520px, calc(var(--hatsu-viewport-height, 100dvh) - 48px)) !important;
+        max-height: min(92svh, calc(var(--hatsu-viewport-height, 100dvh) - 36px)) !important;
+        overflow: hidden !important;
+      }
+
+      #hatsu-fullscreen-overlay .event-panel-body.task-panel-body,
+      #hatsu-fullscreen-overlay .event-panel-body.side-quest-body {
+        flex: 1 1 auto !important;
+        min-height: 280px !important;
+        overflow-y: auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+      }
+
+      #hatsu-fullscreen-overlay .task-panel-sections,
+      #hatsu-fullscreen-overlay .side-quest-slot-list {
+        flex: 1 1 auto !important;
+        min-height: 180px !important;
+        overflow-y: auto !important;
+      }
+
+      @media (max-width: 560px) {
+        #hatsu-floating-controls {
+          top: 8px !important;
+          left: 50% !important;
+          gap: 6px !important;
+          transform: translateX(-50%) scale(0.88) !important;
+          transform-origin: center top !important;
+        }
+
+        #hatsu-floating-controls button {
+          min-height: 34px !important;
+          padding: 7px 10px !important;
+          font-size: 12px !important;
+          border-radius: 999px !important;
+        }
+
+        #hatsu-st-page {
+          width: 100% !important;
+          max-width: 100vw !important;
+          margin: 0 !important;
+        }
+
+        #hatsu-fullscreen-overlay .produce-app {
+          width: 100% !important;
+          max-width: 1180px !important;
+        }
+
+        #hatsu-fullscreen-overlay .launch-screen:not(.is-hidden),
+        #hatsu-fullscreen-overlay .select-screen:not(.is-hidden) {
+          display: grid !important;
+          width: 100% !important;
+          min-height: min(var(--hatsu-viewport-height, 100dvh), 100%) !important;
+          box-sizing: border-box !important;
+        }
+
+        #hatsu-fullscreen-overlay .launch-mode-list {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 14px !important;
+          min-height: 220px !important;
+          overflow-y: auto !important;
+        }
+
+        #hatsu-fullscreen-overlay .select-panel .idol-list {
+          max-height: min(52vh, 520px) !important;
+          overflow-y: auto !important;
+        }
+      }
+
+    `;
+    document.head.appendChild(fullStyle);
+
+    // 浏览器真正全屏：必须点击按钮才能触发
+    document.getElementById('hatsu-real-fullscreen-btn')?.addEventListener('click', async () => {
+      try {
+        if (!document.fullscreenElement) {
+          await overlay.requestFullscreen();
+        } else {
+          await document.exitFullscreen();
+        }
+      } catch (err) {
+        console.error('[Hatsu] 浏览器全屏失败：', err);
+      }
+    });
+
+    // 读取 world / broadcast 模块与 app.js，并修正里面的 ./assets/
+    const WORLD_SCRIPTS = [
+      "appearance/portrait-expression-presets.js",
+      "appearance/portrait-wardrobe.js",
+      "world/cast-track.js",
+      "world/events-pool.js",
+      "world/buzz-pool.js",
+      "world/campus-behavior.js",
+      "world/injection.js",
+      "world/daily-tick.js",
+      "world/world-gen-api.js",
+      "world/director-state.js",
+      "world/director-api.js",
+      "world/director-injection.js",
+      "world/director-phone-view.js",
+      "world/secondary-channel-owner.js",
+      "world/storyteller/styles.js",
+      "world/storyteller/observations.js",
+      "world/storyteller/plan.js",
+      "world/storyteller/incidents.js",
+      "world/storyteller/initiative.js",
+      "world/storyteller/notifications.js",
+      "world/storyteller/injection.js",
+      "world/storyteller/phone-view.js",
+      "broadcast/prompts.js",
+      "tasks/side-pool.js",
+      "tasks/side-quest-api.js",
+      "tasks/sandbox-tasks.js",
+      "shop/gift-shop.js",
+      "chronicle/sum-chronicle.js",
+      "shujuku-output-parser.js"
+    ];
+
+    for (const rel of WORLD_SCRIPTS) {
+      const moduleUrl = abs(rel);
+      const modRes = await fetch(moduleUrl, { cache: "no-store" });
+      if (!modRes.ok) {
+        console.warn(`[Hatsu ST Loader] 世界观模块未找到，将降级：${rel} HTTP ${modRes.status}`);
+        continue;
+      }
+      const sourceText = await modRes.text();
+      if (!isJavaScriptResponse(modRes, sourceText)) {
+        console.warn(`[Hatsu ST Loader] response returned HTML; skipped module ${rel}: ${moduleUrl}`);
+        continue;
+      }
+      const modScript = document.createElement("script");
+      modScript.textContent = sourceText;
+      page.appendChild(modScript);
+    }
+
+    for (const rel of ['nia/routes/registry.js', 'nia/routes/hanami-saki.js', 'nia/routes/fujita-kotone.js']) {
+      try {
+        const routeRes = await fetch(abs(rel), { cache: 'no-store' });
+        if (!routeRes.ok) throw new Error('HTTP ' + routeRes.status);
+        const routeText = await routeRes.text();
+        if (!isJavaScriptResponse(routeRes, routeText)) throw new Error('response_not_javascript');
+        const routeScript = document.createElement('script');
+        routeScript.textContent = routeText + '\n//# sourceURL=' + abs(rel);
+        page.appendChild(routeScript);
+      } catch (error) {
+        console.warn(`[Hatsu ST Loader] N.I.A route loading failed: ${rel}`, error);
+      }
+    }
+
+    // app.js reads HatsuNiaTraining during initialization, so the core must
+    // be evaluated before app.js rather than loaded as a later optional module.
+    try {
+      const trainingCoreRes = await fetch(abs('nia-training-core.js'), { cache: 'no-store' });
+      if (!trainingCoreRes.ok) throw new Error('HTTP ' + trainingCoreRes.status);
+      const trainingCoreText = await trainingCoreRes.text();
+      if (!isJavaScriptResponse(trainingCoreRes, trainingCoreText)) throw new Error('response_not_javascript');
+      const trainingCoreScript = document.createElement('script');
+      trainingCoreScript.textContent = trainingCoreText + '\n//# sourceURL=' + abs('nia-training-core.js');
+      page.appendChild(trainingCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A training core loading failed:', error);
+    }
+
+    try {
+      const roundTransitionCoreRes = await fetch(abs('nia-round-transition-core.js'), { cache: 'no-store' });
+      if (!roundTransitionCoreRes.ok) throw new Error('HTTP ' + roundTransitionCoreRes.status);
+      const roundTransitionCoreText = await roundTransitionCoreRes.text();
+      if (!isJavaScriptResponse(roundTransitionCoreRes, roundTransitionCoreText)) throw new Error('response_not_javascript');
+      const roundTransitionCoreScript = document.createElement('script');
+      roundTransitionCoreScript.textContent = roundTransitionCoreText + '\n//# sourceURL=' + abs('nia-round-transition-core.js');
+      page.appendChild(roundTransitionCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A round transition core loading failed:', error);
+    }
+
+    try {
+      const eveningCoreRes = await fetch(abs('nia-evening-core.js'), { cache: 'no-store' });
+      if (!eveningCoreRes.ok) throw new Error('HTTP ' + eveningCoreRes.status);
+      const eveningCoreText = await eveningCoreRes.text();
+      if (!isJavaScriptResponse(eveningCoreRes, eveningCoreText)) throw new Error('response_not_javascript');
+      const eveningCoreScript = document.createElement('script');
+      eveningCoreScript.textContent = eveningCoreText + '\n//# sourceURL=' + abs('nia-evening-core.js');
+      page.appendChild(eveningCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A evening core loading failed:', error);
+    }
+
+    try {
+      const producerWorkCoreRes = await fetch(abs('nia-producer-work-core.js'), { cache: 'no-store' });
+      if (!producerWorkCoreRes.ok) throw new Error('HTTP ' + producerWorkCoreRes.status);
+      const producerWorkCoreText = await producerWorkCoreRes.text();
+      if (!isJavaScriptResponse(producerWorkCoreRes, producerWorkCoreText)) throw new Error('response_not_javascript');
+      const producerWorkCoreScript = document.createElement('script');
+      producerWorkCoreScript.textContent = producerWorkCoreText + '\n//# sourceURL=' + abs('nia-producer-work-core.js');
+      page.appendChild(producerWorkCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A producer work core loading failed:', error);
+    }
+
+    try {
+      const liveBusinessCoreRes = await fetch(abs('nia-live-business-core.js'), { cache: 'no-store' });
+      if (!liveBusinessCoreRes.ok) throw new Error('HTTP ' + liveBusinessCoreRes.status);
+      const liveBusinessCoreText = await liveBusinessCoreRes.text();
+      if (!isJavaScriptResponse(liveBusinessCoreRes, liveBusinessCoreText)) throw new Error('response_not_javascript');
+      const liveBusinessCoreScript = document.createElement('script');
+      liveBusinessCoreScript.textContent = liveBusinessCoreText + '\n//# sourceURL=' + abs('nia-live-business-core.js');
+      page.appendChild(liveBusinessCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A live business core loading failed:', error);
+    }
+
+    try {
+      const radioBusinessCoreRes = await fetch(abs('nia-radio-business-core.js'), { cache: 'no-store' });
+      if (!radioBusinessCoreRes.ok) throw new Error('HTTP ' + radioBusinessCoreRes.status);
+      const radioBusinessCoreText = await radioBusinessCoreRes.text();
+      if (!isJavaScriptResponse(radioBusinessCoreRes, radioBusinessCoreText)) throw new Error('response_not_javascript');
+      const radioBusinessCoreScript = document.createElement('script');
+      radioBusinessCoreScript.textContent = radioBusinessCoreText + '\n//# sourceURL=' + abs('nia-radio-business-core.js');
+      page.appendChild(radioBusinessCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A radio business core loading failed:', error);
+    }
+
+    try {
+      const tvBusinessCoreRes = await fetch(abs('nia-tv-business-core.js'), { cache: 'no-store' });
+      if (!tvBusinessCoreRes.ok) throw new Error('HTTP ' + tvBusinessCoreRes.status);
+      const tvBusinessCoreText = await tvBusinessCoreRes.text();
+      if (!isJavaScriptResponse(tvBusinessCoreRes, tvBusinessCoreText)) throw new Error('response_not_javascript');
+      const tvBusinessCoreScript = document.createElement('script');
+      tvBusinessCoreScript.textContent = tvBusinessCoreText + '\n//# sourceURL=' + abs('nia-tv-business-core.js');
+      page.appendChild(tvBusinessCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A TV business core loading failed:', error);
+    }
+
+    try {
+      const snsBusinessCoreRes = await fetch(abs('nia-sns-business-core.js'), { cache: 'no-store' });
+      if (!snsBusinessCoreRes.ok) throw new Error('HTTP ' + snsBusinessCoreRes.status);
+      const snsBusinessCoreText = await snsBusinessCoreRes.text();
+      if (!isJavaScriptResponse(snsBusinessCoreRes, snsBusinessCoreText)) throw new Error('response_not_javascript');
+      const snsBusinessCoreScript = document.createElement('script');
+      snsBusinessCoreScript.textContent = snsBusinessCoreText + '\n//# sourceURL=' + abs('nia-sns-business-core.js');
+      page.appendChild(snsBusinessCoreScript);
+      const snsBusinessApiRes = await fetch(abs('nia-sns-business-api.js'), { cache: 'no-store' });
+      if (!snsBusinessApiRes.ok) throw new Error('HTTP ' + snsBusinessApiRes.status);
+      const snsBusinessApiText = await snsBusinessApiRes.text();
+      if (!isJavaScriptResponse(snsBusinessApiRes, snsBusinessApiText)) throw new Error('response_not_javascript');
+      const snsBusinessApiScript = document.createElement('script');
+      snsBusinessApiScript.textContent = snsBusinessApiText.replace(/export\s+/g, '') + '\n//# sourceURL=' + abs('nia-sns-business-api.js');
+      page.appendChild(snsBusinessApiScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A sns business loading failed:', error);
+    }
+
+    try {
+      const miniLiveCoreRes = await fetch(abs('nia-mini-live-core.js'), { cache: 'no-store' });
+      if (!miniLiveCoreRes.ok) throw new Error('HTTP ' + miniLiveCoreRes.status);
+      const miniLiveCoreText = await miniLiveCoreRes.text();
+      if (!isJavaScriptResponse(miniLiveCoreRes, miniLiveCoreText)) throw new Error('response_not_javascript');
+      const miniLiveCoreScript = document.createElement('script');
+      miniLiveCoreScript.textContent = miniLiveCoreText + '\n//# sourceURL=' + abs('nia-mini-live-core.js');
+      page.appendChild(miniLiveCoreScript);
+      const miniLiveApiRes = await fetch(abs('nia-mini-live-api.js'), { cache: 'no-store' });
+      if (!miniLiveApiRes.ok) throw new Error('HTTP ' + miniLiveApiRes.status);
+      const miniLiveApiText = await miniLiveApiRes.text();
+      if (!isJavaScriptResponse(miniLiveApiRes, miniLiveApiText)) throw new Error('response_not_javascript');
+      const miniLiveApiScript = document.createElement('script');
+      miniLiveApiScript.textContent = miniLiveApiText.replace(/export\s+/g, '') + '\n//# sourceURL=' + abs('nia-mini-live-api.js');
+      page.appendChild(miniLiveApiScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A mini live loading failed:', error);
+    }
+
+    try {
+      const auditionCoreRes = await fetch(abs('nia-audition-core.js'), { cache: 'no-store' });
+      if (!auditionCoreRes.ok) throw new Error('HTTP ' + auditionCoreRes.status);
+      const auditionCoreText = await auditionCoreRes.text();
+      if (!isJavaScriptResponse(auditionCoreRes, auditionCoreText)) throw new Error('response_not_javascript');
+      const auditionCoreScript = document.createElement('script');
+      auditionCoreScript.textContent = auditionCoreText + '\n//# sourceURL=' + abs('nia-audition-core.js');
+      page.appendChild(auditionCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A audition core loading failed:', error);
+    }
+
+    try {
+      const fanMilestoneCoreRes = await fetch(abs('nia-fan-milestone-core.js'), { cache: 'no-store' });
+      if (!fanMilestoneCoreRes.ok) throw new Error('HTTP ' + fanMilestoneCoreRes.status);
+      const fanMilestoneCoreText = await fanMilestoneCoreRes.text();
+      if (!isJavaScriptResponse(fanMilestoneCoreRes, fanMilestoneCoreText)) throw new Error('response_not_javascript');
+      const fanMilestoneCoreScript = document.createElement('script');
+      fanMilestoneCoreScript.textContent = fanMilestoneCoreText + '\n//# sourceURL=' + abs('nia-fan-milestone-core.js');
+      page.appendChild(fanMilestoneCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A fan milestone core loading failed:', error);
+    }
+
+    try {
+      const scheduleShareCoreRes = await fetch(abs('nia-schedule-share-core.js'), { cache: 'no-store' });
+      if (!scheduleShareCoreRes.ok) throw new Error('HTTP ' + scheduleShareCoreRes.status);
+      const scheduleShareCoreText = await scheduleShareCoreRes.text();
+      if (!isJavaScriptResponse(scheduleShareCoreRes, scheduleShareCoreText)) throw new Error('response_not_javascript');
+      const scheduleShareCoreScript = document.createElement('script');
+      scheduleShareCoreScript.textContent = scheduleShareCoreText + '\n//# sourceURL=' + abs('nia-schedule-share-core.js');
+      page.appendChild(scheduleShareCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A schedule share core loading failed:', error);
+    }
+
+    try {
+      const hcgTagsRes = await fetch(abs('hcg-tags.js'), { cache: 'no-store' });
+      if (!hcgTagsRes.ok) throw new Error('HTTP ' + hcgTagsRes.status);
+      let hcgTagsText = await hcgTagsRes.text();
+      if (!isJavaScriptResponse(hcgTagsRes, hcgTagsText)) throw new Error('response_not_javascript');
+      hcgTagsText = rewriteAssetsInText(hcgTagsText);
+      const hcgTagsScript = document.createElement('script');
+      hcgTagsScript.textContent = hcgTagsText + '\n//# sourceURL=' + abs('hcg-tags.js');
+      page.appendChild(hcgTagsScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] HCG tags loading failed:', error);
+    }
+
+    let niaBusinessModuleLoaded = false;
+    try {
+      const businessApiUrl = abs('nia-business-api.js');
+      const businessApiRes = await fetch(businessApiUrl, { cache: 'no-store' });
+      if (!businessApiRes.ok) throw new Error('HTTP ' + businessApiRes.status);
+      const businessApiText = await businessApiRes.text();
+      if (!isJavaScriptResponse(businessApiRes, businessApiText)) throw new Error('response_not_javascript');
+      const businessApiScript = document.createElement('script');
+      businessApiScript.textContent = '(function () {\n'
+        + convertNiaBusinessModuleToClassic(businessApiText)
+        + '\n})();\n//# sourceURL=' + businessApiUrl;
+      page.appendChild(businessApiScript);
+      niaBusinessModuleLoaded = Boolean(globalThis.HatsuNiaBusiness?.buildNiaLiveSegmentPrompt);
+      if (!niaBusinessModuleLoaded) throw new Error('business_api_global_missing');
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A 营业 API 预加载失败：', error);
+    }
+    window.HATSU_NIA_BUSINESS_READY = Promise.resolve(niaBusinessModuleLoaded);
+
+    let niaRadioModuleLoaded = false;
+    try {
+      const radioApiUrl = abs('nia-radio-business-api.js');
+      const radioApiRes = await fetch(radioApiUrl, { cache: 'no-store' });
+      if (!radioApiRes.ok) throw new Error('HTTP ' + radioApiRes.status);
+      const radioApiText = await radioApiRes.text();
+      if (!isJavaScriptResponse(radioApiRes, radioApiText)) throw new Error('response_not_javascript');
+      const radioApiScript = document.createElement('script');
+      radioApiScript.textContent = '(function () {\n'
+        + convertNiaBusinessModuleToClassic(radioApiText)
+        + '\n})();\n//# sourceURL=' + radioApiUrl;
+      page.appendChild(radioApiScript);
+      niaRadioModuleLoaded = Boolean(globalThis.HatsuNiaRadioApi?.buildNiaRadioSegmentPrompt);
+      if (!niaRadioModuleLoaded) throw new Error('radio_api_global_missing');
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A radio API preload failed:', error);
+    }
+    window.HATSU_NIA_RADIO_READY = Promise.resolve(niaRadioModuleLoaded);
+
+    let niaTvModuleLoaded = false;
+    try {
+      const tvApiUrl = abs('nia-tv-business-api.js');
+      const tvApiRes = await fetch(tvApiUrl, { cache: 'no-store' });
+      if (!tvApiRes.ok) throw new Error('HTTP ' + tvApiRes.status);
+      const tvApiText = await tvApiRes.text();
+      if (!isJavaScriptResponse(tvApiRes, tvApiText)) throw new Error('response_not_javascript');
+      const tvApiScript = document.createElement('script');
+      tvApiScript.textContent = '(function () {\n' + convertNiaBusinessModuleToClassic(tvApiText) + '\n})();\n//# sourceURL=' + tvApiUrl;
+      page.appendChild(tvApiScript);
+      niaTvModuleLoaded = Boolean(globalThis.HatsuNiaTvApi?.buildNiaTvSegmentPrompt);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A TV API preload failed:', error);
+    }
+    window.HATSU_NIA_TV_READY = Promise.resolve(niaTvModuleLoaded);
+
+    let niaAuditionModuleLoaded = false;
+    try {
+      const auditionApiUrl = abs('nia-audition-api.js');
+      const auditionApiRes = await fetch(auditionApiUrl, { cache: 'no-store' });
+      if (!auditionApiRes.ok) throw new Error('HTTP ' + auditionApiRes.status);
+      const auditionApiText = await auditionApiRes.text();
+      if (!isJavaScriptResponse(auditionApiRes, auditionApiText)) throw new Error('response_not_javascript');
+      const auditionApiScript = document.createElement('script');
+      auditionApiScript.textContent = '(function () {\n'
+        + convertNiaBusinessModuleToClassic(auditionApiText)
+        + '\n})();\n//# sourceURL=' + auditionApiUrl;
+      page.appendChild(auditionApiScript);
+      niaAuditionModuleLoaded = Boolean(globalThis.HatsuNiaAuditionApi?.buildNiaAuditionSegmentPrompt);
+      if (!niaAuditionModuleLoaded) throw new Error('audition_api_global_missing');
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A audition API preload failed:', error);
+    }
+    window.HATSU_NIA_AUDITION_READY = Promise.resolve(niaAuditionModuleLoaded);
+
+    let niaFanMilestoneModuleLoaded = false;
+    try {
+      const fanMilestoneApiUrl = abs('nia-fan-milestone-api.js');
+      const fanMilestoneApiRes = await fetch(fanMilestoneApiUrl, { cache: 'no-store' });
+      if (!fanMilestoneApiRes.ok) throw new Error('HTTP ' + fanMilestoneApiRes.status);
+      const fanMilestoneApiText = await fanMilestoneApiRes.text();
+      if (!isJavaScriptResponse(fanMilestoneApiRes, fanMilestoneApiText)) throw new Error('response_not_javascript');
+      const fanMilestoneApiScript = document.createElement('script');
+      fanMilestoneApiScript.textContent = '(function () {\n'
+        + convertNiaBusinessModuleToClassic(fanMilestoneApiText)
+        + '\n})();\n//# sourceURL=' + fanMilestoneApiUrl;
+      page.appendChild(fanMilestoneApiScript);
+      niaFanMilestoneModuleLoaded = Boolean(globalThis.HatsuNiaFanMilestoneApi?.buildNiaFanMilestonePrompt);
+      if (!niaFanMilestoneModuleLoaded) throw new Error('fan_milestone_api_global_missing');
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A fan milestone API preload failed:', error);
+    }
+    window.HATSU_NIA_FAN_MILESTONE_READY = Promise.resolve(niaFanMilestoneModuleLoaded);
+
+    const jsRes = await fetch(abs('app.js'), { cache: 'no-store' });
+    if (!jsRes.ok) {
+      throw new Error('app.js 加载失败：HTTP ' + jsRes.status);
+    }
+
+    let jsText = await jsRes.text();
+
+    jsText = rewriteAssetsInText(jsText);
+
+    const script = document.createElement('script');
+    script.textContent = jsText + '\n//# sourceURL=' + abs('app.js');
+    page.appendChild(script);
+
+    // 清掉原来的加载提示
+    const loader = document.getElementById('hatsu-loader');
+    if (loader) loader.remove();
+
+    // ── 初始化内嵌直接桥接服务（如果用户禁用了本地酒馆扩展） ──
+    if (!window.__hatsuboshiProduceLoaded) {
+      window.__hatsuboshiProduceLoaded = true;
+
+      let resolveBridgeReady;
+      bridgeReadyPromise = new Promise((resolve) => {
+        resolveBridgeReady = resolve;
+      });
+
+      const startBridge = () => {
+        initInPageBridge().then(resolveBridgeReady).catch(resolveBridgeReady);
+      };
+
+      if (document.readyState === 'complete') {
+        setTimeout(startBridge, 200);
+      } else {
+        window.addEventListener('load', startBridge);
+      }
+
+      // 1. 同步注册消息监听，监测 iframe 窗口与外层大窗口的消息
+      const messageHandler = async (event) => {
+        const data = event.data || {};
+        if (data.source !== 'hatsuboshi-produce') return;
+
+        console.log('[st.html] received message from app.js:', data.type);
+
+        // 等待桥接模块（SillyTavern APIs）异步加载完毕后再处理消息
+        await bridgeReadyPromise;
+
+        if (data.type === 'getCharacter') {
+          postCharacterToFrame(event.source);
+        }
+        if (data.type === 'portraitFileOperation') {
+          const result = await executePortraitFileOperation(data);
+          postPortraitFileOperationResult(data, result);
+          return;
+        }
+        if (data.type === 'cancelPrimaryAttempt') {
+          const requestId = String(data.requestId || '');
+          const channelLeaseId = String(data.channelLeaseId || '');
+          if (requestId === pendingRequestId && channelLeaseId === pendingChannelLeaseId) {
+            clearPendingReplyRequest();
+            const stopGeneration = getContext()?.stopGeneration;
+            if (typeof stopGeneration === 'function') {
+              try { stopGeneration(); } catch (error) {
+                console.warn('[st.html] stop cancelled primary attempt failed:', error);
+              }
+            }
+          }
+          return;
+        }
+        if (data.type === 'sendPrompt') {
+          const envelope = normalizeHostGenerationEnvelope(data);
+          if (!envelope.ok) {
+            postPrimaryAiError(data.requestId, data.channelLeaseId, new Error(envelope.reason));
+            return;
+          }
+          queuePromptTask(async () => {
+            try {
+              await runHostGenerationAttempt(envelope);
+            } catch (error) {
+              postPrimaryAiError(envelope.requestId, envelope.channelLeaseId, error);
+            }
+          });
+        }
+        if (data.type === 'sendSecondaryPrompt') {
+          const normalized = normalizeSecondaryEnvelope(data, getCurrentContextInfo().saveScope);
+          if (!normalized.ok) return;
+          queuePromptTask(() => runSecondaryApiPrompt(normalized.envelope));
+        }
+        if (data.type === 'regenerate') {
+          const reqId = String(data.requestId || '');
+          const channelLeaseId = String(data.channelLeaseId || '');
+          const cachedPrompt = requestPromptCache.get(reqId);
+          const cachedPromptText = typeof cachedPrompt === 'object' ? cachedPrompt.prompt : cachedPrompt;
+          if (cachedPrompt) {
+            queuePromptTask(async () => {
+              try {
+                if (typeof cachedPrompt === 'object') {
+                  const regenerationEnvelope = createHostRegenerationEnvelope(cachedPrompt, reqId, channelLeaseId);
+                  if (!regenerationEnvelope.ok) throw new Error(regenerationEnvelope.reason);
+                  await runHostGenerationAttempt(regenerationEnvelope);
+                } else {
+                  await runTransactionalPrompt(cachedPromptText, reqId, channelLeaseId);
+                }
+              } catch (error) {
+                postPrimaryAiError(reqId, channelLeaseId, error);
+              }
+            });
+          } else {
+            postPrimaryAiError(reqId, channelLeaseId, new Error('regenerate_cache_missing'));
+          }
+        }
+        if (data.type === 'aiReplyAck') {
+          // 固定事务流：不依赖 host->app ACK 回传
+        }
+        if (data.type === 'saveState') {
+          const incomingScope = String(data.saveScope || '');
+          const currentScope = getCurrentContextInfo().saveScope;
+          const incomingSequence = Number(data.hostSaveSequence ?? data.state?.harness?.hostSaveSequence);
+          const lastAcceptedSequence = getLastAcceptedHostSaveSequence(incomingScope);
+          const hasVersionedHistory = hasVersionedHostSaveHistory(incomingScope);
+          const decision = decideHostStateSave({
+            incomingScope,
+            currentScope,
+            nextState: data.state,
+            incomingSequence,
+            lastAcceptedSequence,
+            hasVersionedHistory
+          });
+          if (decision.accepted) {
+            if (decision.normalizedSequence > 0) {
+              lastAcceptedHostSaveSequenceByScope.set(incomingScope, decision.normalizedSequence);
+            }
+            saveChatState(data.state, incomingScope, decision.normalizedSequence);
+          } else {
+            console.warn('[st.html] rejected stale or invalid state save', {
+              reason: decision.reason,
+              incomingScope,
+              currentScope,
+              incomingSequence: decision.normalizedSequence,
+              lastAcceptedSequence
+            });
+          }
+        }
+        if (data.type === 'updateChronicle') {
+          updateChronicleWorldbook(data.messageId, data.sum).catch((error) => {
+            console.warn('[st.html] updateChronicle failed:', error);
+          });
+        }
+        if (data.type === 'listChronicleCheckpoints') {
+          listChronicleCheckpointsFromHost()
+            .then((checkpoints) => {
+              postToFrame({
+                source: 'hatsuboshi-produce-host',
+                type: 'chronicleCheckpoints',
+                requestId: String(data.requestId || ''),
+                checkpoints
+              });
+            })
+            .catch((error) => {
+              postToFrame({
+                source: 'hatsuboshi-produce-host',
+                type: 'chronicleCheckpoints',
+                requestId: String(data.requestId || ''),
+                checkpoints: [],
+                error: String(error?.message || error || '扫描剧情摘要失败')
+              });
+            });
+        }
+        if (data.type === 'branchToChronicleCheckpoint') {
+          branchToChronicleCheckpoint(data.messageId).catch((error) => {
+            console.error('[st.html] branchToChronicleCheckpoint failed:', error);
+            postToFrame({
+              source: 'hatsuboshi-produce-host',
+              type: 'chronicleBranchFailed',
+              error: String(error?.message || error || '读档失败')
+            });
+          });
+        }
+      };
+
+      window.addEventListener('message', messageHandler);
+      try {
+        if (window.parent && window.parent !== window) {
+          window.parent.addEventListener('message', messageHandler);
+        }
+      } catch (e) {
+        console.warn('[st.html] Cannot register message listener on parent window:', e);
+      }
+    }
+
+    async function initInPageBridge() {
+      try {
+        let attempts = 0;
+        let globalST = null;
+        while (attempts < 50) {
+          try {
+            globalST = getSillyTavernGlobal();
+          } catch (e) {}
+          if (globalST && typeof globalST.getContext === 'function') {
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+          attempts++;
+        }
+        if (!globalST || typeof globalST.getContext !== 'function') {
+          throw new Error('SillyTavern global API (window.SillyTavern.getContext) not found.');
+        }
+
+        const context = getContext();
+
+        // 固定事务流：不绑定旧事件桥接
+
+        // 立即发送一次角色数据（以防 app.js 已经在那等着了）
+        postCharacterToFrame();
+
+        // 监听聊天切换事件来同步数据与设置 body class
+        const eventSource = context.eventSource;
+        const eventTypes = context.eventTypes;
+        if (eventSource && eventTypes) {
+          eventSource.on(eventTypes.CHAT_CHANGED, () => {
+            clearPendingReplyRequest();
+            postCharacterToFrame();
+            updateInPageHatsuClass();
+            hiddenFloorRange = null;
+            adjustMessageVisibility();
+          });
+          if (eventTypes.CHAT_COMPLETION_PROMPT_READY) {
+            eventSource.on(eventTypes.CHAT_COMPLETION_PROMPT_READY, pruneHatsuChatCompletionPayload);
+          }
+        }
+
+        updateInPageHatsuClass();
+        bindChatDomObserver();
+        adjustMessageVisibility();
+        console.log('[Hatsu ST Loader] 零安装直接桥接（In-page Bridge）启动成功。');
+      } catch (err) {
+        console.error('[Hatsu ST Loader] 启动直接桥接失败：', err);
+        alert('[st.html Bridge Import Error] ' + String(err.stack || err.message || err));
+      }
+    }
+
+    // ── 桥接辅助函数 ──
+    const CHAT_STATE_METADATA_KEY = 'hatsuboshi_produce_state_v1';
+    const lastAcceptedHostSaveSequenceByScope = new Map();
+    const HATSU_COMMIT_EVENT_NAME = 'hatsuAssistantCommitted';
+    const useCommittedReplyEvent = true;
+    const useTransactionalBridge = true;
+    const useVisualHideFloors = true;
+    let pendingRequestId = '';
+    let pendingChannelLeaseId = '';
+    let pendingPromptSentAt = 0;
+    let pendingPromptChatLength = 0;
+    let pendingCandidateInFlight = false;
+    let pendingCandidateMessageId = -1;
+    let pendingReplyRetryTimer = 0;
+    let pendingStreamFinalizeTimer = 0;
+    let pendingStreamMessageId = -1;
+    let pendingEmptyFinalRetryCount = 0;
+    let hiddenFloorRange = null;
+    let chatDomObserver = null;
+    let chatDomUpdateTimer = 0;
+    const requestPromptCache = new Map();
+    const activeHostGenerationAttempts = new Map();
+    const HATSU_HOST_GENERATION_ADAPTER = globalThis.HATSU_HOST_GENERATION_ADAPTER === 'current_transactional'
+      ? 'current_transactional'
+      : globalThis.HATSU_HOST_GENERATION_ADAPTER === 'shujuku_original_silent_v1'
+        ? 'shujuku_original_silent_v1'
+      : globalThis.HATSU_HOST_GENERATION_ADAPTER === 'shujuku_silent_v1'
+        ? 'shujuku_silent_v1'
+        : 'shujuku_v1';
+    const hostGenerationAttemptDebug = {
+      current: null,
+      lastFailureReason: '',
+      lastCompensationReason: ''
+    };
+    const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer', 'sandbox_first_live']);
+    const SHUJUKU_PLANNING_TIMEOUT_MS = 120000;
+    const SHUJUKU_ASSISTANT_TIMEOUT_MS = 120000;
+    const SECONDARY_DIRECTOR_FETCH_TIMEOUT_MS = 180000;
+    const HOST_EMPTY_FINAL_MAX_RETRIES = 2;
+    const SHUJUKU_GENERATION_HOOK_TIMEOUT_MS = 15000;
+
+    function createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope) {
+      return [requestId, channelLeaseId, saveScope].map((value) => String(value || '')).join('::');
+    }
+
+    function normalizeHostGenerationEnvelope(data) {
+      const requestId = String(data?.requestId || '');
+      const channelLeaseId = String(data?.channelLeaseId || '');
+      const saveScope = String(data?.saveScope || '');
+      const generationMode = String(data?.generationMode || '');
+      const prompt = String(data?.prompt || '');
+      if (!requestId || !channelLeaseId || !saveScope || !prompt.trim() || !HOST_GENERATION_MODES.has(generationMode)) {
+        return { ok: false, reason: 'invalid_generation_envelope' };
+      }
+      return {
+        ok: true,
+        requestId,
+        channelLeaseId,
+        saveScope,
+        ownerKind: String(data?.ownerKind || 'legacy_main'),
+        generationMode,
+        prompt,
+        turnId: String(data?.turnId || ''),
+        attemptKey: createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope)
+      };
+    }
+
+    function createHostPromptCacheEntry(envelope) {
+      return {
+        prompt: envelope.prompt,
+        generationMode: envelope.generationMode,
+        saveScope: envelope.saveScope,
+        ownerKind: envelope.ownerKind,
+        turnId: envelope.turnId,
+        requestId: envelope.requestId,
+        channelLeaseId: envelope.channelLeaseId,
+        attemptKey: envelope.attemptKey
+      };
+    }
+
+    function createHostRegenerationEnvelope(cachedEntry, requestId, channelLeaseId) {
+      if (!cachedEntry || typeof cachedEntry !== 'object') {
+        return { ok: false, reason: 'regenerate_cache_invalid' };
+      }
+      return normalizeHostGenerationEnvelope({
+        ...cachedEntry,
+        requestId: String(requestId || ''),
+        channelLeaseId: String(channelLeaseId || ''),
+        prompt: cachedEntry.prompt,
+        generationMode: cachedEntry.generationMode
+      });
+    }
+
+    function getHostGenerationAttemptDebugSnapshot(now = Date.now()) {
+      const current = hostGenerationAttemptDebug.current || {};
+      const requestId = String(current.requestId || '');
+      return {
+        adapter: String(typeof HATSU_HOST_GENERATION_ADAPTER === 'string' ? HATSU_HOST_GENERATION_ADAPTER : 'shujuku_v1'),
+        mode: String(current.generationMode || 'none'),
+        status: String(current.status || 'idle'),
+        ageMs: current.startedAt ? Math.max(0, Number(now) - Number(current.startedAt || now)) : 0,
+        scope: String(current.saveScope || ''),
+        ownerKind: String(current.ownerKind || 'none'),
+        requestIdSuffix: requestId ? requestId.slice(-8) : '',
+        lastFailureReason: String(hostGenerationAttemptDebug.lastFailureReason || ''),
+        lastCompensationReason: String(hostGenerationAttemptDebug.lastCompensationReason || '')
+      };
+    }
+
+    function recordHostGenerationAttemptDebug(envelope, status, options) {
+      options = options && typeof options === 'object' ? options : {};
+      const previous = hostGenerationAttemptDebug.current;
+      const sameAttempt = previous
+        && String(previous.requestId || '') === String(envelope?.requestId || '')
+        && String(previous.channelLeaseId || '') === String(envelope?.channelLeaseId || '')
+        && String(previous.saveScope || '') === String(envelope?.saveScope || '');
+      hostGenerationAttemptDebug.current = {
+        requestId: String(envelope?.requestId || ''),
+        channelLeaseId: String(envelope?.channelLeaseId || ''),
+        ownerKind: String(envelope?.ownerKind || 'legacy_main'),
+        generationMode: String(envelope?.generationMode || ''),
+        status: String(status || 'unknown'),
+        saveScope: String(envelope?.saveScope || ''),
+        startedAt: sameAttempt ? Number(previous.startedAt || Date.now()) : Date.now()
+      };
+      if (Object.prototype.hasOwnProperty.call(options, 'failureReason')) {
+        hostGenerationAttemptDebug.lastFailureReason = String(options.failureReason || '');
+      }
+      if (Object.prototype.hasOwnProperty.call(options, 'compensationReason')) {
+        hostGenerationAttemptDebug.lastCompensationReason = String(options.compensationReason || '');
+      }
+      return getHostGenerationAttemptDebugSnapshot();
+    }
+
+    function postHostGenerationAttemptDebug() {
+      postToFrame({
+        source: 'hatsuboshi-produce-host',
+        type: 'hostGenerationDebug',
+        snapshot: getHostGenerationAttemptDebugSnapshot()
+      });
+    }
+
+    function createHostGenerationAttempt(envelope) {
+      return {
+        ...envelope,
+        status: 'prepared',
+        userMessageId: null,
+        assistantMessageId: null,
+        startedAt: Date.now()
+      };
+    }
+
+    async function prepareSameLayerAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
+      const existing = attempts.get(envelope.attemptKey);
+      if (existing) return existing;
+
+      const attempt = createHostGenerationAttempt(envelope);
+      attempts.set(attempt.attemptKey, attempt);
+      const createMessage = deps.createSilentChatMessage || createSilentChatMessage;
+      const stampMessage = deps.stampTransactionalExtra || stampTransactionalExtra;
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const readContext = deps.getContext || getContext;
+      try {
+        const messageId = await createMessage('user', envelope.prompt, envelope.requestId, attempt);
+        attempt.userMessageId = messageId;
+        const targetMessage = readContext()?.chat?.[messageId];
+        if (!targetMessage || targetMessage.is_user !== true) {
+          throw new Error('same_layer_user_floor_missing');
+        }
+        targetMessage.is_hidden = true;
+        stampMessage(messageId, 'user', envelope.requestId, attempt);
+        await persistChat();
+        attempt.status = 'user_floor_committed';
+        return attempt;
+      } catch (error) {
+        attempt.status = 'failed';
+        attempt.failureReason = String(error?.message || error || 'prepare_failed');
+        if (attempt.userMessageId == null && attempts.get(attempt.attemptKey) === attempt) {
+          attempts.delete(attempt.attemptKey);
+        }
+        throw error;
+      }
+    }
+
+    function getExactBridgePlanningSnapshot(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const message = context?.chat?.[attempt?.userMessageId];
+      if (!message || message.is_user !== true || message?.extra?.hatsuBridgeAbandoned) return null;
+      if (String(message?.extra?.hatsuAttemptKey || '') !== String(attempt?.attemptKey || '')) return null;
+      if (String(message?.extra?.hatsuSaveScope || '') !== String(attempt?.saveScope || '')) return null;
+      if (message?.extra?._acu_true_same_layer !== true) return null;
+      const hasValue = (value) => {
+        if (value == null) return false;
+        if (typeof value === 'string') return value.trim().length > 0;
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === 'object') return Object.keys(value).length > 0;
+        return true;
+      };
+      const keys = Object.keys(message).filter((key) => /^qrf_plot/.test(key) && hasValue(message[key]));
+      if (!keys.length) return null;
+      return keys.reduce((snapshot, key) => {
+        snapshot[key] = message[key];
+        return snapshot;
+      }, {});
+    }
+
+    async function compensateHostGenerationAttempt(attempt, reason, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      if (!attempt) return null;
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
+      const context = deps.context || getContext();
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const chat = context?.chat;
+      const messageId = Number(attempt.userMessageId);
+      const message = Array.isArray(chat) && Number.isInteger(messageId) ? chat[messageId] : null;
+      const exactFloor = Boolean(
+        message
+        && message.is_user === true
+        && String(message?.extra?.hatsuAttemptKey || '') === String(attempt.attemptKey || '')
+        && String(message?.extra?.hatsuSaveScope || '') === String(attempt.saveScope || '')
+      );
+      const planning = exactFloor
+        ? getExactBridgePlanningSnapshot(attempt, { ...deps, context })
+        : null;
+      let mutated = false;
+      if (exactFloor && planning) {
+        message.is_hidden = true;
+        message.extra = {
+          ...(message.extra || {}),
+          hatsuBridgeAbandoned: true,
+          hatsuBridgeFailureReason: String(reason || 'host_attempt_failed')
+        };
+        mutated = true;
+      } else if (exactFloor) {
+        chat.splice(messageId, 1);
+        mutated = true;
+        try {
+          const mainDoc = deps.mainDocument || getHostMainDocument();
+          mainDoc?.querySelector?.(`#chat > .mes[mesid="${messageId}"]`)?.remove?.();
+        } catch (error) {
+          // DOM cleanup failure does not change compensation state.
+        }
+      }
+      if (mutated && context?.chatMetadata) context.chatMetadata.tainted = true;
+      attempt.status = 'compensated';
+      attempt.failureReason = String(reason || 'host_attempt_failed');
+      if (attempts.get(attempt.attemptKey) === attempt) {
+        attempts.delete(attempt.attemptKey);
+      }
+      if (mutated) await persistChat();
+      return attempt;
+    }
+
+    async function waitForExactBridgePlanning(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const timeoutMs = Math.max(1, Number(deps.timeoutMs || SHUJUKU_PLANNING_TIMEOUT_MS));
+      const intervalMs = Math.max(1, Number(deps.intervalMs || 250));
+      const sleep = deps.sleep || ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        const snapshot = getExactBridgePlanningSnapshot(attempt, deps);
+        if (snapshot) return snapshot;
+        await sleep(intervalMs);
+      }
+      return null;
+    }
+
+    async function emitHostMessageSent(messageId, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const eventSource = deps.eventSource || context?.eventSource;
+      const eventTypes = deps.eventTypes || context?.eventTypes || {};
+      const messageSent = eventTypes.MESSAGE_SENT || 'message_sent';
+      if (!eventSource || typeof eventSource.emit !== 'function') {
+        throw new Error('message_sent_unavailable');
+      }
+      try {
+        await eventSource.emit(messageSent, messageId, 'extension');
+      } catch (error) {
+        try {
+          await eventSource.emit(messageSent, messageId);
+        } catch (retryError) {
+          const message = String(retryError?.message || retryError || '');
+          if (!/processPendingEffectRuns\s+is\s+not\s+defined/i.test(message)) {
+            throw retryError;
+          }
+          console.warn('[st.html] MESSAGE_SENT listener completed, but host emitter cleanup failed:', message);
+        }
+      }
+    }
+
+    async function triggerNativeGeneration(tavernHelper, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const helper = tavernHelper || deps.tavernHelper;
+      if (helper && typeof helper.triggerSlash === 'function') {
+        await helper.triggerSlash('/trigger await=true');
+        return;
+      }
+      const context = deps.context || getContext();
+      if (typeof context?.executeSlashCommandsWithOptions === 'function') {
+        await context.executeSlashCommandsWithOptions('/trigger await=true');
+        return;
+      }
+      throw new Error('native_trigger_unavailable');
+    }
+
+    function looksLikePlanningOrRecallText(text) {
+      const value = String(text || '').trim();
+      if (!value) return false;
+      const head = value.slice(0, 1200);
+      return /(?:剧情推测|剧情规划|记忆召回|补充信息|qrf_plot|数据库|worldbook|shujuku|recall|supplement)/i.test(head)
+        && !/【\s*初星正文开始\s*】|<story\b|<dialogue\b|<narration\b/i.test(value);
+    }
+
+    function findExactBridgeAssistant(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const chat = context?.chat;
+      if (!Array.isArray(chat)) return null;
+      const readText = deps.getMessageRawText || getMessageRawText;
+      const validateText = deps.isGeneratedTextCompatibleWithPrompt || isGeneratedTextCompatibleWithPrompt;
+      for (let index = Number(attempt?.userMessageId) + 1; index < chat.length; index += 1) {
+        const message = chat[index];
+        if (!message || message.is_user || message.is_hidden) continue;
+        if (message?.extra?._acu_true_same_layer || message?.extra?.hatsuBridgeAbandoned) continue;
+        const messageAttemptKey = String(message?.extra?.hatsuAttemptKey || '');
+        if (messageAttemptKey && messageAttemptKey !== String(attempt?.attemptKey || '')) continue;
+        const messageAt = Number(message?.send_date || 0);
+        if (Number(attempt?.startedAt) > 0 && Number.isFinite(messageAt) && messageAt > 0 && messageAt + 5 < Number(attempt.startedAt)) continue;
+        const rawText = String(readText(message) || '').trim();
+        if (!rawText || looksLikePlanningOrRecallText(rawText)) continue;
+        if (!validateText(attempt.prompt, rawText)) continue;
+        return { index, text: rawText, rawText, renderedText: '' };
+      }
+      return null;
+    }
+
+    async function waitForExactBridgeAssistant(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const timeoutMs = Math.max(1, Number(deps.timeoutMs || SHUJUKU_ASSISTANT_TIMEOUT_MS));
+      const intervalMs = Math.max(1, Number(deps.intervalMs || 500));
+      const sleep = deps.sleep || ((delay) => new Promise((resolve) => setTimeout(resolve, delay)));
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        const hit = findExactBridgeAssistant(attempt, deps);
+        if (hit) return hit;
+        await sleep(intervalMs);
+      }
+      return null;
+    }
+
+    async function runShujukuSameLayerAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
+      const prepareAttempt = deps.prepareSameLayerAttempt || prepareSameLayerAttempt;
+      const emitMessageSent = deps.emitHostMessageSent || emitHostMessageSent;
+      const waitForPlanning = deps.waitForExactBridgePlanning || waitForExactBridgePlanning;
+      const triggerGeneration = deps.triggerNativeGeneration || triggerNativeGeneration;
+      const waitForAssistant = deps.waitForExactBridgeAssistant || waitForExactBridgeAssistant;
+      const selectCommittedReply = deps.selectCommittedReplyForPrompt
+        || (typeof selectCommittedReplyForPrompt === 'function'
+          ? selectCommittedReplyForPrompt
+          : ((_prompt, text) => String(text || '').trim()));
+      const replaceAssistantText = deps.replaceAssistantMessageText
+        || (typeof replaceAssistantMessageText === 'function' ? replaceAssistantMessageText : null);
+      const validateText = deps.isGeneratedTextCompatibleWithPrompt
+        || (typeof isGeneratedTextCompatibleWithPrompt === 'function'
+          ? isGeneratedTextCompatibleWithPrompt
+          : ((_prompt, text) => Boolean(String(text || '').trim())));
+      const stampMessage = deps.stampTransactionalExtra || stampTransactionalExtra;
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const commitReply = deps.postCommittedReply || postCommittedReply;
+      const readContextInfo = deps.getCurrentContextInfo || getCurrentContextInfo;
+      const compensateAttempt = deps.compensateHostGenerationAttempt || compensateHostGenerationAttempt;
+      const tavernHelper = deps.tavernHelper || getTavernHelper();
+      let attempt = null;
+      try {
+        attempt = await prepareAttempt(envelope, deps);
+        await emitMessageSent(attempt.userMessageId, deps);
+        attempt.status = 'planning';
+        const planningPromise = waitForPlanning(attempt, deps);
+        await triggerGeneration(tavernHelper, deps);
+        attempt.status = 'generating';
+        const planning = await planningPromise;
+        if (!planning) throw new Error('shujuku_planning_timeout');
+        const assistant = await waitForAssistant(attempt, deps);
+        if (!assistant?.text) throw new Error('shujuku_assistant_timeout');
+        const rawText = String(assistant.rawText || assistant.text || '').trim();
+        const text = selectCommittedReply(attempt.prompt, rawText);
+        if (!validateText(attempt.prompt, text)) throw new Error('incompatible_generated_text');
+        if (String(readContextInfo()?.saveScope || '') !== String(attempt.saveScope || '')) {
+          throw new Error('save_scope_changed');
+        }
+        if (attempts.get(attempt.attemptKey) !== attempt) {
+          throw new Error('stale_host_attempt');
+        }
+        if (text !== String(assistant.text || '').trim()) {
+          if (!replaceAssistantText) throw new Error('assistant_text_replacement_unavailable');
+          await replaceAssistantText(assistant.index, text, deps);
+        }
+        stampMessage(assistant.index, 'assistant', attempt.requestId, attempt);
+        await persistChat();
+        attempt.assistantMessageId = assistant.index;
+        attempt.status = 'assistant_committed';
+        commitReply(attempt.requestId, text, {
+          isFinal: true,
+          rawText,
+          renderedText: assistant.renderedText || '',
+          messageId: assistant.index,
+          channelLeaseId: attempt.channelLeaseId
+        });
+        attempt.status = 'replied';
+        return attempt;
+      } catch (error) {
+        const failedAttempt = attempt || attempts.get(envelope.attemptKey) || null;
+        if (failedAttempt) {
+          const compensationReason = String(error?.message || error || 'host_attempt_failed');
+          await compensateAttempt(failedAttempt, compensationReason, deps);
+          if (error && typeof error === 'object') {
+            error.hatsuCompensationReason = compensationReason;
+          }
+        }
+        throw error;
+      }
+    }
+
+    async function runOpeningQuietAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const generateQuietPrompt = deps.generateQuietPrompt || context?.generateQuietPrompt;
+      const extractReply = deps.extractReplyTextFromGenerated || extractReplyTextFromGenerated;
+      const commitReply = deps.postCommittedReply || postCommittedReply;
+      if (!context || typeof generateQuietPrompt !== 'function') {
+        throw new Error('opening_quiet_unavailable');
+      }
+      const generated = await generateQuietPrompt.call(context, {
+        quietPrompt: envelope.prompt,
+        quietToLoud: false,
+        skipWIAN: false,
+        removeReasoning: true
+      });
+      const text = extractReply(generated);
+      if (!text) throw new Error('opening_quiet_empty');
+      commitReply(envelope.requestId, text, {
+        isFinal: true,
+        rawText: text,
+        renderedText: '',
+        messageId: null,
+        channelLeaseId: envelope.channelLeaseId
+      });
+      return {
+        requestId: envelope.requestId,
+        channelLeaseId: envelope.channelLeaseId,
+        text,
+        messageId: null
+      };
+    }
+
+    function resolveShujukuSilentBridge() {
+      const candidates = [];
+      try {
+        if (window.parent && window.parent !== window) candidates.push(window.parent.HatsuShujukuSilentBridge);
+      } catch (e) {}
+      try {
+        candidates.push(window.HatsuShujukuSilentBridge);
+      } catch (e) {}
+      return candidates.find((bridge) => bridge
+        && typeof bridge.prepareExternalGeneration === 'function'
+        && typeof bridge.commitExternalAssistant === 'function') || null;
+    }
+
+    async function waitForShujukuGenerationHook(timeoutMs = SHUJUKU_GENERATION_HOOK_TIMEOUT_MS, options) {
+      options = options && typeof options === 'object' ? options : {};
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        try {
+          if (window.original_TavernHelper_generate_ACU
+              && typeof window.TavernHelper?.generate === 'function') return window.TavernHelper;
+        } catch (e) {}
+        try {
+          if (window.parent?.original_TavernHelper_generate_ACU
+              && typeof window.parent?.TavernHelper?.generate === 'function') return window.parent.TavernHelper;
+        } catch (e) {}
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      if (options.allowDirectFallback) {
+        const helper = getTavernHelper();
+        if (helper && typeof helper.generate === 'function') {
+          console.warn('[Hatsu Shujuku] shujuku_original_generation_direct_fallback');
+          return helper;
+        }
+      }
+      throw new Error('shujuku_original_generation_hook_unavailable');
+    }
+
+    async function emitShujukuGenerationAfterCommands(attempt, prompt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const eventSource = deps.eventSource || context?.eventSource;
+      const eventTypes = deps.eventTypes || context?.eventTypes || {};
+      const eventName = eventTypes.GENERATION_AFTER_COMMANDS || 'generation_after_commands';
+      if (!eventSource || typeof eventSource.emit !== 'function') throw new Error('shujuku_generation_event_unavailable');
+      const message = context?.chat?.[Number(attempt?.userMessageId)];
+      if (!message || message.is_user !== true) throw new Error('shujuku_generation_user_missing');
+      const params = {
+        prompt: String(prompt || ''),
+        user_input: String(prompt || ''),
+        _hatsu_original_adapter: true
+      };
+      await eventSource.emit(eventName, 'normal', params, false);
+      return String(params.prompt || params.user_input || prompt || '').trim();
+    }
+
+    async function emitShujukuGenerationStarted(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const eventSource = deps.eventSource || context?.eventSource;
+      const eventTypes = deps.eventTypes || context?.eventTypes || {};
+      const eventName = eventTypes.GENERATION_STARTED || 'generation_started';
+      if (!eventSource || typeof eventSource.emit !== 'function') throw new Error('shujuku_generation_event_unavailable');
+      await eventSource.emit(eventName, 'normal', {
+        automatic_trigger: false,
+        _hatsu_original_adapter: true,
+        _hatsu_user_message_id: Number(attempt?.userMessageId)
+      }, false);
+    }
+
+    async function emitShujukuGenerationEnded(assistantMessageId, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const eventSource = deps.eventSource || context?.eventSource;
+      const eventTypes = deps.eventTypes || context?.eventTypes || {};
+      const eventName = eventTypes.GENERATION_ENDED || 'generation_ended';
+      const messageId = Number(assistantMessageId);
+      if (!eventSource || typeof eventSource.emit !== 'function') throw new Error('shujuku_generation_event_unavailable');
+      if (!Number.isInteger(messageId) || messageId < 0) throw new Error('shujuku_generation_assistant_missing');
+      await eventSource.emit(eventName, messageId);
+    }
+
+    async function generateTextOnly(prompt, requestId, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const useShujukuWrapper = deps.useShujukuWrapper === true;
+      let helper = deps.tavernHelper || getTavernHelper();
+      if (useShujukuWrapper && !deps.tavernHelper) {
+        helper = await waitForShujukuGenerationHook(SHUJUKU_GENERATION_HOOK_TIMEOUT_MS, {
+          allowDirectFallback: true
+        });
+      }
+      if (!helper || typeof helper.generate !== 'function') throw new Error('text_generation_unavailable');
+      let originalGenerate = null;
+      try {
+        originalGenerate = window.parent?.original_TavernHelper_generate_ACU || null;
+      } catch (e) {}
+      try {
+        originalGenerate = originalGenerate || window.original_TavernHelper_generate_ACU || null;
+      } catch (e) {}
+      const generate = deps.generate || (useShujukuWrapper ? helper.generate : originalGenerate || helper.generate);
+      const generated = await generate.call(helper, {
+        user_input: String(prompt || ''),
+        should_stream: false,
+        should_silence: false,
+        generation_id: String(requestId || '')
+      });
+      const text = extractReplyTextFromGenerated(generated);
+      if (!text) throw new Error('text_generation_empty');
+      return text;
+    }
+
+    async function runShujukuSilentAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
+      const prepareAttempt = deps.prepareSameLayerAttempt || prepareSameLayerAttempt;
+      const bridge = deps.shujukuSilentBridge || resolveShujukuSilentBridge();
+      const prepareExternalGeneration = deps.prepareExternalGeneration || bridge?.prepareExternalGeneration;
+      const generate = deps.generateTextOnly || generateTextOnly;
+      const selectCommittedReply = deps.selectCommittedReplyForPrompt
+        || (typeof selectCommittedReplyForPrompt === 'function'
+          ? selectCommittedReplyForPrompt
+          : ((_prompt, text) => String(text || '').trim()));
+      const createAssistant = deps.createSilentChatMessage || createSilentChatMessage;
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const commitExternalAssistant = deps.commitExternalAssistant || bridge?.commitExternalAssistant;
+      const postReply = deps.postCommittedReply || postCommittedReply;
+      const compensateAttempt = deps.compensateHostGenerationAttempt || compensateHostGenerationAttempt;
+      const rollbackAssistant = deps.rollbackSilentAssistantMessage || rollbackSilentAssistantMessage;
+      let attempt = null;
+      let assistantId = -1;
+      let databaseCommitted = false;
+      try {
+        if (typeof prepareExternalGeneration !== 'function' || typeof commitExternalAssistant !== 'function') {
+          throw new Error('shujuku_silent_unavailable');
+        }
+        attempt = await prepareAttempt(envelope, deps);
+        const prepared = await prepareExternalGeneration({ envelope, attempt });
+        const prompt = String(prepared?.prompt || prepared || envelope.prompt || '').trim();
+        if (!prompt) throw new Error('shujuku_silent_prompt_empty');
+        const rawText = await generate(prompt, envelope.requestId, { ...deps, attempt });
+        const text = selectCommittedReply(envelope.prompt, rawText);
+        if (!isGeneratedTextCompatibleWithPrompt(envelope.prompt, text)) throw new Error('incompatible_generated_text');
+        assistantId = await createAssistant('assistant', text, envelope.requestId, attempt);
+        await persistChat();
+        await commitExternalAssistant({ envelope, attempt, assistantMessageId: assistantId, text });
+        databaseCommitted = true;
+        postReply(envelope.requestId, text, {
+          isFinal: true,
+          rawText,
+          renderedText: '',
+          messageId: assistantId,
+          channelLeaseId: envelope.channelLeaseId
+        });
+        attempt.assistantMessageId = assistantId;
+        attempt.status = 'replied';
+        return attempt;
+      } catch (error) {
+        const failedAttempt = attempt || attempts.get(envelope.attemptKey) || null;
+        if (!databaseCommitted && Number.isInteger(Number(assistantId)) && Number(assistantId) >= 0) {
+          await rollbackAssistant(assistantId, envelope.requestId, failedAttempt || attempt);
+        }
+        if (failedAttempt) await compensateAttempt(failedAttempt, String(error?.message || error || 'host_attempt_failed'), deps);
+        throw error;
+      }
+    }
+
+    function resolveShujukuOriginalBridge() {
+      const candidates = [];
+      try { if (window.parent && window.parent !== window) candidates.push(window.parent.HatsuShujukuOriginalBridge); } catch (e) {}
+      try { candidates.push(window.HatsuShujukuOriginalBridge); } catch (e) {}
+      return candidates.find((bridge) => bridge && typeof bridge.commitExternalAssistant === 'function') || null;
+    }
+
+    async function runShujukuOriginalSilentAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
+      const prepareAttempt = deps.prepareSameLayerAttempt || prepareSameLayerAttempt;
+      const generate = deps.generateTextOnly || generateTextOnly;
+      const selectCommittedReply = deps.selectCommittedReplyForPrompt
+        || (typeof selectCommittedReplyForPrompt === 'function'
+          ? selectCommittedReplyForPrompt
+          : ((_prompt, text) => String(text || '').trim()));
+      const createAssistant = deps.createSilentChatMessage || createSilentChatMessage;
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const postReply = deps.postCommittedReply || postCommittedReply;
+      const bridge = deps.shujukuOriginalBridge || resolveShujukuOriginalBridge();
+      const commitExternalAssistant = deps.commitExternalAssistant || bridge?.commitExternalAssistant;
+      const compensateAttempt = deps.compensateHostGenerationAttempt || compensateHostGenerationAttempt;
+      const rollbackAssistant = deps.rollbackSilentAssistantMessage || rollbackSilentAssistantMessage;
+      let attempt = null;
+      let assistantId = -1;
+      let generationEndedEmitted = false;
+      try {
+        attempt = await prepareAttempt(envelope, deps);
+        await emitHostMessageSent(attempt.userMessageId, deps);
+        const plannedPrompt = await emitShujukuGenerationAfterCommands(attempt, envelope.prompt, deps);
+        await emitShujukuGenerationStarted(attempt, deps);
+        const rawText = await generate(plannedPrompt, envelope.requestId, {
+          ...deps,
+          attempt,
+          useShujukuWrapper: false,
+          allowDirectFallback: true
+        });
+        const text = selectCommittedReply(envelope.prompt, rawText);
+        if (!isGeneratedTextCompatibleWithPrompt(envelope.prompt, text)) throw new Error('incompatible_generated_text');
+        assistantId = await createAssistant('assistant', text, envelope.requestId, attempt);
+        await persistChat();
+        await emitShujukuGenerationEnded(assistantId, deps);
+        generationEndedEmitted = true;
+        postReply(envelope.requestId, text, { isFinal: true, rawText, renderedText: '', messageId: assistantId, channelLeaseId: envelope.channelLeaseId });
+        if (typeof commitExternalAssistant === 'function') {
+          Promise.resolve(commitExternalAssistant({
+            envelope,
+            attempt,
+            assistantMessageId: assistantId,
+            text
+          })).catch((error) => {
+            console.warn('[Hatsu Shujuku] asynchronous database fallback failed:', error);
+          });
+        }
+        attempt.assistantMessageId = assistantId;
+        attempt.status = 'replied';
+        return attempt;
+      } catch (error) {
+        const failedAttempt = attempt || attempts.get(envelope.attemptKey) || null;
+        if (!generationEndedEmitted && Number.isInteger(Number(assistantId)) && Number(assistantId) >= 0) await rollbackAssistant(assistantId, envelope.requestId, failedAttempt || attempt);
+        if (failedAttempt) await compensateAttempt(failedAttempt, String(error?.message || error || 'host_attempt_failed'), deps);
+        throw error;
+      }
+    }
+
+    async function runHostGenerationAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const recordDebug = deps.recordHostGenerationAttemptDebug
+        || (typeof recordHostGenerationAttemptDebug === 'function' ? recordHostGenerationAttemptDebug : () => {});
+      const postDebug = deps.postHostGenerationAttemptDebug
+        || (typeof postHostGenerationAttemptDebug === 'function' ? postHostGenerationAttemptDebug : () => {});
+      const adapter = typeof HATSU_HOST_GENERATION_ADAPTER === 'string'
+        ? HATSU_HOST_GENERATION_ADAPTER
+        : 'shujuku_v1';
+      requestPromptCache.set(envelope.requestId, createHostPromptCacheEntry(envelope));
+      recordDebug(envelope, 'running');
+      postDebug();
+      try {
+        let result;
+        if (adapter === 'current_transactional') {
+          result = await runTransactionalPrompt(envelope.prompt, envelope.requestId, envelope.channelLeaseId);
+        } else if (adapter === 'shujuku_original_silent_v1') {
+          result = await runShujukuOriginalSilentAttempt(envelope, deps);
+        } else if (adapter === 'shujuku_silent_v1') {
+          result = await runShujukuSilentAttempt(envelope, deps);
+        } else if (envelope.generationMode === 'opening_quiet') {
+          result = await runOpeningQuietAttempt(envelope);
+        } else if (envelope.generationMode === 'shujuku_same_layer') {
+          result = await runShujukuSameLayerAttempt(envelope);
+        } else {
+          result = await runTransactionalPrompt(envelope.prompt, envelope.requestId, envelope.channelLeaseId);
+        }
+        recordDebug(envelope, String(result?.status || 'completed'));
+        postDebug();
+        return result;
+      } catch (error) {
+        const failureReason = String(error?.message || error || 'host_attempt_failed');
+        recordDebug(envelope, 'failed', {
+          failureReason,
+          compensationReason: String(error?.hatsuCompensationReason || '')
+        });
+        postDebug();
+        throw error;
+      }
+    }
+    let promptTaskQueue = Promise.resolve();
+
+    function getSillyTavernGlobal() {
+      const candidates = [];
+      try {
+        if (window.parent && window.parent !== window) candidates.push(window.parent.SillyTavern);
+      } catch (e) {}
+      try {
+        candidates.push(window.SillyTavern);
+      } catch (e) {}
+      return candidates.find(api => api && typeof api.getContext === 'function') || null;
+    }
+
+    function getContext() {
+      try {
+        return getSillyTavernGlobal()?.getContext?.() || null;
+      } catch (e) {
+        console.warn('[st.html] getContext failed:', e);
+        return null;
+      }
+    }
+
+    // 酒馆助手 (TavernHelper / JS-Slash-Runner) 注入的封装接口。它的 generate 能把提示词
+    // 作为 user_input 显式传入、只返回文本不建楼；createChatMessages 用 {role,message} 格式
+    // 并支持 refresh:'affected' 只刷新单楼。优先用它，拿不到再退回裸 getContext()。
+    function getTavernHelper() {
+      const candidates = [];
+      try {
+        if (window.parent && window.parent !== window) candidates.push(window.parent.TavernHelper);
+      } catch (e) {}
+      try {
+        candidates.push(window.TavernHelper);
+      } catch (e) {}
+      return candidates.find((api) => api && (typeof api.generate === 'function' || typeof api.getChatMessages === 'function')) || null;
+    }
+
+    function postToFrame(payload) {
+      window.postMessage(payload, '*');
+      try {
+        const frame = document.getElementById('hatsu-st-page');
+        frame?.contentWindow?.postMessage(payload, '*');
+        const niaFrame = document.getElementById('hatsu-nia-prototype-frame');
+        niaFrame?.contentWindow?.postMessage(payload, '*');
+      } catch (error) {
+        // 忽略跨域 frame 投递失败。
+      }
+    }
+
+    function normalizePortraitFileOperation(data) {
+      data = data && typeof data === 'object' ? data : {};
+      const operationId = String(data.operationId || '');
+      const saveScope = String(data.saveScope || '');
+      const action = String(data.action || '');
+      const payload = data.payload && typeof data.payload === 'object' && !Array.isArray(data.payload) ? data.payload : {};
+      const base = { operationId, saveScope, action, payload };
+      if (data.source !== 'hatsuboshi-produce' || data.type !== 'portraitFileOperation') return { ...base, ok: false, error: 'invalid_message' };
+      if (!/^[a-z0-9-]{3,100}$/.test(operationId)) return { ...base, ok: false, error: 'invalid_operation_id' };
+      if (!saveScope || saveScope.length > 300) return { ...base, ok: false, error: 'invalid_save_scope' };
+      if (!['upload', 'verify', 'readLibrary', 'writeLibrary'].includes(action)) return { ...base, ok: false, error: 'invalid_action' };
+      return { ...base, ok: true };
+    }
+
+    function encodePortraitUtf8Base64(value) {
+      const bytes = new TextEncoder().encode(String(value || ''));
+      let binary = '';
+      for (let index = 0; index < bytes.length; index += 0x8000) {
+        binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+      }
+      return btoa(binary);
+    }
+
+    function getHostRequestHeaders() {
+      const contextHeaders = getContext()?.getRequestHeaders;
+      if (typeof contextHeaders === 'function') return contextHeaders();
+      const globalHeaders = getSillyTavernGlobal()?.getRequestHeaders;
+      if (typeof globalHeaders === 'function') return globalHeaders();
+      return { 'Content-Type': 'application/json' };
+    }
+
+    async function executePortraitFileOperation(data, deps = {}) {
+      const request = normalizePortraitFileOperation(data);
+      if (!request.ok) return { ok: false, error: request.error };
+      const readScope = deps.getCurrentScope || (() => getCurrentContextInfo().saveScope);
+      const requestHeaders = deps.requestHeaders || getHostRequestHeaders;
+      const runFetch = deps.fetch || fetch;
+      const now = deps.now || Date.now;
+      const normalizeLibrary = deps.normalizeLibrary || globalThis.HatsuPortraits?.normalizeLibrary || ((value) => value || { schemaVersion: 1, libraryRevision: 0, updatedAt: 0, assets: {} });
+      const currentScopeMatches = () => String(readScope() || '') === request.saveScope;
+      if (!currentScopeMatches()) return { ok: false, error: 'save_scope_changed' };
+
+      try {
+        let response;
+        let result;
+        if (request.action === 'upload') {
+          const name = String(request.payload.name || '');
+          const encodedData = String(request.payload.data || '');
+          if (!/^hatsu-portrait-[a-z0-9-]+\.(?:png|webp|jpg)$/.test(name) || !encodedData) return { ok: false, error: 'invalid_payload' };
+          response = await runFetch('/api/files/upload', {
+            method: 'POST', headers: requestHeaders(), body: JSON.stringify({ name, data: encodedData })
+          });
+          if (!response.ok) return { ok: false, error: `http_${response.status || 500}` };
+          const body = await response.json();
+          result = { ok: true, url: String(body?.path || '') };
+          if (!/^\/user\/files\/[^?#]+$/.test(result.url)) return { ok: false, error: 'invalid_upload_path' };
+        } else if (request.action === 'verify') {
+          const url = String(request.payload.url || '');
+          if (!/^\/user\/files\/[^?#]+$/.test(url)) return { ok: false, error: 'invalid_payload' };
+          response = await runFetch('/api/files/verify', {
+            method: 'POST', headers: requestHeaders(), body: JSON.stringify({ urls: [url] })
+          });
+          if (!response.ok) return { ok: false, error: `http_${response.status || 500}` };
+          const body = await response.json();
+          result = { ok: true, exists: body?.[url] === true };
+        } else if (request.action === 'readLibrary') {
+          response = await runFetch(`/user/files/hatsu-produce-portrait-library.json?t=${now()}`, { cache: 'no-store' });
+          if (response.status === 404) result = { ok: true, library: normalizeLibrary(null) };
+          else {
+            if (!response.ok) return { ok: false, error: `http_${response.status || 500}` };
+            result = { ok: true, library: normalizeLibrary(await response.json()) };
+          }
+        } else {
+          const library = normalizeLibrary(request.payload.library);
+          response = await runFetch('/api/files/upload', {
+            method: 'POST',
+            headers: requestHeaders(),
+            body: JSON.stringify({ name: 'hatsu-produce-portrait-library.json', data: encodePortraitUtf8Base64(JSON.stringify(library)) })
+          });
+          if (!response.ok) return { ok: false, error: `http_${response.status || 500}` };
+          const body = await response.json();
+          if (String(body?.path || '') !== '/user/files/hatsu-produce-portrait-library.json') return { ok: false, error: 'invalid_library_path' };
+          result = { ok: true, libraryRevision: Number(library.libraryRevision || 0) };
+        }
+        if (!currentScopeMatches()) return { ok: false, error: 'save_scope_changed' };
+        return result;
+      } catch (error) {
+        return { ok: false, error: String(error?.message || error || 'portrait_file_operation_failed') };
+      }
+    }
+
+    function postPortraitFileOperationResult(request, result, post = postToFrame) {
+      post({
+        source: 'hatsuboshi-produce-host',
+        type: 'portraitFileOperationResult',
+        operationId: String(request?.operationId || ''),
+        saveScope: String(request?.saveScope || ''),
+        action: String(request?.action || ''),
+        ...result
+      });
+    }
+
+    function resolveChronicleWorldbookName(context) {
+      const character = context?.characters?.[context.characterId];
+      const linked = String(character?.data?.extensions?.world || '').trim();
+      if (linked) return linked;
+      const names = context?.getWorldInfoNames?.() || [];
+      return names.length === 1 ? String(names[0] || '').trim() : '';
+    }
+
+    async function ensureChronicleWorldbookEntry(context, bookName) {
+      const api = globalThis.HatsuChronicle;
+      if (!api || !context?.loadWorldInfo || !bookName) return null;
+      const data = await context.loadWorldInfo(bookName);
+      if (!data?.entries) return null;
+      let uid = api.findChronicleEntryUid(data.entries);
+      if (!uid) {
+        uid = String(api.nextWorldInfoEntryUid(data.entries));
+        data.entries[uid] = api.buildChronicleEntryTemplate(Number(uid));
+      }
+      return { data, uid: String(uid) };
+    }
+
+    async function saveChronicleWorldbook(context, bookName, data) {
+      if (!context?.saveWorldInfo || !bookName || !data) return;
+      await context.saveWorldInfo(bookName, data, true);
+    }
+
+    async function updateChronicleWorldbook(messageId, sumText) {
+      const api = globalThis.HatsuChronicle;
+      const context = getContext();
+      if (!api || !context) return;
+      const entryNo = api.assistantMessageIdToEntryNo(messageId);
+      const summary = String(sumText || '').trim();
+      if (!entryNo || !summary) return;
+      const bookName = resolveChronicleWorldbookName(context);
+      if (!bookName) {
+        console.warn('[st.html] 未找到角色绑定的世界书，无法写入编年史。');
+        return;
+      }
+      const ensured = await ensureChronicleWorldbookEntry(context, bookName);
+      if (!ensured) return;
+      const { data, uid } = ensured;
+      const previous = String(data.entries[uid]?.content || '');
+      data.entries[uid].content = api.upsertChronicleContent(previous, entryNo, summary, { pruneAfterReroll: true });
+      data.entries[uid].comment = api.CHRONICLE_ENTRY_COMMENT;
+      data.entries[uid].constant = true;
+      data.entries[uid].disable = false;
+      await saveChronicleWorldbook(context, bookName, data);
+    }
+
+    async function pruneChronicleWorldbookAfter(entryNo) {
+      const api = globalThis.HatsuChronicle;
+      const context = getContext();
+      if (!api || !context) return;
+      const no = Number(entryNo);
+      if (!Number.isInteger(no) || no <= 0) return;
+      const bookName = resolveChronicleWorldbookName(context);
+      if (!bookName) return;
+      const ensured = await ensureChronicleWorldbookEntry(context, bookName);
+      if (!ensured) return;
+      const { data, uid } = ensured;
+      data.entries[uid].content = api.pruneChronicleContentAfter(String(data.entries[uid]?.content || ''), no);
+      await saveChronicleWorldbook(context, bookName, data);
+    }
+
+    async function listChronicleCheckpointsFromHost() {
+      const api = globalThis.HatsuChronicle;
+      const context = getContext();
+      const helper = getTavernHelper();
+      if (!api || !context) return [];
+      const lastIndex = Math.max(0, (context.chat?.length || 1) - 1);
+      let messages = [];
+      if (helper?.getChatMessages) {
+        const range = `0-${lastIndex}`;
+        try {
+          messages = await helper.getChatMessages(range, { include_swipes: true });
+        } catch (error) {
+          messages = await helper.getChatMessages(range);
+        }
+      } else if (Array.isArray(context.chat)) {
+        messages = context.chat.map((message, index) => ({
+          message_id: index,
+          role: message?.is_user ? 'user' : 'assistant',
+          message: message?.mes,
+          is_user: message?.is_user
+        }));
+      }
+      if (!Array.isArray(messages)) return [];
+      return messages
+        .map((message, index) => api.buildCheckpointFromMessage(message, index))
+        .filter(Boolean)
+        .sort((a, b) => b.messageId - a.messageId);
+    }
+
+    async function branchToChronicleCheckpoint(messageId) {
+      const api = globalThis.HatsuChronicle;
+      const id = Number(messageId);
+      if (!Number.isInteger(id) || id < 0) throw new Error('无效的楼层编号');
+      const entryNo = api?.assistantMessageIdToEntryNo(id);
+      if (entryNo > 0) await pruneChronicleWorldbookAfter(entryNo);
+      const helper = getTavernHelper();
+      if (!helper?.triggerSlash) throw new Error('需要安装酒馆助手并启用 triggerSlash');
+      await helper.triggerSlash(`/branch-create ${id}`);
+      window.location.reload();
+    }
+
+    function resolveAssistantMessageId(explicitId) {
+      if (explicitId === null) return -1;
+      const id = Number(explicitId);
+      if (Number.isInteger(id) && id >= 0) return id;
+      const chat = getContext()?.chat;
+      if (!Array.isArray(chat) || !chat.length) return -1;
+      for (let index = chat.length - 1; index >= 0; index -= 1) {
+        const message = chat[index];
+        if (message && message.is_user === false) return index;
+      }
+      return chat.length - 1;
+    }
+
+    function decideHostStateSave(input) {
+      input = input && typeof input === 'object' ? input : {};
+      const incomingScope = String(input.incomingScope || '');
+      const currentScope = String(input.currentScope || '');
+      const nextState = input.nextState;
+      const normalizedSequence = Number.isInteger(Number(input.incomingSequence)) && Number(input.incomingSequence) > 0
+        ? Number(input.incomingSequence)
+        : 0;
+      const lastAcceptedSequence = Math.max(0, Math.floor(Number(input.lastAcceptedSequence) || 0));
+      const hasVersionedHistory = Boolean(input.hasVersionedHistory || lastAcceptedSequence > 0);
+      if (!incomingScope || !currentScope || incomingScope !== currentScope) {
+        return { accepted: false, reason: 'scope_mismatch', normalizedSequence };
+      }
+      if (!nextState || typeof nextState !== 'object' || Array.isArray(nextState)) {
+        return { accepted: false, reason: 'invalid_state', normalizedSequence };
+      }
+      if (!normalizedSequence) {
+        return {
+          accepted: !hasVersionedHistory,
+          reason: hasVersionedHistory ? 'legacy_after_versioned' : 'legacy_accepted',
+          normalizedSequence: 0
+        };
+      }
+      if (normalizedSequence === lastAcceptedSequence) {
+        return { accepted: false, reason: 'duplicate_sequence', normalizedSequence };
+      }
+      if (normalizedSequence < lastAcceptedSequence) {
+        return { accepted: false, reason: 'stale_sequence', normalizedSequence };
+      }
+      return { accepted: true, reason: 'accepted', normalizedSequence };
+    }
+
+    function getLastAcceptedHostSaveSequence(saveScope) {
+      const scope = String(saveScope || '');
+      if (!scope) return 0;
+      const remembered = Math.max(0, Math.floor(Number(lastAcceptedHostSaveSequenceByScope.get(scope)) || 0));
+      const envelope = getContext()?.chatMetadata?.[CHAT_STATE_METADATA_KEY];
+      const persisted = envelope && String(envelope.saveScope || '') === scope
+        ? Math.max(0, Math.floor(Number(envelope.hostSaveSequence) || 0))
+        : 0;
+      return Math.max(remembered, persisted);
+    }
+
+    function hasVersionedHostSaveHistory(saveScope) {
+      const scope = String(saveScope || '');
+      if (!scope) return false;
+      if (getLastAcceptedHostSaveSequence(scope) > 0) return true;
+      const envelope = getContext()?.chatMetadata?.[CHAT_STATE_METADATA_KEY];
+      return Boolean(
+        envelope
+        && String(envelope.saveScope || '') === scope
+        && Number(envelope.hostSaveSequence) > 0
+      );
+    }
+
+    function shouldAcceptHostSave(incomingScope, currentScope, nextState, incomingSequence, lastAcceptedSequence, hasVersionedHistory) {
+      return decideHostStateSave({
+        incomingScope,
+        currentScope,
+        nextState,
+        incomingSequence,
+        lastAcceptedSequence,
+        hasVersionedHistory
+      }).accepted;
+    }
+    function getCurrentContextInfo() {
+      const context = getContext();
+      const characterId = context?.characterId;
+      const character = Array.isArray(context?.characters) && Number.isInteger(Number(characterId))
+        ? context.characters[Number(characterId)]
+        : null;
+      const groupId = context?.groupId || context?.groups?.selected || '';
+      const chatId = context?.chatId
+        || context?.chatMetadata?.chat_id
+        || context?.chatMetadata?.file_name
+        || context?.chatMetadata?.fileName
+        || context?.chatFile
+        || 'default-chat';
+      
+      const mainDoc = window.parent?.document || document;
+      const characterName = character?.name || context?.name2 || mainDoc.querySelector('#avatar_div .ch_name')?.textContent?.trim() || '';
+      const actorScope = groupId
+        ? `group-${groupId}`
+        : `char-${Number.isInteger(Number(characterId)) ? characterId : characterName.replace(new RegExp("[\\\\/:*?\\\"<>|\\s]+", "g"), '_')}`;
+      
+      console.log('[st.html] getCurrentContextInfo contextName2:', context?.name2, 'charName:', character?.name, 'resolvedName:', characterName);
+
+      return {
+        character: {
+          name: characterName,
+          avatar: character?.avatar || character?.avatarFileName || ''
+        },
+        saveScope: `${actorScope}-chat-${chatId.replace(new RegExp("[\\\\/:*?\\\"<>|\\s]+", "g"), '_')}`
+      };
+    }
+
+    function updateInPageHatsuClass() {
+      const contextInfo = getCurrentContextInfo();
+      const characterName = contextInfo.character?.name || '';
+      const isHatsu = characterName.includes('初星学园') || characterName.includes('初星') || characterName.includes('Hatsuboshi');
+      
+      const targets = [document.body];
+      try {
+        if (window.parent?.document?.body) {
+          targets.push(window.parent.document.body);
+        }
+      } catch (e) {}
+
+      targets.forEach(body => {
+        if (isHatsu) {
+          body.classList.add('hatsuboshi-active');
+        } else {
+          body.classList.remove('hatsuboshi-active');
+        }
+      });
+    }
+
+    function getHostMainDocument() {
+      try {
+        return window.parent?.document || document;
+      } catch (error) {
+        return document;
+      }
+    }
+
+    function computeHiddenFloorRange() {
+      if (!useVisualHideFloors) return null;
+      const mainDoc = getHostMainDocument();
+      const floorIds = [...mainDoc.querySelectorAll('#chat > .mes[mesid]')]
+        .map((node) => Number(node.getAttribute('mesid')))
+        .filter((value) => Number.isInteger(value) && value >= 0)
+        .sort((a, b) => a - b);
+      if (floorIds.length <= 1) return null;
+      const latest = floorIds[floorIds.length - 1];
+      if (!Number.isInteger(latest) || latest <= 0) return null;
+      return { start: 0, end: latest - 1 };
+    }
+
+    function isFloorHidden(mesId) {
+      const id = Number(mesId);
+      if (!Number.isInteger(id) || !hiddenFloorRange) return false;
+      return id >= hiddenFloorRange.start && id <= hiddenFloorRange.end;
+    }
+
+    function adjustMessageVisibility() {
+      const mainDoc = getHostMainDocument();
+      const contextInfo = getCurrentContextInfo();
+      const characterName = contextInfo.character?.name || '';
+      const isHatsu = characterName.includes('初星学园') || characterName.includes('初星') || characterName.includes('Hatsuboshi');
+      hiddenFloorRange = isHatsu ? computeHiddenFloorRange() : null;
+      const floors = mainDoc.querySelectorAll('#chat > .mes[mesid]');
+      floors.forEach((floor) => {
+        const mesId = floor.getAttribute('mesid');
+        floor.style.display = isFloorHidden(mesId) ? 'none' : '';
+      });
+    }
+
+    function bindChatDomObserver() {
+      if (chatDomObserver) return;
+      const mainDoc = getHostMainDocument();
+      const target = mainDoc.querySelector('#chat');
+      if (!target) return;
+      chatDomObserver = new MutationObserver(() => {
+        if (chatDomUpdateTimer) return;
+        chatDomUpdateTimer = window.setTimeout(() => {
+          chatDomUpdateTimer = 0;
+          adjustMessageVisibility();
+        }, 120);
+      });
+      chatDomObserver.observe(target, { childList: true, subtree: false });
+    }
+
+    function getSavedChatState() {
+      const context = getContext();
+      const envelope = context?.chatMetadata?.[CHAT_STATE_METADATA_KEY];
+      if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)) return null;
+      return envelope.state;
+    }
+
+    function saveChatState(state, saveScope, hostSaveSequence) {
+      const context = getContext();
+      const metadata = context?.chatMetadata;
+      if (!metadata) return;
+      metadata[CHAT_STATE_METADATA_KEY] = {
+        version: 2,
+        saveScope: String(saveScope || ''),
+        hostSaveSequence: Math.max(0, Math.floor(Number(hostSaveSequence) || 0)),
+        updatedAt: Date.now(),
+        state: JSON.parse(JSON.stringify(state)),
+      };
+      context.saveMetadataDebounced?.();
+    }
+
+    function queuePromptTask(task) {
+      promptTaskQueue = promptTaskQueue
+        .then(() => task())
+        .catch((error) => {
+          console.error('[st.html] prompt task failed:', error);
+        });
+      return promptTaskQueue;
+    }
+
+    function buildTransactionalMessage(role, text, requestId) {
+      const context = getContext();
+      return {
+        name: role === 'user' ? String(context?.name1 || 'User') : String(context?.name2 || 'Assistant'),
+        is_user: role === 'user',
+        is_system: false,
+        send_date: Date.now(),
+        mes: String(text || ''),
+        extra: {
+          hatsuRequestId: String(requestId || ''),
+          hatsuTxnRole: role,
+          hatsuTxnAt: Date.now()
+        }
+      };
+    }
+
+    function resolveCreateChatMessagesFn(context) {
+      const globalST = getSillyTavernGlobal();
+      const candidates = [
+        context?.createChatMessages,
+        globalST?.createChatMessages,
+        window.parent?.createChatMessages,
+        window.createChatMessages
+      ];
+      return candidates.find((fn) => typeof fn === 'function') || null;
+    }
+
+    async function tryCreateByHostApi(createChatMessages, role, message) {
+      const hostOptions = {
+        triggerGenerate: false,
+        doGenerate: false,
+        generate: false,
+        shouldGenerate: false,
+        refresh: false,
+        shouldRefresh: false,
+        refreshUi: false,
+        redraw: false,
+        scroll: false,
+        silent: true,
+        source: 'hatsu-transaction'
+      };
+      const calls = [
+        () => createChatMessages([message], hostOptions),
+        () => createChatMessages(message, hostOptions),
+        () => createChatMessages(role, message.mes, hostOptions),
+        () => createChatMessages(role, message.mes, false, false),
+        () => createChatMessages(role, message.mes)
+      ];
+      for (const invoke of calls) {
+        try {
+          await invoke();
+          return true;
+        } catch (error) {
+          // 向下兼容不同宿主签名，单次失败不终止。
+        }
+      }
+      return false;
+    }
+
+    function findTransactionalMessageIndex(chat, role, text, requestId, minIndex = 0) {
+      if (!Array.isArray(chat) || !chat.length) return -1;
+      const expectedText = String(text || '').trim();
+      const expectedReqId = String(requestId || '');
+      const isUser = role === 'user';
+      for (let index = chat.length - 1; index >= minIndex; index -= 1) {
+        const item = chat[index];
+        if (!item || Boolean(item.is_user) !== isUser) continue;
+        const reqId = String(item?.extra?.hatsuRequestId || '');
+        const mes = String(item?.mes || '').trim();
+        if (expectedReqId && reqId === expectedReqId) return index;
+        if (expectedText && mes === expectedText) return index;
+      }
+      return -1;
+    }
+
+    async function waitForTransactionalMessage(role, text, requestId, minIndex = 0) {
+      for (let attempts = 0; attempts < 8; attempts += 1) {
+        const context = getContext();
+        const index = findTransactionalMessageIndex(context?.chat, role, text, requestId, minIndex);
+        if (index >= 0) return index;
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      }
+      return -1;
+    }
+
+    function extractReplyTextFromGenerated(generated) {
+      if (typeof generated === 'string') return generated.trim();
+      if (!generated || typeof generated !== 'object') return '';
+      // 酒馆 Generate 常返回 `new String(text)` 包装对象 (typeof 为 'object')，
+      // 直接 String() 取回原文，否则会被当成空字符串漏掉。
+      if (generated instanceof String) return String(generated).trim();
+      const wrapped = (generated.valueOf && typeof generated.valueOf() === 'string') ? String(generated.valueOf()).trim() : '';
+      if (wrapped) return wrapped;
+      const candidates = [
+        generated.text,
+        generated.mes,
+        generated.message,
+        generated.content
+      ];
+      for (const candidate of candidates) {
+        const text = typeof candidate === 'string' ? candidate.trim() : '';
+        if (text) return text;
+      }
+      if (Array.isArray(generated.swipes) && generated.swipes.length > 0) {
+        const swipeText = String(generated.swipes[generated.swipe_id] || generated.swipes[0] || '').trim();
+        if (swipeText) return swipeText;
+      }
+      return '';
+    }
+
+    function selectCommittedReplyForPrompt(promptText, generatedText) {
+      const prompt = String(promptText || '');
+      const reply = String(generatedText || '').trim();
+      if (!prompt.includes('[HATSU_OUTPUT_MODE:NIA_PRODUCER_WORK]')) return reply;
+      const pattern = /<NIA_WORK_RESULT>[\s\S]*?<\/NIA_WORK_RESULT>/gi;
+      let selected = '';
+      let match;
+      while ((match = pattern.exec(reply)) !== null) selected = String(match[0] || '').trim();
+      return selected;
+    }
+
+
+    function getGenerationPayloadRequestId(generated) {
+      if (!generated || typeof generated !== 'object') return '';
+      return String(
+        generated.generation_id
+        || generated.generationId
+        || generated.requestId
+        || generated.request_id
+        || generated.id
+        || ''
+      );
+    }
+
+    function isGenerationEndedPayloadForRequest(generated, requestId) {
+      const reqId = String(requestId || '');
+      const eventReqId = getGenerationPayloadRequestId(generated);
+      return Boolean(reqId && eventReqId && eventReqId === reqId);
+    }
+
+    function normalizeGenerationEndedText(generated, requestId) {
+      const reqId = String(requestId || '');
+      const eventReqId = getGenerationPayloadRequestId(generated);
+      if (eventReqId && reqId && eventReqId !== reqId) return null;
+      return extractReplyTextFromGenerated(generated);
+    }
+
+    function hasCompleteOptionPayload(text) {
+      const value = String(text || '');
+      return /<option1\b[^>]*>[\s\S]*?<\/option1>/i.test(value)
+        && /<option2\b[^>]*>[\s\S]*?<\/option2>/i.test(value)
+        && /<option3\b[^>]*>[\s\S]*?<\/option3>/i.test(value)
+        && /<option4\b[^>]*>[\s\S]*?<\/option4>/i.test(value);
+    }
+
+    function isGeneratedTextCompatibleWithPrompt(promptText, generatedText) {
+      const prompt = String(promptText || '');
+      const reply = String(generatedText || '').trim();
+      if (!reply) return false;
+      const firstChoiceLabel = '\u7b2c\u4e00\u8f6e\u9009\u62e9';
+      const interactionChoiceLabel = '\u4e92\u52a8\u5206\u652f\u8bbe\u8ba1';
+      const bondEventLabel = '\u7f81\u7eca\u4e8b\u4ef6';
+      const promptHasOptionSeed = /<option1\b/i.test(prompt);
+      const expectsFirstChoice = prompt.includes(firstChoiceLabel) && promptHasOptionSeed;
+      const expectsChoicePayload = expectsFirstChoice
+        || (prompt.includes(interactionChoiceLabel) && promptHasOptionSeed)
+        || (prompt.includes(bondEventLabel) && promptHasOptionSeed);
+      if (expectsChoicePayload && !hasCompleteOptionPayload(reply)) return false;
+      return true;
+    }
+    function findLatestAssistantReply(chat, requestId = '', minIndex = 0, startedAt = 0) {
+      if (!Array.isArray(chat)) return null;
+      const reqId = String(requestId || '');
+      const mainDoc = getHostMainDocument();
+      for (let index = chat.length - 1; index >= minIndex; index -= 1) {
+        const message = chat[index];
+        if (!message || message.is_user) continue;
+        const messageReqId = String(message?.extra?.hatsuRequestId || '');
+        if (reqId && messageReqId && messageReqId !== reqId) continue;
+        const messageAt = Number(message?.send_date || 0);
+        if (startedAt > 0 && Number.isFinite(messageAt) && messageAt > 0 && messageAt + 5 < startedAt) continue;
+        const rawText = getMessageRawText(message).trim();
+        const renderedText = String(mainDoc.querySelector(`.mes[mesid="${index}"] .mes_text`)?.innerText || '').trim();
+        const text = rawText.length >= renderedText.length ? rawText : renderedText;
+        if (!text) continue;
+        const score =
+          (reqId && messageReqId === reqId ? 3 : 0)
+          + (index >= minIndex ? 2 : 0)
+          + (startedAt > 0 && Number.isFinite(messageAt) && messageAt >= startedAt ? 1 : 0);
+        return { index, text, rawText, renderedText, score };
+      }
+      return null;
+    }
+
+    async function waitForLatestAssistantReply(requestId = '', minIndex = 0, startedAt = 0) {
+      let fallback = null;
+      for (let attempts = 0; attempts < 10; attempts += 1) {
+        const context = getContext();
+        const hit = findLatestAssistantReply(context?.chat, requestId, minIndex, startedAt);
+        if (hit && hit.score >= 3) return hit;
+        if (hit && !fallback) fallback = hit;
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      return fallback;
+    }
+
+    function removeGeneratedAssistantMessagesAfter(startIndex, requestId = '') {
+      const context = getContext();
+      const chat = context?.chat;
+      if (!Array.isArray(chat)) return 0;
+      const reqId = String(requestId || '');
+      let removed = 0;
+      for (let index = chat.length - 1; index >= Math.max(0, Number(startIndex) || 0); index -= 1) {
+        const message = chat[index];
+        if (!message || message.is_user) continue;
+        const messageReqId = String(message?.extra?.hatsuRequestId || '');
+        if (messageReqId && reqId && messageReqId === reqId) continue;
+        chat.splice(index, 1);
+        removed += 1;
+      }
+      if (removed > 0) {
+        context.chatMetadata && (context.chatMetadata.tainted = true);
+      }
+      return removed;
+    }
+
+    function renderSilentFloor(messageId) {
+      // 把单个楼层渲染进酒馆 DOM，使其真正显示内容（之前只 push 进 chat 数组，
+      // 不调用 addOneMessage，导致酒馆里楼层是空的）。addOneMessage 只渲染单条，
+      // 不会像 printMessages 那样重绘全部楼层，所以不会让被隐藏的旧楼层冒出来。
+      try {
+        const context = getContext();
+        const chat = context?.chat;
+        const idx = Number(messageId);
+        if (!Array.isArray(chat) || !Number.isInteger(idx) || idx < 0 || idx >= chat.length) return;
+        if (typeof context.addOneMessage !== 'function') return;
+        const mainDoc = getHostMainDocument();
+        const already = mainDoc.querySelector(`#chat > .mes[mesid="${idx}"]`);
+        if (already) {
+          const mesText = already.querySelector('.mes_text');
+          if (mesText && !String(mesText.innerText || '').trim() && String(chat[idx]?.mes || '').trim()) {
+            // 楼层已存在但内容为空：补回内容。
+            mesText.innerHTML = context.messageFormatting
+              ? context.messageFormatting(String(chat[idx].mes || ''), chat[idx].name, false, Boolean(chat[idx].is_user), idx)
+              : String(chat[idx].mes || '');
+          }
+          return;
+        }
+        context.addOneMessage(chat[idx], { scroll: false, forceId: idx });
+      } catch (error) {
+        // 渲染失败不影响事务主流程。
+      }
+      if (useVisualHideFloors) adjustMessageVisibility();
+    }
+
+    function stampTransactionalExtra(messageId, role, requestId, attempt) {
+      const context = getContext();
+      const targetMessage = context?.chat?.[messageId];
+      if (targetMessage) {
+        const attemptKey = String(attempt?.attemptKey || '');
+        const saveScope = String(attempt?.saveScope || '');
+        targetMessage.extra = {
+          ...(targetMessage.extra || {}),
+          hatsuRequestId: String(requestId || ''),
+          hatsuTxnRole: role,
+          hatsuTxnAt: targetMessage?.extra?.hatsuTxnAt || Date.now(),
+          ...(attemptKey ? { hatsuAttemptKey: attemptKey } : {}),
+          ...(saveScope ? { hatsuSaveScope: saveScope } : {}),
+          ...(attemptKey && role === 'user' ? { _acu_true_same_layer: true } : {})
+        };
+        if (attemptKey && role === 'user') targetMessage.is_hidden = true;
+      }
+      context && context.chatMetadata && (context.chatMetadata.tainted = true);
+    }
+
+    async function createSilentChatMessage(role, text, requestId, attempt) {
+      const context = getContext();
+      if (!context || !Array.isArray(context.chat)) throw new Error('chat context unavailable');
+      const reqId = String(requestId || '');
+
+      // 优先走酒馆助手：{role,message} 格式 + refresh:'affected' 只刷新本楼，
+      // 内容直接写入，不会出现空楼层，也不会触发全楼层重绘。
+      const tavernHelper = getTavernHelper();
+      if (tavernHelper && typeof tavernHelper.createChatMessages === 'function') {
+        try {
+          await tavernHelper.createChatMessages(
+            [{
+              role: role === 'user' ? 'user' : 'assistant',
+              message: String(text || ''),
+              extra: { hatsuRequestId: reqId, hatsuTxnRole: role, hatsuTxnAt: Date.now() }
+            }],
+            // refresh:'none' 与 index2 一致：只写入聊天数据、不触碰 DOM，
+            // 因此不会把前端所在的楼层顶下去导致前端被重渲染（"顿一下"）。
+            { refresh: 'none' }
+          );
+          const messageId = context.chat.length - 1;
+          stampTransactionalExtra(messageId, role, reqId, attempt);
+          return messageId;
+        } catch (error) {
+          console.warn('[st.html] TavernHelper.createChatMessages 失败，回退原生:', error);
+        }
+      }
+
+      // 兜底：裸 getContext()，手动 push 后用 addOneMessage 单楼渲染。
+      const message = buildTransactionalMessage(role, text, requestId);
+      const beforeLength = context.chat.length;
+      const createChatMessages = resolveCreateChatMessagesFn(context);
+      let messageId = -1;
+      if (createChatMessages) {
+        await tryCreateByHostApi(createChatMessages, role, message);
+        messageId = await waitForTransactionalMessage(role, message.mes, requestId, beforeLength);
+      }
+      if (messageId < 0) {
+        context.chat.push(message);
+        messageId = context.chat.length - 1;
+      }
+      stampTransactionalExtra(messageId, role, reqId, attempt);
+      renderSilentFloor(messageId);
+      return messageId;
+    }
+
+    function replaceAssistantMessageText(index, text, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const message = context?.chat?.[Number(index)];
+      if (!message || message.is_user) throw new Error('assistant_message_unavailable');
+      const value = String(text || '');
+      message.mes = value;
+      if (Array.isArray(message.swipes) && message.swipes.length > 0) {
+        const swipeIndex = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
+        message.swipes[swipeIndex] = value;
+      }
+      context.chatMetadata && (context.chatMetadata.tainted = true);
+    }
+
+    function rollbackSilentUserMessage(index, requestId) {
+      const context = getContext();
+      if (!context || !Array.isArray(context.chat)) return;
+      const idx = Number(index);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= context.chat.length) return;
+      const message = context.chat[idx];
+      if (!message?.is_user) return;
+      if (String(message?.extra?.hatsuRequestId || '') !== String(requestId || '')) return;
+      context.chat.splice(idx, 1);
+      try {
+        const mainDoc = getHostMainDocument();
+        mainDoc.querySelector(`#chat > .mes[mesid="${idx}"]`)?.remove();
+      } catch (error) {
+        // 忽略 DOM 清理失败。
+      }
+    }
+
+    async function rollbackSilentAssistantMessage(index, requestId, attempt) {
+      const context = getContext();
+      if (!context || !Array.isArray(context.chat)) return;
+      const idx = Number(index);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= context.chat.length) return;
+      const message = context.chat[idx];
+      if (!message || message.is_user) return;
+      if (String(message?.extra?.hatsuRequestId || '') !== String(requestId || '')) return;
+      const attemptKey = String(attempt?.attemptKey || '');
+      if (attemptKey && String(message?.extra?.hatsuAttemptKey || '') !== attemptKey) return;
+      context.chat.splice(idx, 1);
+      context.chatMetadata && (context.chatMetadata.tainted = true);
+      try {
+        const mainDoc = getHostMainDocument();
+        mainDoc.querySelector(`#chat > .mes[mesid="${idx}"]`)?.remove();
+      } catch (error) {}
+      await persistChatSilently();
+    }
+
+    async function persistChatSilently() {
+      const context = getContext();
+      await context?.saveChat?.();
+    }
+
+    function postCommittedReply(requestId, text, options = {}) {
+      const messageId = resolveAssistantMessageId(options.messageId);
+      const payload = {
+        source: 'hatsuboshi-produce-host',
+        type: 'aiReplyCommitted',
+        requestId: String(requestId || ''),
+        channelLeaseId: String(options.channelLeaseId || pendingChannelLeaseId || ''),
+        text: String(text || ''),
+        rawText: String(options.rawText || text || ''),
+        renderedText: String(options.renderedText || ''),
+        isFinal: options.isFinal !== false,
+        messageId: messageId >= 0 ? messageId : undefined
+      };
+      postToFrame(payload);
+      dispatchCommittedReplyEvent(payload);
+      if (String(pendingRequestId || '') === String(requestId || '')) {
+        clearPendingReplyRequest();
+      }
+    }
+
+    function postPrimaryAiError(requestId, channelLeaseId, error) {
+      postToFrame({
+        source: 'hatsuboshi-produce-host',
+        type: 'primaryAiError',
+        requestId: String(requestId || ''),
+        channelLeaseId: String(channelLeaseId || ''),
+        error: String(error?.message || error || 'primary_generation_failed')
+      });
+    }
+    function normalizeSecondaryEnvelope(data, currentScope) {
+      const jobId = String(data?.jobId || '').trim();
+      const requestId = String(data?.requestId || '').trim();
+      const saveScope = String(data?.saveScope || '').trim();
+      const kind = String(data?.kind || '').trim();
+      const prompt = String(data?.prompt || '').trim();
+      const apiConfig = data?.apiConfig && typeof data.apiConfig === 'object' ? { ...data.apiConfig } : {};
+      if (!jobId || !requestId || !saveScope || !kind || !prompt) {
+        return { ok: false, reason: 'invalid_secondary_envelope' };
+      }
+      if (saveScope !== String(currentScope || '')) {
+        return { ok: false, reason: 'secondary_scope_mismatch' };
+      }
+      return { ok: true, envelope: { jobId, requestId, saveScope, kind, prompt, apiConfig } };
+    }
+
+    function createSecondaryReplyPayload(envelope, text, options) {
+      options = options && typeof options === 'object' ? options : {};
+      return {
+        source: 'hatsuboshi-produce-host',
+        type: 'secondaryAiReply',
+        jobId: String(envelope?.jobId || ''),
+        requestId: String(envelope?.requestId || ''),
+        saveScope: String(envelope?.saveScope || ''),
+        kind: String(envelope?.kind || ''),
+        text: String(text || ''),
+        ok: options.ok !== false,
+        error: String(options.error || ''),
+        isFinal: true
+      };
+    }
+
+    function postSecondaryReply(envelope, text, options = {}) {
+      window.postMessage(createSecondaryReplyPayload(envelope, text, options), '*');
+    }
+
+    async function runSecondaryApiPrompt(envelope) {
+    function classifySecondaryApiCompletion(json) {
+      const choice = json?.choices?.[0];
+      const text = String(choice?.message?.content || '').trim();
+      const finishReason = String(choice?.finish_reason || '');
+      if (finishReason === 'length') {
+        return { text, ok: false, error: 'output_truncated', finishReason };
+      }
+      return {
+        text,
+        ok: Boolean(text),
+        error: text ? '' : 'empty_response',
+        finishReason
+      };
+    }
+      if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
+      const prompt = String(envelope.prompt || '').trim();
+      const apiConfig = envelope.apiConfig || {};
+      const baseUrl = String(apiConfig.baseUrl || '').trim().replace(/\/$/, '');
+      const apiKey = String(apiConfig.apiKey || '').trim();
+      const model = String(apiConfig.model || '').trim();
+      const temperature = Number.isFinite(Number(apiConfig.temperature)) ? Number(apiConfig.temperature) : 0.7;
+      const maxTokens = Number.isFinite(Number(apiConfig.maxTokens)) ? Number(apiConfig.maxTokens) : 1200;
+      if (!baseUrl || !model) {
+        postSecondaryReply(envelope, '', { ok: false, error: 'missing_config' });
+        return;
+      }
+      const url = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`;
+      const isDirectorRequest = envelope.kind === 'director';
+      const abortController = isDirectorRequest ? new AbortController() : null;
+      let fetchTimeoutId = 0;
+      let fetchTimedOut = false;
+      if (abortController) {
+        fetchTimeoutId = setTimeout(() => {
+          fetchTimedOut = true;
+          abortController.abort();
+        }, SECONDARY_DIRECTOR_FETCH_TIMEOUT_MS);
+      }
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature, max_tokens: maxTokens }),
+          ...(abortController ? { signal: abortController.signal } : {})
+        });
+        if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
+        if (!res.ok) {
+          postSecondaryReply(envelope, '', { ok: false, error: `http_${res.status}` });
+          return;
+        }
+        const json = await res.json();
+        if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
+        const completion = classifySecondaryApiCompletion(json);
+        postSecondaryReply(envelope, completion.text, completion);
+      } catch (error) {
+        if (getCurrentContextInfo().saveScope !== envelope.saveScope) return;
+        postSecondaryReply(envelope, '', {
+          ok: false,
+          error: fetchTimedOut ? 'director_timeout' : String(error?.message || error)
+        });
+      } finally {
+        if (fetchTimeoutId) clearTimeout(fetchTimeoutId);
+      }
+    }
+    async function runTransactionalViaTavernHelper(tavernHelper, promptText, reqId, channelLeaseId) {
+      // 先静默写入当前 user 楼层，确保预设里的 {{lastUserMessage}} 与 user_input
+      // 指向同一轮输入。生成失败时按 requestId 回滚，不留下孤儿楼层。
+      //
+      // generate() 的返回值偶尔不可靠/为空，但酒馆助手会在生成结束时发出
+      // GENERATION_ENDED ('js_generation_ended') 事件并带上最终文本。仿 index2 的做法，
+      // 用 [事件, generate 返回值, 超时] 做 race，谁先给出非空文本就用谁。
+      const eventSource = getContext()?.eventSource;
+      const GEN_ENDED = 'js_generation_ended';
+      let endedResolve = null;
+      const endedPromise = new Promise((resolve) => { endedResolve = resolve; });
+      let endedWithoutText = false;
+      const endedHandler = (finalText, generationId) => {
+        try {
+          const eventPayload = { text: finalText, generation_id: generationId };
+          if (!isGenerationEndedPayloadForRequest(eventPayload, reqId)) return;
+          const normalizedText = normalizeGenerationEndedText(eventPayload, reqId);
+          if (normalizedText === null) return;
+          if (normalizedText && !isGeneratedTextCompatibleWithPrompt(promptText, normalizedText)) return;
+          endedWithoutText = !normalizedText;
+          endedResolve(normalizedText);
+        } catch (e) {}
+      };
+      let listening = false;
+      const removeEndedListener = () => {
+        if (!listening) return;
+        try {
+          if (typeof eventSource.removeListener === 'function') eventSource.removeListener(GEN_ENDED, endedHandler);
+          else if (typeof eventSource.off === 'function') eventSource.off(GEN_ENDED, endedHandler);
+        } catch (e) {}
+        listening = false;
+      };
+
+      let userIndex = -1;
+      try {
+        userIndex = await createSilentChatMessage('user', promptText, reqId);
+        await persistChatSilently();
+      } catch (error) {
+        if (userIndex >= 0) {
+          rollbackSilentUserMessage(userIndex, reqId);
+          try { await persistChatSilently(); } catch (persistError) {}
+        }
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
+        throw error;
+      }
+      if (eventSource && typeof eventSource.on === 'function') {
+        try { eventSource.on(GEN_ENDED, endedHandler); listening = true; } catch (e) {}
+      }
+      let generatedText = '';
+      try {
+        const generatePromise = Promise.resolve(tavernHelper.generate({
+          user_input: promptText,
+          should_stream: false,
+          // 不静默：与 index2 一致，让酒馆底部显示生成/停止标志。
+          should_silence: false,
+          generation_id: reqId
+        }));
+        const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 120000));
+        const raced = await Promise.race([endedPromise, generatePromise, timeoutPromise]);
+        generatedText = extractReplyTextFromGenerated(raced);
+        if (generatedText && !isGeneratedTextCompatibleWithPrompt(promptText, generatedText)) generatedText = '';
+        if (!generatedText && !endedWithoutText) {
+          // race 先返回的是空：再等 generate 自身的返回值兜底。
+          try {
+            generatedText = extractReplyTextFromGenerated(await generatePromise);
+            if (generatedText && !isGeneratedTextCompatibleWithPrompt(promptText, generatedText)) generatedText = '';
+          } catch (e) {}
+        }
+        if (!generatedText && listening && !endedWithoutText) {
+          // generate 可能先返回空值，但真正正文稍后才通过 scoped end event 到达。
+          const lateText = await Promise.race([
+            endedPromise,
+            timeoutPromise
+          ]);
+          generatedText = extractReplyTextFromGenerated(lateText);
+          if (generatedText && !isGeneratedTextCompatibleWithPrompt(promptText, generatedText)) generatedText = '';
+        }
+      } catch (error) {
+        removeEndedListener();
+        rollbackSilentUserMessage(userIndex, reqId);
+        await persistChatSilently();
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
+        throw error;
+      }
+      removeEndedListener();
+      if (!generatedText) {
+        rollbackSilentUserMessage(userIndex, reqId);
+        await persistChatSilently();
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
+        return;
+      }
+      await createSilentChatMessage('assistant', generatedText, reqId);
+      await persistChatSilently();
+      const assistantMessageId = getContext()?.chat?.length - 1;
+      postCommittedReply(reqId, generatedText, {
+        isFinal: true,
+        rawText: generatedText,
+        renderedText: '',
+        messageId: assistantMessageId,
+        channelLeaseId
+      });
+    }
+
+    async function runTransactionalPrompt(prompt, requestId, channelLeaseId) {
+      const context = getContext();
+      const promptText = String(prompt || '').trim();
+      const reqId = String(requestId || '');
+      if (!context || !promptText || !reqId) return;
+      if (!requestPromptCache.has(reqId)) requestPromptCache.set(reqId, promptText);
+      pendingRequestId = reqId;
+      pendingChannelLeaseId = String(channelLeaseId || '');
+      clearReplyCandidateState();
+
+      const tavernHelper = getTavernHelper();
+      if (tavernHelper) {
+        await runTransactionalViaTavernHelper(tavernHelper, promptText, reqId, channelLeaseId);
+        return;
+      }
+
+      const txnStartedAt = Date.now();
+      const userIndex = await createSilentChatMessage('user', promptText, reqId);
+      await persistChatSilently();
+      const assistantStartIndex = Array.isArray(context.chat) ? context.chat.length : 0;
+      let generatedText = '';
+      let existingAssistantHit = null;
+      try {
+        const generated = await context.generate?.('quiet');
+        generatedText = extractReplyTextFromGenerated(generated);
+        if (generatedText && !isGeneratedTextCompatibleWithPrompt(promptText, generatedText)) generatedText = '';
+        if (!generatedText) {
+          existingAssistantHit = await waitForLatestAssistantReply(reqId, assistantStartIndex, txnStartedAt);
+          generatedText = existingAssistantHit?.text || '';
+          if (generatedText && !isGeneratedTextCompatibleWithPrompt(promptText, generatedText)) generatedText = '';
+        }
+      } catch (error) {
+        rollbackSilentUserMessage(userIndex, reqId);
+        await persistChatSilently();
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
+        throw error;
+      }
+      if (!generatedText) {
+        rollbackSilentUserMessage(userIndex, reqId);
+        await persistChatSilently();
+        postCommittedReply(reqId, '', { isFinal: true, channelLeaseId });
+        return;
+      }
+      const assistantResolvedText = generatedText
+        || existingAssistantHit?.rawText
+        || existingAssistantHit?.renderedText
+        || '';
+      removeGeneratedAssistantMessagesAfter(assistantStartIndex, reqId);
+      await createSilentChatMessage('assistant', assistantResolvedText, reqId);
+      await persistChatSilently();
+      const assistantMessageId = getContext()?.chat?.length - 1;
+      postCommittedReply(reqId, assistantResolvedText, {
+        isFinal: true,
+        rawText: existingAssistantHit?.rawText || assistantResolvedText,
+        renderedText: existingAssistantHit?.renderedText || '',
+        messageId: assistantMessageId,
+        channelLeaseId
+      });
+    }
+
+    function postCharacterToFrame(targetWindow = null) {
+      const contextInfo = getCurrentContextInfo();
+      const savedState = getSavedChatState();
+      console.log('[st.html] postCharacterToFrame sending payload:', contextInfo.character, 'hasSavedState:', Boolean(savedState));
+      const payload = {
+        source: 'hatsuboshi-produce-host',
+        type: 'character',
+        character: contextInfo.character,
+        saveScope: contextInfo.saveScope,
+        hasSavedState: Boolean(savedState),
+        savedState,
+      };
+      if (targetWindow && typeof targetWindow.postMessage === 'function') {
+        targetWindow.postMessage(payload, '*');
+      } else {
+        postToFrame(payload);
+      }
+    }
+
+    function sendPromptToSillyTavern(prompt) {
+      const text = String(prompt || '').trim();
+      if (!text) return;
+      
+      const mainDoc = window.parent?.document || document;
+      const textarea = mainDoc.querySelector('#send_textarea');
+      const sendButton = mainDoc.querySelector('#send_but');
+      if (textarea && sendButton) {
+        textarea.value = text;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        pendingPromptSentAt = Date.now();
+        const context = getContext();
+        pendingPromptChatLength = Array.isArray(context?.chat) ? context.chat.length : 0;
+        sendButton.click();
+      }
+    }
+
+    function bindSillyTavernReplyBridge() {
+      try {
+        const context = getContext();
+        if (!context) return;
+        const eventSource = context.eventSource;
+        const eventTypes = context.eventTypes;
+        if (!eventSource || !eventTypes) return;
+
+        const recordLifecycle = (status) => {
+          if (!pendingRequestId) return;
+          const current = hostGenerationAttemptDebug.current;
+          if (current && String(current.requestId || '') === pendingRequestId) {
+            current.status = status;
+            postHostGenerationAttemptDebug();
+          }
+        };
+        const handleGenerationEnd = (emptyReason, status) => {
+          if (!pendingRequestId) return;
+          recordLifecycle(status);
+          const latestMessageId = getContext()?.chat?.length - 1;
+          sendLatestAiReplyToFrame(latestMessageId, true, emptyReason);
+        };
+
+        eventSource.on(eventTypes.CHARACTER_MESSAGE_RENDERED, (messageId) => {
+          sendLatestAiReplyToFrame(messageId, false);
+        });
+        if (eventTypes.GENERATION_STARTED) {
+          eventSource.on(eventTypes.GENERATION_STARTED, () => {
+            if (!pendingRequestId) return;
+            clearReplyCandidateState();
+            recordLifecycle('generating');
+          });
+        }
+        if (eventTypes.STREAM_TOKEN_RECEIVED) {
+          eventSource.on(eventTypes.STREAM_TOKEN_RECEIVED, () => {
+            if (!pendingRequestId) return;
+            recordLifecycle('streaming');
+            const latestMessageId = getContext()?.chat?.length - 1;
+            if (latestMessageId >= 0) {
+              sendLatestAiReplyToFrame(latestMessageId, false);
+            }
+          });
+        }
+        if (eventTypes.GENERATION_ENDED) {
+          eventSource.on(eventTypes.GENERATION_ENDED, () => handleGenerationEnd('host_ended_empty', 'ended'));
+        }
+        if (eventTypes.GENERATION_STOPPED) {
+          eventSource.on(eventTypes.GENERATION_STOPPED, () => handleGenerationEnd('host_stopped_empty', 'stopped'));
+        }
+        if (eventTypes.MESSAGE_RECEIVED) {
+          eventSource.on(eventTypes.MESSAGE_RECEIVED, (messageId) => {
+            sendLatestAiReplyToFrame(messageId, true);
+          });
+        }
+        if (eventTypes.MESSAGE_SWIPED) {
+          eventSource.on(eventTypes.MESSAGE_SWIPED, (messageId) => {
+            sendLatestAiReplyToFrame(messageId, true);
+          });
+        }
+      } catch (error) {
+        console.warn('[初星直接桥接] 无法绑定角色回复监听。', error);
+      }
+    }
+    function sendLatestAiReplyToFrame(messageId, isFinal = true, emptyReason = '') {
+      if (!pendingRequestId) return;
+      collectAndSendAiReply(messageId, isFinal, { emptyReason });
+    }
+
+    function dispatchCommittedReplyEvent(payload) {
+      try {
+        window.dispatchEvent(new CustomEvent(HATSU_COMMIT_EVENT_NAME, { detail: payload }));
+      } catch (error) {
+        console.warn('[st.html] dispatch commit event failed:', error);
+      }
+    }
+
+    function getMessageRawText(message) {
+      if (!message || message.is_user) return '';
+      const swipeIndex = Number.isInteger(message.swipe_id) ? message.swipe_id : 0;
+      let rawText = '';
+      if (Array.isArray(message.swipes) && message.swipes.length > 0) {
+        rawText = String(message.swipes[swipeIndex] || message.swipes[0] || '');
+      }
+      if (!rawText) {
+        rawText = typeof message.mes === 'string' ? message.mes : '';
+      }
+      return rawText;
+    }
+
+    function findLatestUsableAiReplyId(preferredId) {
+      const context = getContext();
+      const chat = context?.chat;
+      if (!Array.isArray(chat)) return Number(preferredId);
+      const startIndex = Math.max(1, pendingPromptChatLength);
+      const preferredIndex = Number(preferredId);
+      if (Number.isInteger(preferredIndex) && preferredIndex >= startIndex) {
+        return preferredIndex;
+      }
+      for (let index = chat.length - 1; index >= startIndex; index -= 1) {
+        const message = chat[index];
+        if (message && !message.is_user) return index;
+      }
+      return preferredIndex;
+    }
+
+    function collectAndSendAiReply(messageId, isFinal = true, options) {
+      options = options && typeof options === 'object' ? options : {};
+      if (Number(messageId) === 0 && !options.emptyReason) return;
+      if (isFinal && pendingCandidateInFlight) return;
+      
+      const context = getContext();
+      const replyMessageId = findLatestUsableAiReplyId(messageId);
+      const message = context?.chat?.[replyMessageId];
+      if (!message || message.is_user) {
+        // generation end 可能早于 assistant 消息真正落到 chat，做有限次数的短延迟重试。
+        if (isFinal) {
+          const latestId = Array.isArray(context?.chat) ? context.chat.length - 1 : Number(messageId);
+          if (options.emptyReason) handleEmptyFinalReply(latestId, options.emptyReason);
+          else if (Number.isInteger(latestId) && latestId >= 0) scheduleReplyRetry(latestId, 350);
+        }
+        return;
+      }
+
+      const rawText = getMessageRawText(message);
+      const mainDoc = window.parent?.document || document;
+      const renderedText = mainDoc.querySelector(`.mes[mesid="${replyMessageId}"] .mes_text`)?.innerText || '';
+      const text = rawText.length > renderedText.length ? rawText : renderedText;
+
+      if (!text.trim()) {
+        // SillyTavern may render an empty assistant placeholder before generation produces text.
+        if (isFinal && options.emptyReason) handleEmptyFinalReply(replyMessageId, options.emptyReason);
+        else if (isFinal) scheduleReplyRetry(replyMessageId, 350);
+        return;
+      }
+      pendingEmptyFinalRetryCount = 0;
+
+      if (!isFinal) {
+        // 部分宿主环境偶发不触发 GENERATION_STOPPED/MESSAGE_RECEIVED，防止前端永远停留在“生成中”
+        scheduleStreamFinalize(replyMessageId, 1400);
+      }
+
+      if (text.trim().length > 0 || isFinal) {
+        const payload = {
+          source: 'hatsuboshi-produce-host',
+          type: useCommittedReplyEvent && isFinal ? 'aiReplyCommitted' : 'aiReply',
+          requestId: pendingRequestId,
+          channelLeaseId: pendingChannelLeaseId,
+          text,
+          rawText,
+          renderedText,
+          isFinal,
+          messageId: replyMessageId
+        };
+        window.postMessage(payload, '*');
+        if (useCommittedReplyEvent && isFinal) {
+          dispatchCommittedReplyEvent(payload);
+        }
+        
+        if (isFinal) {
+          clearStreamFinalizeTimer();
+          pendingCandidateInFlight = true;
+          pendingCandidateMessageId = Number(replyMessageId);
+          scheduleReplyRetry(replyMessageId, 2500);
+        }
+      }
+    }
+
+    function handleEmptyFinalReply(messageId, reason = 'host_ended_empty', deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      if (!pendingRequestId) return 'ignored';
+      const scheduleRetry = deps.scheduleReplyRetry || scheduleReplyRetry;
+      const postError = deps.postPrimaryAiError || postPrimaryAiError;
+      const clearPending = deps.clearPendingReplyRequest || clearPendingReplyRequest;
+      const requestId = pendingRequestId;
+      const channelLeaseId = pendingChannelLeaseId;
+      const retryMessageId = Number(messageId);
+      if (!Number.isInteger(retryMessageId) || retryMessageId < 0) {
+        postError(requestId, channelLeaseId, new Error(reason));
+        clearPending();
+        return 'failed';
+      }
+      if (pendingEmptyFinalRetryCount < HOST_EMPTY_FINAL_MAX_RETRIES) {
+        pendingEmptyFinalRetryCount += 1;
+        scheduleRetry(retryMessageId, 350, reason);
+        return 'retry';
+      }
+      postError(requestId, channelLeaseId, new Error(reason));
+      clearPending();
+      return 'failed';
+    }
+    function scheduleStreamFinalize(messageId, delay = 1200) {
+      if (!pendingRequestId) return;
+      if (!Number.isInteger(Number(messageId)) || Number(messageId) < 0) return;
+      if (pendingStreamFinalizeTimer) window.clearTimeout(pendingStreamFinalizeTimer);
+      pendingStreamMessageId = Number(messageId);
+      pendingStreamFinalizeTimer = window.setTimeout(() => {
+        pendingStreamFinalizeTimer = 0;
+        const fallbackMessageId = pendingStreamMessageId;
+        pendingStreamMessageId = -1;
+        if (!pendingRequestId) return;
+        collectAndSendAiReply(fallbackMessageId, true, { emptyReason: 'host_stream_idle_empty' });
+      }, delay);
+    }
+
+    function clearStreamFinalizeTimer() {
+      if (pendingStreamFinalizeTimer) window.clearTimeout(pendingStreamFinalizeTimer);
+      pendingStreamFinalizeTimer = 0;
+      pendingStreamMessageId = -1;
+    }
+
+    function getChatCompletionMessageText(message) {
+      if (!message) return '';
+      const content = Array.isArray(message.content)
+        ? message.content.map(part => typeof part === 'string' ? part : part?.text || '').join('\n')
+        : String(message.content || '');
+      return content.trim();
+    }
+
+    function removeCurrentTransactionalDuplicateUserPrompt(chat, activeRequestId) {
+      if (!activeRequestId || !Array.isArray(chat)) return false;
+      const userIndexes = [];
+      for (let index = chat.length - 1; index >= 0 && userIndexes.length < 2; index -= 1) {
+        if (chat[index]?.role === 'user') userIndexes.push(index);
+      }
+      if (userIndexes.length < 2) return false;
+      const [latestIndex, earlierIndex] = userIndexes;
+      const latestText = getChatCompletionMessageText(chat[latestIndex]);
+      const earlierText = getChatCompletionMessageText(chat[earlierIndex]);
+      if (!latestText || latestText !== earlierText) return false;
+      chat.splice(earlierIndex, 1);
+      return true;
+    }
+
+    function isHatsuFrontendPromptMessage(message) {
+      if (!message || message.role !== 'user') return false;
+      const content = getChatCompletionMessageText(message);
+      return content.includes('初星育成系统') || content.includes('【初星学园 Galgame 渲染规则契约】');
+    }
+
+    function pruneHatsuChatCompletionPayload(eventData) {
+      if (!eventData || eventData.dryRun || !Array.isArray(eventData.chat)) return;
+      removeCurrentTransactionalDuplicateUserPrompt(eventData.chat, pendingRequestId);
+      const contextInfo = getCurrentContextInfo();
+      const characterName = contextInfo.character?.name || '';
+      const isHatsu = characterName.includes('初星学园') || characterName.includes('初星') || characterName.includes('Hatsuboshi');
+      if (!isHatsu) return;
+
+      const lastHatsuUserPromptIndex = eventData.chat.reduce((lastIndex, message, index) => {
+        return isHatsuFrontendPromptMessage(message) ? index : lastIndex;
+      }, -1);
+      if (lastHatsuUserPromptIndex === -1) return;
+
+      const filtered = eventData.chat.filter((message, index) => {
+        return !isHatsuFrontendPromptMessage(message) || index === lastHatsuUserPromptIndex;
+      });
+      eventData.chat.splice(0, eventData.chat.length, ...filtered);
+    }
+
+    function resolveReplyAck(data, activeRequestId) {
+      if (!data?.requestId || data.requestId !== activeRequestId) return 'ignore';
+      if (data.accepted) {
+        return data.isFinal !== false ? 'accept' : 'ignore';
+      }
+      return data.retry ? 'retry' : 'cancel';
+    }
+
+    function handleReplyAck(data) {
+      const resolution = resolveReplyAck(data, pendingRequestId);
+      if (resolution === 'ignore') return;
+      if (resolution === 'accept' || resolution === 'cancel') {
+        clearPendingReplyRequest();
+        return;
+      }
+      pendingCandidateInFlight = false;
+      scheduleReplyRetry(pendingCandidateMessageId);
+    }
+
+    function scheduleReplyRetry(messageId, delay = 600, emptyReason = '') {
+      if (!pendingRequestId) return;
+      if (!Number.isInteger(Number(messageId)) || Number(messageId) < 0) return;
+      if (pendingReplyRetryTimer) window.clearTimeout(pendingReplyRetryTimer);
+      pendingReplyRetryTimer = window.setTimeout(() => {
+        pendingReplyRetryTimer = 0;
+        pendingCandidateInFlight = false;
+        collectAndSendAiReply(Number(messageId), true, { emptyReason });
+      }, delay);
+    }
+
+    function clearReplyCandidateState() {
+      if (pendingReplyRetryTimer) window.clearTimeout(pendingReplyRetryTimer);
+      pendingReplyRetryTimer = 0;
+      clearStreamFinalizeTimer();
+      pendingCandidateInFlight = false;
+      pendingCandidateMessageId = -1;
+      pendingEmptyFinalRetryCount = 0;
+    }
+
+    function clearPendingReplyRequest() {
+      clearReplyCandidateState();
+      pendingPromptSentAt = 0;
+      pendingPromptChatLength = 0;
+      pendingRequestId = '';
+      pendingChannelLeaseId = '';
+    }
+  } catch (err) {
+    document.getElementById('hatsu-fullscreen-overlay')?.remove();
+    showError(err);
+  }
+})();
+</script>

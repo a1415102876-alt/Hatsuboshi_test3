@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>亚纱里老师课题界面示意</title>
+  <style>
+    :root {
+      --ink: #263044;
+      --muted: #667085;
+      --line: rgba(88, 99, 132, 0.16);
+      --blue: #4f8ff7;
+      --mint: #2fbf91;
+      --pink: #f15ea8;
+      --paper: rgba(255, 255, 255, 0.86);
+      --paper-strong: rgba(255, 255, 255, 0.95);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 28px;
+      font-family: "Inter", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(120deg, rgba(72, 105, 128, 0.55), rgba(42, 68, 70, 0.76)),
+        url("../assets/select-bg/temari.jpg") center / cover;
+    }
+
+    .overlay {
+      width: min(1120px, 96vw);
+      min-height: min(760px, calc(100vh - 56px));
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 310px;
+      gap: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.78);
+      border-radius: 24px;
+      background:
+        radial-gradient(circle at 18% 0%, rgba(241, 94, 168, 0.18), transparent 34%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(245, 249, 255, 0.82));
+      box-shadow: 0 30px 80px rgba(22, 31, 48, 0.42);
+      backdrop-filter: blur(22px);
+      padding: 22px;
+    }
+
+    .overlay::before {
+      content: "";
+      position: absolute;
+      inset: auto -90px -120px auto;
+      width: 420px;
+      height: 420px;
+      background: url("../assets/select-bg/bg_logo.png") center / contain no-repeat;
+      opacity: 0.08;
+      transform: rotate(-8deg);
+      pointer-events: none;
+    }
+
+    .main,
+    .teacher {
+      position: relative;
+      z-index: 1;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: start;
+      margin-bottom: 16px;
+    }
+
+    .kicker {
+      margin: 0 0 5px;
+      color: var(--blue);
+      font: 700 11px/1.2 "Fira Code", monospace;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(26px, 3vw, 40px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+      max-width: 470px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 32px;
+      padding: 6px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.68);
+      font-size: 12px;
+      font-weight: 800;
+      box-shadow: 0 8px 18px rgba(40, 55, 80, 0.08);
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: 210px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .rail,
+    .board {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--paper);
+      box-shadow: 0 14px 30px rgba(40, 55, 80, 0.1);
+    }
+
+    .rail {
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .tab {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto;
+      gap: 9px;
+      align-items: center;
+      padding: 10px;
+      border: 1px solid transparent;
+      border-radius: 14px;
+      background: transparent;
+    }
+
+    .tab.active {
+      background: linear-gradient(135deg, rgba(79, 143, 247, 0.16), rgba(255, 255, 255, 0.88));
+      border-color: rgba(79, 143, 247, 0.24);
+    }
+
+    .tab-icon {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 12px;
+      background: rgba(79, 143, 247, 0.13);
+      color: var(--blue);
+    }
+
+    .tab strong {
+      display: block;
+      font-size: 13px;
+      line-height: 1.2;
+    }
+
+    .tab span {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    .count {
+      color: var(--blue);
+      font: 800 12px/1 "Fira Code", monospace;
+    }
+
+    .board {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+      max-height: 610px;
+      overflow: hidden;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 2px 2px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .collapse {
+      border: 0;
+      border-radius: 999px;
+      padding: 7px 10px;
+      background: rgba(79, 143, 247, 0.12);
+      color: #2763bd;
+      font-weight: 900;
+    }
+
+    .task-list {
+      display: grid;
+      gap: 10px;
+      overflow: auto;
+      padding-right: 3px;
+    }
+
+    .task {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 108px;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid rgba(88, 99, 132, 0.12);
+      border-radius: 16px;
+      background: var(--paper-strong);
+    }
+
+    .status {
+      display: inline-flex;
+      width: fit-content;
+      margin-bottom: 7px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(79, 143, 247, 0.14);
+      color: #2d6fbe;
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .status.done {
+      background: rgba(47, 191, 145, 0.16);
+      color: #1b8062;
+    }
+
+    .task h3 {
+      margin: 0 0 5px;
+      font-size: 15px;
+      line-height: 1.28;
+    }
+
+    .task p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .progress {
+      align-self: end;
+      display: grid;
+      gap: 7px;
+    }
+
+    .progress b {
+      text-align: right;
+      color: var(--ink);
+      font-size: 16px;
+    }
+
+    .bar {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(88, 99, 132, 0.14);
+    }
+
+    .bar i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--blue), var(--pink));
+    }
+
+    .mini-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .mini {
+      padding: 12px;
+      border: 1px dashed rgba(88, 99, 132, 0.22);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.66);
+    }
+
+    .mini strong {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 13px;
+    }
+
+    .mini span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .teacher {
+      display: grid;
+      grid-template-rows: minmax(420px, 1fr) auto;
+      min-height: 0;
+      border: 1px solid rgba(255, 255, 255, 0.75);
+      border-radius: 22px;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(240, 248, 255, 0.94), rgba(255, 255, 255, 0.68)),
+        radial-gradient(circle at 70% 12%, rgba(241, 94, 168, 0.16), transparent 42%);
+    }
+
+
+
+    .teacher-art {
+      position: relative;
+      display: grid;
+      place-items: end center;
+      min-height: 520px;
+      padding-top: 22px;
+      overflow: hidden;
+    }
+
+    .teacher-art::before {
+      content: "";
+      position: absolute;
+      inset: 6% -8% auto;
+      height: 360px;
+      background: url("../assets/select-bg/bg_logo.png") center / contain no-repeat;
+      opacity: 0.12;
+    }
+
+    .teacher-art img {
+      position: relative;
+      z-index: 1;
+      width: min(390px, 118%);
+      max-height: 610px;
+      object-fit: contain;
+      filter: drop-shadow(0 24px 28px rgba(30, 42, 68, 0.28));
+    }
+
+    .advice {
+      margin: 0 14px 14px;
+      padding: 14px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: 0 14px 30px rgba(40, 55, 80, 0.12);
+    }
+
+    .advice b {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--pink);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+    }
+
+    .advice p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.65;
+      font-weight: 700;
+    }
+
+    @media (max-width: 860px) {
+      body { padding: 12px; align-items: start; }
+      .overlay {
+        grid-template-columns: 1fr;
+        min-height: auto;
+        border-radius: 20px;
+        padding: 14px;
+      }
+      .topbar,
+      .content {
+        grid-template-columns: 1fr;
+        display: grid;
+      }
+      .summary { justify-content: start; }
+      .rail {
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(150px, 1fr);
+        overflow-x: auto;
+      }
+      .board { max-height: none; }
+      .teacher {
+        grid-template-columns: minmax(0, 1fr) 170px;
+        grid-template-rows: auto;
+      }
+      .teacher-art {
+        grid-row: 1 / 2;
+        grid-column: 2;
+        min-height: 220px;
+      }
+      .teacher-art img { width: 230px; max-height: 260px; }
+      .advice { grid-column: 1; }
+    }
+  </style>
+</head>
+<body>
+  <main class="overlay">
+    <section class="main">
+      <header class="topbar">
+        <div>
+          <p class="kicker">Asari Lesson Board</p>
+          <h1>亚纱里老师课题</h1>
+        </div>
+        <div class="summary" aria-label="课题状态">
+          <span class="pill">担当 月村手毬</span>
+          <span class="pill">初星币 0</span>
+          <span class="pill">知名度 0</span>
+          <span class="pill">委托 3/3</span>
+          <span class="pill">校园 3/3</span>
+        </div>
+      </header>
+
+      <div class="content">
+        <nav class="rail" aria-label="课题分类">
+          <div class="tab active"><span class="tab-icon">01</span><div><strong>培养与担当关系</strong><span>好感度里程碑</span></div><b class="count">0/5</b></div>
+          <div class="tab"><span class="tab-icon">02</span><div><strong>主线矛盾课题</strong><span>担当面对的问题</span></div><b class="count">1/4</b></div>
+          <div class="tab"><span class="tab-icon">03</span><div><strong>偶像能力培养</strong><span>数值阶段目标</span></div><b class="count">0/3</b></div>
+          <div class="tab"><span class="tab-icon">04</span><div><strong>工作邀约</strong><span>委托与知名度</span></div><b class="count">0/3</b></div>
+          <div class="tab"><span class="tab-icon">05</span><div><strong>舞台终极任务</strong><span>First Live</span></div><b class="count">0/1</b></div>
+        </nav>
+
+        <section class="board" aria-label="课题内容">
+          <div class="section-head">
+            <div>
+              <p class="kicker">Current Topic</p>
+              <h2>培养与担当之间的关系</h2>
+            </div>
+            <button class="collapse" type="button">收起</button>
+          </div>
+
+          <div class="task-list">
+            <article class="task">
+              <div>
+                <span class="status">进行中</span>
+                <h3>好感度 20</h3>
+                <p>亚纱里老师要求确认制作人与担当之间的初步信任。达成后开放对应羁绊课题复盘。</p>
+              </div>
+              <div class="progress"><b>0 / 20</b><span class="bar"><i style="width: 8%"></i></span></div>
+            </article>
+            <article class="task">
+              <div>
+                <span class="status">进行中</span>
+                <h3>好感度 40</h3>
+                <p>把日常陪伴推进到能共同复盘训练得失的关系。老师会检查报告里的观察记录。</p>
+              </div>
+              <div class="progress"><b>0 / 40</b><span class="bar"><i style="width: 4%"></i></span></div>
+            </article>
+            <article class="task">
+              <div>
+                <span class="status done">已完成</span>
+                <h3>担当确认：月村手毬</h3>
+                <p>在学园中接触月村手毬并邀请她成为担当。</p>
+              </div>
+              <div class="progress"><b>完成</b><span class="bar"><i style="width: 100%; background: var(--mint)"></i></span></div>
+            </article>
+            <div class="mini-row">
+              <div class="mini"><strong>今日委托</strong><span>承接小型商演与宣传工作，提高偶像知名度。</span></div>
+              <div class="mini"><strong>校园行动</strong><span>教学楼上课、体育馆训练合计每日 3 次。</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <aside class="teacher" aria-label="亚纱里老师建议">
+
+      <div class="teacher-art">
+        <img src="../assets/novel-standees/asari-sensei.png" alt="亚纱里老师立绘">
+      </div>
+      <blockquote class="advice">
+        <b>老师的一句话</b>
+        <p>“至少让我帮上你一点忙吧。多多依赖老师一些也可以的哦？”</p>
+      </blockquote>
+    </aside>
+  </main>
+</body>
+</html>
