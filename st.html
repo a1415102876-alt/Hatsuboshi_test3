@@ -280,7 +280,7 @@
     for (const el of elements) {
       for (const attr of ["src", "href", "poster"]) {
         const value = el.getAttribute?.(attr);
-        if (!normalizeAssetPath(value)) continue;
+        if (!value || !shouldRewriteUrl(value)) continue;
         const target = rewriteAssetRef(value);
         if (target !== value) el.setAttribute(attr, target);
       }

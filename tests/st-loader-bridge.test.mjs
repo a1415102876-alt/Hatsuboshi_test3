@@ -182,6 +182,10 @@ return { rewriteAssetRef, rewriteAssetsInText, rewriteAssetsInCss };`
     helpers.rewriteAssetRef("https://example.com/assets/external.png"),
     "https://example.com/assets/external.png"
   );
+  assert.equal(
+    helpers.rewriteAssetRef("./UI/nia-logo.png"),
+    "https://hatsuboshi-test3.vercel.app/UI/nia-logo.png"
+  );
   assert.match(
     helpers.rewriteAssetsInText('const scene = "./assets/scenes/TV_Studio.png";'),
     /https:\/\/r2\.example\/assets\/scenes\/TV_Studio\.png\?v=test-version/
