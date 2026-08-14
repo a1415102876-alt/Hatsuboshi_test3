@@ -117,12 +117,59 @@ p {
 }
 
 .launch-screen {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
   gap: 18px;
   align-items: stretch;
   min-height: 100vh;
   padding: clamp(18px, 3vw, 34px);
+}
+
+.launch-secret-trigger {
+  position: absolute;
+  left: max(6px, env(safe-area-inset-left));
+  bottom: max(6px, env(safe-area-inset-bottom));
+  display: grid;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.34;
+}
+
+.launch-mode-card[hidden],
+.launch-secret-trigger[hidden] {
+  display: none;
+}
+
+.launch-secret-trigger span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(74, 80, 96, 0.5);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.launch-secret-trigger:hover span,
+.launch-secret-trigger:focus-visible span {
+  opacity: 0.78;
+  transform: scale(1.25);
+}
+
+.launch-secret-trigger:active span {
+  opacity: 0.9;
+  transform: scale(0.8);
+}
+
+.launch-secret-trigger:focus-visible {
+  outline: 2px solid rgba(74, 183, 255, 0.6);
+  outline-offset: -8px;
+  border-radius: 50%;
 }
 
 .launch-visual,

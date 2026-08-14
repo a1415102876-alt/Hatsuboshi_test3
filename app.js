@@ -31516,7 +31516,20 @@ ${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到
   });
   document.getElementById("launchProduceBtn")?.addEventListener("click", () => chooseLaunchMode("produce"));
   document.getElementById("launchSandboxBtn")?.addEventListener("click", () => chooseLaunchMode("sandbox"));
-  document.getElementById("launchNsfwTestBtn")?.addEventListener("click", openNsfwCgTestLab);
+  const launchNsfwTestBtn = document.getElementById("launchNsfwTestBtn");
+  const launchNsfwRevealBtn = document.getElementById("launchNsfwRevealBtn");
+  let launchNsfwRevealClicks = 0;
+  launchNsfwRevealBtn?.addEventListener("click", () => {
+    if (!launchNsfwTestBtn) return;
+    launchNsfwRevealClicks += 1;
+    if (launchNsfwRevealClicks >= 3) {
+      launchNsfwRevealClicks = 0;
+      launchNsfwTestBtn.hidden = false;
+      launchNsfwRevealBtn.hidden = true;
+      return;
+    }
+  });
+  launchNsfwTestBtn?.addEventListener("click", openNsfwCgTestLab);
   document.getElementById("nsfwCgTestCancelBtn")?.addEventListener("click", closeNsfwCgTestLab);
   document.getElementById("nsfwCgTestPreviewBtn")?.addEventListener("click", previewNsfwCgTest);
   document.getElementById("nsfwCgTestInviteBtn")?.addEventListener("click", startNsfwCgTestInvite);

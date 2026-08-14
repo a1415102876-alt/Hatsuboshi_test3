@@ -193,12 +193,16 @@ test("VN keeps sticky HCG until next pose or explicit end", () => {
 test("launch screen exposes NSFW CG test lab entry", () => {
   const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(html, /id="launchNsfwTestBtn"/);
+  assert.match(html, /id="launchNsfwTestBtn"[^>]*hidden/);
+  assert.match(html, /id="launchNsfwRevealBtn"/);
   assert.match(html, /id="nsfwCgTestOverlay"/);
   assert.match(appSource, /function openNsfwCgTestLab\(/);
   assert.match(appSource, /function previewNsfwCgTest\(/);
   assert.match(appSource, /function startNsfwCgTestInvite\(/);
   assert.match(appSource, /nsfwCgTest:\s*true/);
+  assert.match(appSource, /launchNsfwRevealClicks >= 3/);
+  assert.match(appSource, /launchNsfwTestBtn\.hidden = false/);
+  assert.match(appSource, /launchNsfwRevealBtn\.hidden = true/);
   assert.match(appSource, /launchNsfwTestBtn[\s\S]*openNsfwCgTestLab/);
 });
 

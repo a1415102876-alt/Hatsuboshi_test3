@@ -73,7 +73,7 @@
       <div class="launch-visual">
         <p class="ui-kicker">Hatsuboshi Gakuen</p>
         <h1 id="launchTitle">初星学园</h1>
-        <p id="launchDesc">请选择本次游玩模式。育成模式走经典 22 天日程；沙盒模式从学园大地图开始自由行动；NSFW 模式用于姿势与场景 CG 测试。</p>
+        <p id="launchDesc">请选择本次游玩模式。育成模式走经典 22 天日程；沙盒模式从学园大地图开始自由行动。</p>
       </div>
       <div class="launch-mode-list" role="list">
         <p id="launchResumeNote" class="launch-resume-note" hidden>返回主菜单不会删除当前存档，可随时从此处继续。</p>
@@ -97,12 +97,15 @@
           <strong>沙盒模式</strong>
           <span class="launch-mode-desc">亚纱里老师开学指引后，物色担当并进入学园大地图。教学楼上课、体育馆训练，地图时间按小时推进。</span>
         </button>
-        <button id="launchNsfwTestBtn" class="launch-mode-card is-nsfw-test" type="button" role="listitem">
+        <button id="launchNsfwTestBtn" class="launch-mode-card is-nsfw-test" type="button" role="listitem" hidden>
           <span class="launch-mode-kicker">NSFW Lab</span>
           <strong>NSFW 模式</strong>
           <span class="launch-mode-desc">选择角色、姿势与场景，直接预览 HCG；也可复用公寓邀约流程发起多轮测试。</span>
         </button>
       </div>
+      <button id="launchNsfwRevealBtn" class="launch-secret-trigger" type="button" aria-label="开发入口">
+        <span aria-hidden="true"></span>
+      </button>
     </section>
 
     <section class="select-screen is-hidden" id="selectionStage" aria-labelledby="selectTitle">
