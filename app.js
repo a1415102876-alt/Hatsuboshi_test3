@@ -13849,20 +13849,30 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     };
   }
 
+  function resolvePortraitAssetUrl(url) {
+    const raw = String(url || "").trim();
+    if (!raw || !/^(?:(?:\.\.\/)+|\.\/|\/)?assets\//.test(raw)) return raw;
+    return typeof window.HATSU_RESOLVE_ASSET_URL === "function"
+      ? window.HATSU_RESOLVE_ASSET_URL(raw)
+      : raw;
+  }
+
   function applyResolvedPortraitToImage(img, resolved) {
     if (!img || !resolved) return false;
+    const portraitUrl = resolvePortraitAssetUrl(resolved.url);
+    const fallbackUrl = resolvePortraitAssetUrl(resolved.fallbackUrl || resolved.url);
     const transform = globalThis.HatsuPortraits.normalizeTransform(resolved.transform);
     img.style.setProperty("--portrait-scale", String(transform.scale));
     img.style.setProperty("--portrait-x", `${transform.offsetX}px`);
     img.style.setProperty("--portrait-y", `${transform.offsetY}px`);
     img.dataset.portraitSpeaker = String(resolved.speaker || "");
     img.dataset.portraitCharacterKey = String(resolved.characterKey || "");
-    img.dataset.portraitUserUrl = ["user", "preset"].includes(resolved.source) ? String(resolved.url || "") : "";
-    img.dataset.portraitFallbackUrl = String(resolved.fallbackUrl || resolved.url || "");
+    img.dataset.portraitUserUrl = ["user", "preset"].includes(resolved.source) ? portraitUrl : "";
+    img.dataset.portraitFallbackUrl = fallbackUrl;
     img.dataset.portraitFallbackApplied = "0";
     img.onerror = () => handlePortraitImageError(img, resolved.speaker || resolved.characterKey);
-    img.src = String(resolved.url || "");
-    return Boolean(resolved.url);
+    img.src = portraitUrl;
+    return Boolean(portraitUrl);
   }
 
   function handlePortraitImageError(img, speaker) {
