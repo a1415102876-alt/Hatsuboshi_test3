@@ -11,3 +11,9 @@ assets/PlayList/*
 
 # Isolated feature worktrees.
 .worktrees/
+
+# Local analysis, repository references, and image-generation source material.
+.analysis-archive/
+.reference-Hatsuboshi_test2/
+.superpowers/brainstorm/
+HCG/

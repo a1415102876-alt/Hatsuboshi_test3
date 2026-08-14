@@ -1,0 +1,19 @@
+<body>
+  <script>
+    (async function startHatsuFixedStageEntry() {
+      try {
+        const rawBase = String(window.HATSU_ASSET_BASE || '').trim();
+        if (!rawBase) {
+          throw new Error('HATSU_ASSET_BASE is required before loading st-fixed.html.');
+        }
+        const assetBase = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+
+        await import(assetBase + 'hatsu-fixed-stage.js?v=20260813-3');
+        $('body').load(assetBase + 'st.html?v=20260813-3');
+      } catch (error) {
+        console.error('[Hatsu fixed stage startup]', error);
+        document.body.textContent = 'Hatsu fixed stage startup failed: ' + String(error?.message || error);
+      }
+    })();
+  </script>
+</body>

@@ -73,14 +73,39 @@
     }
   }
 
+  function isJavaScriptResponse(response, sourceText) {
+    const contentType = String(response?.headers?.get?.("content-type") || "").toLowerCase();
+    const prefix = String(sourceText || "").trimStart().slice(0, 160).toLowerCase();
+    if (contentType.includes("text/html") || contentType.includes("application/xhtml+xml")) return false;
+    return !prefix.startsWith("<!doctype html")
+      && !prefix.startsWith("<html")
+      && !prefix.startsWith("<head")
+      && !prefix.startsWith("<body");
+  }
+
+  function convertNiaBusinessModuleToClassic(sourceText) {
+    const source = String(sourceText || "");
+    if (/^\s*import\s/m.test(source)) throw new Error("business_api_import_not_supported");
+    const classicSource = source.replace(
+      /^\s*export\s+(?=(?:async\s+)?function\s|class\s|const\s|let\s|var\s)/gm,
+      ""
+    );
+    if (/^\s*export\s/m.test(classicSource)) throw new Error("business_api_export_not_supported");
+    return classicSource;
+  }
+
   async function probeEmbedAssetBase(base) {
     if (!await probeAssetBase(base)) return false;
     try {
       const modUrl = new URL("world/cast-track.js", base);
-      const res = await fetch(modUrl, { cache: "no-store", method: "HEAD" });
-      if (res.ok) return true;
       const getRes = await fetch(modUrl, { cache: "no-store", method: "GET" });
-      return getRes.ok;
+      if (!getRes.ok) return false;
+      const sourceText = await getRes.text();
+      if (!isJavaScriptResponse(getRes, sourceText)) {
+        console.warn("[Hatsu ST Loader] module probe response returned HTML:", modUrl.href);
+        return false;
+      }
+      return true;
     } catch (e) {
       return false;
     }
@@ -100,6 +125,7 @@
     try {
       const origin = window.location.origin;
       const path = window.location.pathname || "";
+      bases.push(new URL("./", window.location.href).href);
       const pathMatch = path.match(/^(.*\/hatsu-produce-local)\//i);
       if (pathMatch) {
         bases.push(`${origin}${pathMatch[1]}/`);
@@ -189,6 +215,12 @@
 
   // 与 PlayList、Live 视频同一 R2 桶；除头像外的大图资源走 CDN，头像仍走 Workers 本地。
   const R2_MEDIA_CDN = "https://pub-cfdeb8f85de84d8193695eca002e7880.r2.dev";
+  // R2 同名覆盖不会自动让浏览器丢弃旧图片缓存；替换媒体文件后递增此版本号。
+  const R2_MEDIA_VERSION = "20260811-1";
+
+  function withR2MediaVersion(url) {
+    return url + (url.includes("?") ? "&" : "?") + `v=${R2_MEDIA_VERSION}`;
+  }
 
   function r2MediaUrl(path) {
     const clean = String(path || "").replace(/^\.\//, "");
@@ -207,17 +239,22 @@
       return shouldRewriteUrl(path) ? abs(path) : path;
     }
     if (isLocalAvatarAsset(path)) return abs(normalized);
-    return r2MediaUrl(normalized);
+    return withR2MediaVersion(r2MediaUrl(normalized));
   }
 
+  window.HATSU_RESOLVE_ASSET_URL = rewriteAssetRef;
+
   function rewriteAssetsInText(text) {
-    return text
-      .replaceAll('"./assets/avatars/', '"' + abs('assets/avatars/'))
-      .replaceAll("'./assets/avatars/", "'" + abs('assets/avatars/'))
-      .replaceAll('`./assets/avatars/', '`' + abs('assets/avatars/'))
-      .replaceAll('"./assets/', '"' + r2MediaUrl('assets/'))
-      .replaceAll("'./assets/", "'" + r2MediaUrl('assets/'))
-      .replaceAll('`./assets/', '`' + r2MediaUrl('assets/'));
+    return text.replace(/(["'`])\.\/assets\/([^"'`]+)/g, (match, quote, relativePath) => {
+      // Template expressions must be resolved after app.js evaluates; encoding
+      // `${name}` here turns it into a literal, nonexistent R2 object key.
+      if (quote === "`" && relativePath.includes("${")) return match;
+      const normalized = `assets/${relativePath}`;
+      const target = isLocalAvatarAsset(normalized)
+        ? abs(normalized)
+        : withR2MediaVersion(r2MediaUrl(normalized));
+      return quote + target;
+    });
   }
 
   function rewriteAssetsInCss(text) {
@@ -336,6 +373,8 @@
         el.setAttribute('href', rewriteAssetRef(href));
       }
     });
+
+    let bridgeReadyPromise = null;
 
     // 全屏外壳样式：不改你的内部 UI，只让外层覆盖整个酒馆
     const fullStyle = document.createElement('style');
@@ -549,6 +588,7 @@
 
     // 读取 world / broadcast 模块与 app.js，并修正里面的 ./assets/
     const WORLD_SCRIPTS = [
+      "appearance/portrait-expression-presets.js",
       "appearance/portrait-wardrobe.js",
       "world/cast-track.js",
       "world/events-pool.js",
@@ -575,19 +615,305 @@
       "tasks/side-quest-api.js",
       "tasks/sandbox-tasks.js",
       "shop/gift-shop.js",
-      "chronicle/sum-chronicle.js"
+      "chronicle/sum-chronicle.js",
+      "shujuku-output-parser.js"
     ];
 
     for (const rel of WORLD_SCRIPTS) {
-      const modRes = await fetch(abs(rel), { cache: "no-store" });
+      const moduleUrl = abs(rel);
+      const modRes = await fetch(moduleUrl, { cache: "no-store" });
       if (!modRes.ok) {
         console.warn(`[Hatsu ST Loader] 世界观模块未找到，将降级：${rel} HTTP ${modRes.status}`);
         continue;
       }
+      const sourceText = await modRes.text();
+      if (!isJavaScriptResponse(modRes, sourceText)) {
+        console.warn(`[Hatsu ST Loader] response returned HTML; skipped module ${rel}: ${moduleUrl}`);
+        continue;
+      }
       const modScript = document.createElement("script");
-      modScript.textContent = await modRes.text();
+      modScript.textContent = sourceText;
       page.appendChild(modScript);
     }
+
+    for (const rel of ['nia/routes/registry.js', 'nia/routes/hanami-saki.js', 'nia/routes/fujita-kotone.js']) {
+      try {
+        const routeRes = await fetch(abs(rel), { cache: 'no-store' });
+        if (!routeRes.ok) throw new Error('HTTP ' + routeRes.status);
+        const routeText = await routeRes.text();
+        if (!isJavaScriptResponse(routeRes, routeText)) throw new Error('response_not_javascript');
+        const routeScript = document.createElement('script');
+        routeScript.textContent = routeText + '\n//# sourceURL=' + abs(rel);
+        page.appendChild(routeScript);
+      } catch (error) {
+        console.warn(`[Hatsu ST Loader] N.I.A route loading failed: ${rel}`, error);
+      }
+    }
+
+    // app.js reads HatsuNiaTraining during initialization, so the core must
+    // be evaluated before app.js rather than loaded as a later optional module.
+    try {
+      const trainingCoreRes = await fetch(abs('nia-training-core.js'), { cache: 'no-store' });
+      if (!trainingCoreRes.ok) throw new Error('HTTP ' + trainingCoreRes.status);
+      const trainingCoreText = await trainingCoreRes.text();
+      if (!isJavaScriptResponse(trainingCoreRes, trainingCoreText)) throw new Error('response_not_javascript');
+      const trainingCoreScript = document.createElement('script');
+      trainingCoreScript.textContent = trainingCoreText + '\n//# sourceURL=' + abs('nia-training-core.js');
+      page.appendChild(trainingCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A training core loading failed:', error);
+    }
+
+    try {
+      const roundTransitionCoreRes = await fetch(abs('nia-round-transition-core.js'), { cache: 'no-store' });
+      if (!roundTransitionCoreRes.ok) throw new Error('HTTP ' + roundTransitionCoreRes.status);
+      const roundTransitionCoreText = await roundTransitionCoreRes.text();
+      if (!isJavaScriptResponse(roundTransitionCoreRes, roundTransitionCoreText)) throw new Error('response_not_javascript');
+      const roundTransitionCoreScript = document.createElement('script');
+      roundTransitionCoreScript.textContent = roundTransitionCoreText + '\n//# sourceURL=' + abs('nia-round-transition-core.js');
+      page.appendChild(roundTransitionCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A round transition core loading failed:', error);
+    }
+
+    try {
+      const eveningCoreRes = await fetch(abs('nia-evening-core.js'), { cache: 'no-store' });
+      if (!eveningCoreRes.ok) throw new Error('HTTP ' + eveningCoreRes.status);
+      const eveningCoreText = await eveningCoreRes.text();
+      if (!isJavaScriptResponse(eveningCoreRes, eveningCoreText)) throw new Error('response_not_javascript');
+      const eveningCoreScript = document.createElement('script');
+      eveningCoreScript.textContent = eveningCoreText + '\n//# sourceURL=' + abs('nia-evening-core.js');
+      page.appendChild(eveningCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A evening core loading failed:', error);
+    }
+
+    try {
+      const producerWorkCoreRes = await fetch(abs('nia-producer-work-core.js'), { cache: 'no-store' });
+      if (!producerWorkCoreRes.ok) throw new Error('HTTP ' + producerWorkCoreRes.status);
+      const producerWorkCoreText = await producerWorkCoreRes.text();
+      if (!isJavaScriptResponse(producerWorkCoreRes, producerWorkCoreText)) throw new Error('response_not_javascript');
+      const producerWorkCoreScript = document.createElement('script');
+      producerWorkCoreScript.textContent = producerWorkCoreText + '\n//# sourceURL=' + abs('nia-producer-work-core.js');
+      page.appendChild(producerWorkCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A producer work core loading failed:', error);
+    }
+
+    try {
+      const liveBusinessCoreRes = await fetch(abs('nia-live-business-core.js'), { cache: 'no-store' });
+      if (!liveBusinessCoreRes.ok) throw new Error('HTTP ' + liveBusinessCoreRes.status);
+      const liveBusinessCoreText = await liveBusinessCoreRes.text();
+      if (!isJavaScriptResponse(liveBusinessCoreRes, liveBusinessCoreText)) throw new Error('response_not_javascript');
+      const liveBusinessCoreScript = document.createElement('script');
+      liveBusinessCoreScript.textContent = liveBusinessCoreText + '\n//# sourceURL=' + abs('nia-live-business-core.js');
+      page.appendChild(liveBusinessCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A live business core loading failed:', error);
+    }
+
+    try {
+      const radioBusinessCoreRes = await fetch(abs('nia-radio-business-core.js'), { cache: 'no-store' });
+      if (!radioBusinessCoreRes.ok) throw new Error('HTTP ' + radioBusinessCoreRes.status);
+      const radioBusinessCoreText = await radioBusinessCoreRes.text();
+      if (!isJavaScriptResponse(radioBusinessCoreRes, radioBusinessCoreText)) throw new Error('response_not_javascript');
+      const radioBusinessCoreScript = document.createElement('script');
+      radioBusinessCoreScript.textContent = radioBusinessCoreText + '\n//# sourceURL=' + abs('nia-radio-business-core.js');
+      page.appendChild(radioBusinessCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A radio business core loading failed:', error);
+    }
+
+    try {
+      const tvBusinessCoreRes = await fetch(abs('nia-tv-business-core.js'), { cache: 'no-store' });
+      if (!tvBusinessCoreRes.ok) throw new Error('HTTP ' + tvBusinessCoreRes.status);
+      const tvBusinessCoreText = await tvBusinessCoreRes.text();
+      if (!isJavaScriptResponse(tvBusinessCoreRes, tvBusinessCoreText)) throw new Error('response_not_javascript');
+      const tvBusinessCoreScript = document.createElement('script');
+      tvBusinessCoreScript.textContent = tvBusinessCoreText + '\n//# sourceURL=' + abs('nia-tv-business-core.js');
+      page.appendChild(tvBusinessCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A TV business core loading failed:', error);
+    }
+
+    try {
+      const snsBusinessCoreRes = await fetch(abs('nia-sns-business-core.js'), { cache: 'no-store' });
+      if (!snsBusinessCoreRes.ok) throw new Error('HTTP ' + snsBusinessCoreRes.status);
+      const snsBusinessCoreText = await snsBusinessCoreRes.text();
+      if (!isJavaScriptResponse(snsBusinessCoreRes, snsBusinessCoreText)) throw new Error('response_not_javascript');
+      const snsBusinessCoreScript = document.createElement('script');
+      snsBusinessCoreScript.textContent = snsBusinessCoreText + '\n//# sourceURL=' + abs('nia-sns-business-core.js');
+      page.appendChild(snsBusinessCoreScript);
+      const snsBusinessApiRes = await fetch(abs('nia-sns-business-api.js'), { cache: 'no-store' });
+      if (!snsBusinessApiRes.ok) throw new Error('HTTP ' + snsBusinessApiRes.status);
+      const snsBusinessApiText = await snsBusinessApiRes.text();
+      if (!isJavaScriptResponse(snsBusinessApiRes, snsBusinessApiText)) throw new Error('response_not_javascript');
+      const snsBusinessApiScript = document.createElement('script');
+      snsBusinessApiScript.textContent = snsBusinessApiText.replace(/export\s+/g, '') + '\n//# sourceURL=' + abs('nia-sns-business-api.js');
+      page.appendChild(snsBusinessApiScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A sns business loading failed:', error);
+    }
+
+    try {
+      const miniLiveCoreRes = await fetch(abs('nia-mini-live-core.js'), { cache: 'no-store' });
+      if (!miniLiveCoreRes.ok) throw new Error('HTTP ' + miniLiveCoreRes.status);
+      const miniLiveCoreText = await miniLiveCoreRes.text();
+      if (!isJavaScriptResponse(miniLiveCoreRes, miniLiveCoreText)) throw new Error('response_not_javascript');
+      const miniLiveCoreScript = document.createElement('script');
+      miniLiveCoreScript.textContent = miniLiveCoreText + '\n//# sourceURL=' + abs('nia-mini-live-core.js');
+      page.appendChild(miniLiveCoreScript);
+      const miniLiveApiRes = await fetch(abs('nia-mini-live-api.js'), { cache: 'no-store' });
+      if (!miniLiveApiRes.ok) throw new Error('HTTP ' + miniLiveApiRes.status);
+      const miniLiveApiText = await miniLiveApiRes.text();
+      if (!isJavaScriptResponse(miniLiveApiRes, miniLiveApiText)) throw new Error('response_not_javascript');
+      const miniLiveApiScript = document.createElement('script');
+      miniLiveApiScript.textContent = miniLiveApiText.replace(/export\s+/g, '') + '\n//# sourceURL=' + abs('nia-mini-live-api.js');
+      page.appendChild(miniLiveApiScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A mini live loading failed:', error);
+    }
+
+    try {
+      const auditionCoreRes = await fetch(abs('nia-audition-core.js'), { cache: 'no-store' });
+      if (!auditionCoreRes.ok) throw new Error('HTTP ' + auditionCoreRes.status);
+      const auditionCoreText = await auditionCoreRes.text();
+      if (!isJavaScriptResponse(auditionCoreRes, auditionCoreText)) throw new Error('response_not_javascript');
+      const auditionCoreScript = document.createElement('script');
+      auditionCoreScript.textContent = auditionCoreText + '\n//# sourceURL=' + abs('nia-audition-core.js');
+      page.appendChild(auditionCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A audition core loading failed:', error);
+    }
+
+    try {
+      const fanMilestoneCoreRes = await fetch(abs('nia-fan-milestone-core.js'), { cache: 'no-store' });
+      if (!fanMilestoneCoreRes.ok) throw new Error('HTTP ' + fanMilestoneCoreRes.status);
+      const fanMilestoneCoreText = await fanMilestoneCoreRes.text();
+      if (!isJavaScriptResponse(fanMilestoneCoreRes, fanMilestoneCoreText)) throw new Error('response_not_javascript');
+      const fanMilestoneCoreScript = document.createElement('script');
+      fanMilestoneCoreScript.textContent = fanMilestoneCoreText + '\n//# sourceURL=' + abs('nia-fan-milestone-core.js');
+      page.appendChild(fanMilestoneCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A fan milestone core loading failed:', error);
+    }
+
+    try {
+      const scheduleShareCoreRes = await fetch(abs('nia-schedule-share-core.js'), { cache: 'no-store' });
+      if (!scheduleShareCoreRes.ok) throw new Error('HTTP ' + scheduleShareCoreRes.status);
+      const scheduleShareCoreText = await scheduleShareCoreRes.text();
+      if (!isJavaScriptResponse(scheduleShareCoreRes, scheduleShareCoreText)) throw new Error('response_not_javascript');
+      const scheduleShareCoreScript = document.createElement('script');
+      scheduleShareCoreScript.textContent = scheduleShareCoreText + '\n//# sourceURL=' + abs('nia-schedule-share-core.js');
+      page.appendChild(scheduleShareCoreScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A schedule share core loading failed:', error);
+    }
+
+    try {
+      const hcgTagsRes = await fetch(abs('hcg-tags.js'), { cache: 'no-store' });
+      if (!hcgTagsRes.ok) throw new Error('HTTP ' + hcgTagsRes.status);
+      let hcgTagsText = await hcgTagsRes.text();
+      if (!isJavaScriptResponse(hcgTagsRes, hcgTagsText)) throw new Error('response_not_javascript');
+      hcgTagsText = rewriteAssetsInText(hcgTagsText);
+      const hcgTagsScript = document.createElement('script');
+      hcgTagsScript.textContent = hcgTagsText + '\n//# sourceURL=' + abs('hcg-tags.js');
+      page.appendChild(hcgTagsScript);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] HCG tags loading failed:', error);
+    }
+
+    let niaBusinessModuleLoaded = false;
+    try {
+      const businessApiUrl = abs('nia-business-api.js');
+      const businessApiRes = await fetch(businessApiUrl, { cache: 'no-store' });
+      if (!businessApiRes.ok) throw new Error('HTTP ' + businessApiRes.status);
+      const businessApiText = await businessApiRes.text();
+      if (!isJavaScriptResponse(businessApiRes, businessApiText)) throw new Error('response_not_javascript');
+      const businessApiScript = document.createElement('script');
+      businessApiScript.textContent = '(function () {\n'
+        + convertNiaBusinessModuleToClassic(businessApiText)
+        + '\n})();\n//# sourceURL=' + businessApiUrl;
+      page.appendChild(businessApiScript);
+      niaBusinessModuleLoaded = Boolean(globalThis.HatsuNiaBusiness?.buildNiaLiveSegmentPrompt);
+      if (!niaBusinessModuleLoaded) throw new Error('business_api_global_missing');
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A 营业 API 预加载失败：', error);
+    }
+    window.HATSU_NIA_BUSINESS_READY = Promise.resolve(niaBusinessModuleLoaded);
+
+    let niaRadioModuleLoaded = false;
+    try {
+      const radioApiUrl = abs('nia-radio-business-api.js');
+      const radioApiRes = await fetch(radioApiUrl, { cache: 'no-store' });
+      if (!radioApiRes.ok) throw new Error('HTTP ' + radioApiRes.status);
+      const radioApiText = await radioApiRes.text();
+      if (!isJavaScriptResponse(radioApiRes, radioApiText)) throw new Error('response_not_javascript');
+      const radioApiScript = document.createElement('script');
+      radioApiScript.textContent = '(function () {\n'
+        + convertNiaBusinessModuleToClassic(radioApiText)
+        + '\n})();\n//# sourceURL=' + radioApiUrl;
+      page.appendChild(radioApiScript);
+      niaRadioModuleLoaded = Boolean(globalThis.HatsuNiaRadioApi?.buildNiaRadioSegmentPrompt);
+      if (!niaRadioModuleLoaded) throw new Error('radio_api_global_missing');
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A radio API preload failed:', error);
+    }
+    window.HATSU_NIA_RADIO_READY = Promise.resolve(niaRadioModuleLoaded);
+
+    let niaTvModuleLoaded = false;
+    try {
+      const tvApiUrl = abs('nia-tv-business-api.js');
+      const tvApiRes = await fetch(tvApiUrl, { cache: 'no-store' });
+      if (!tvApiRes.ok) throw new Error('HTTP ' + tvApiRes.status);
+      const tvApiText = await tvApiRes.text();
+      if (!isJavaScriptResponse(tvApiRes, tvApiText)) throw new Error('response_not_javascript');
+      const tvApiScript = document.createElement('script');
+      tvApiScript.textContent = '(function () {\n' + convertNiaBusinessModuleToClassic(tvApiText) + '\n})();\n//# sourceURL=' + tvApiUrl;
+      page.appendChild(tvApiScript);
+      niaTvModuleLoaded = Boolean(globalThis.HatsuNiaTvApi?.buildNiaTvSegmentPrompt);
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A TV API preload failed:', error);
+    }
+    window.HATSU_NIA_TV_READY = Promise.resolve(niaTvModuleLoaded);
+
+    let niaAuditionModuleLoaded = false;
+    try {
+      const auditionApiUrl = abs('nia-audition-api.js');
+      const auditionApiRes = await fetch(auditionApiUrl, { cache: 'no-store' });
+      if (!auditionApiRes.ok) throw new Error('HTTP ' + auditionApiRes.status);
+      const auditionApiText = await auditionApiRes.text();
+      if (!isJavaScriptResponse(auditionApiRes, auditionApiText)) throw new Error('response_not_javascript');
+      const auditionApiScript = document.createElement('script');
+      auditionApiScript.textContent = '(function () {\n'
+        + convertNiaBusinessModuleToClassic(auditionApiText)
+        + '\n})();\n//# sourceURL=' + auditionApiUrl;
+      page.appendChild(auditionApiScript);
+      niaAuditionModuleLoaded = Boolean(globalThis.HatsuNiaAuditionApi?.buildNiaAuditionSegmentPrompt);
+      if (!niaAuditionModuleLoaded) throw new Error('audition_api_global_missing');
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A audition API preload failed:', error);
+    }
+    window.HATSU_NIA_AUDITION_READY = Promise.resolve(niaAuditionModuleLoaded);
+
+    let niaFanMilestoneModuleLoaded = false;
+    try {
+      const fanMilestoneApiUrl = abs('nia-fan-milestone-api.js');
+      const fanMilestoneApiRes = await fetch(fanMilestoneApiUrl, { cache: 'no-store' });
+      if (!fanMilestoneApiRes.ok) throw new Error('HTTP ' + fanMilestoneApiRes.status);
+      const fanMilestoneApiText = await fanMilestoneApiRes.text();
+      if (!isJavaScriptResponse(fanMilestoneApiRes, fanMilestoneApiText)) throw new Error('response_not_javascript');
+      const fanMilestoneApiScript = document.createElement('script');
+      fanMilestoneApiScript.textContent = '(function () {\n'
+        + convertNiaBusinessModuleToClassic(fanMilestoneApiText)
+        + '\n})();\n//# sourceURL=' + fanMilestoneApiUrl;
+      page.appendChild(fanMilestoneApiScript);
+      niaFanMilestoneModuleLoaded = Boolean(globalThis.HatsuNiaFanMilestoneApi?.buildNiaFanMilestonePrompt);
+      if (!niaFanMilestoneModuleLoaded) throw new Error('fan_milestone_api_global_missing');
+    } catch (error) {
+      console.warn('[Hatsu ST Loader] N.I.A fan milestone API preload failed:', error);
+    }
+    window.HATSU_NIA_FAN_MILESTONE_READY = Promise.resolve(niaFanMilestoneModuleLoaded);
 
     const jsRes = await fetch(abs('app.js'), { cache: 'no-store' });
     if (!jsRes.ok) {
@@ -607,7 +933,6 @@
     if (loader) loader.remove();
 
     // ── 初始化内嵌直接桥接服务（如果用户禁用了本地酒馆扩展） ──
-    let bridgeReadyPromise = null;
     if (!window.__hatsuboshiProduceLoaded) {
       window.__hatsuboshiProduceLoaded = true;
 
@@ -637,7 +962,7 @@
         await bridgeReadyPromise;
 
         if (data.type === 'getCharacter') {
-          postCharacterToFrame();
+          postCharacterToFrame(event.source);
         }
         if (data.type === 'portraitFileOperation') {
           const result = await executePortraitFileOperation(data);
@@ -854,17 +1179,22 @@
     const activeHostGenerationAttempts = new Map();
     const HATSU_HOST_GENERATION_ADAPTER = globalThis.HATSU_HOST_GENERATION_ADAPTER === 'current_transactional'
       ? 'current_transactional'
-      : 'shujuku_v1';
+      : globalThis.HATSU_HOST_GENERATION_ADAPTER === 'shujuku_original_silent_v1'
+        ? 'shujuku_original_silent_v1'
+      : globalThis.HATSU_HOST_GENERATION_ADAPTER === 'shujuku_silent_v1'
+        ? 'shujuku_silent_v1'
+        : 'shujuku_v1';
     const hostGenerationAttemptDebug = {
       current: null,
       lastFailureReason: '',
       lastCompensationReason: ''
     };
-    const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer']);
+    const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer', 'sandbox_first_live']);
     const SHUJUKU_PLANNING_TIMEOUT_MS = 120000;
     const SHUJUKU_ASSISTANT_TIMEOUT_MS = 120000;
     const SECONDARY_DIRECTOR_FETCH_TIMEOUT_MS = 180000;
     const HOST_EMPTY_FINAL_MAX_RETRIES = 2;
+    const SHUJUKU_GENERATION_HOOK_TIMEOUT_MS = 15000;
 
     function createHostGenerationAttemptKey(requestId, channelLeaseId, saveScope) {
       return [requestId, channelLeaseId, saveScope].map((value) => String(value || '')).join('::');
@@ -1107,7 +1437,15 @@
       try {
         await eventSource.emit(messageSent, messageId, 'extension');
       } catch (error) {
-        await eventSource.emit(messageSent, messageId);
+        try {
+          await eventSource.emit(messageSent, messageId);
+        } catch (retryError) {
+          const message = String(retryError?.message || retryError || '');
+          if (!/processPendingEffectRuns\s+is\s+not\s+defined/i.test(message)) {
+            throw retryError;
+          }
+          console.warn('[st.html] MESSAGE_SENT listener completed, but host emitter cleanup failed:', message);
+        }
       }
     }
 
@@ -1179,6 +1517,16 @@
       const waitForPlanning = deps.waitForExactBridgePlanning || waitForExactBridgePlanning;
       const triggerGeneration = deps.triggerNativeGeneration || triggerNativeGeneration;
       const waitForAssistant = deps.waitForExactBridgeAssistant || waitForExactBridgeAssistant;
+      const selectCommittedReply = deps.selectCommittedReplyForPrompt
+        || (typeof selectCommittedReplyForPrompt === 'function'
+          ? selectCommittedReplyForPrompt
+          : ((_prompt, text) => String(text || '').trim()));
+      const replaceAssistantText = deps.replaceAssistantMessageText
+        || (typeof replaceAssistantMessageText === 'function' ? replaceAssistantMessageText : null);
+      const validateText = deps.isGeneratedTextCompatibleWithPrompt
+        || (typeof isGeneratedTextCompatibleWithPrompt === 'function'
+          ? isGeneratedTextCompatibleWithPrompt
+          : ((_prompt, text) => Boolean(String(text || '').trim())));
       const stampMessage = deps.stampTransactionalExtra || stampTransactionalExtra;
       const persistChat = deps.persistChatSilently || persistChatSilently;
       const commitReply = deps.postCommittedReply || postCommittedReply;
@@ -1197,19 +1545,26 @@
         if (!planning) throw new Error('shujuku_planning_timeout');
         const assistant = await waitForAssistant(attempt, deps);
         if (!assistant?.text) throw new Error('shujuku_assistant_timeout');
+        const rawText = String(assistant.rawText || assistant.text || '').trim();
+        const text = selectCommittedReply(attempt.prompt, rawText);
+        if (!validateText(attempt.prompt, text)) throw new Error('incompatible_generated_text');
         if (String(readContextInfo()?.saveScope || '') !== String(attempt.saveScope || '')) {
           throw new Error('save_scope_changed');
         }
         if (attempts.get(attempt.attemptKey) !== attempt) {
           throw new Error('stale_host_attempt');
         }
+        if (text !== String(assistant.text || '').trim()) {
+          if (!replaceAssistantText) throw new Error('assistant_text_replacement_unavailable');
+          await replaceAssistantText(assistant.index, text, deps);
+        }
         stampMessage(assistant.index, 'assistant', attempt.requestId, attempt);
         await persistChat();
         attempt.assistantMessageId = assistant.index;
         attempt.status = 'assistant_committed';
-        commitReply(attempt.requestId, assistant.text, {
+        commitReply(attempt.requestId, text, {
           isFinal: true,
-          rawText: assistant.rawText || assistant.text,
+          rawText,
           renderedText: assistant.renderedText || '',
           messageId: assistant.index,
           channelLeaseId: attempt.channelLeaseId
@@ -1261,6 +1616,236 @@
       };
     }
 
+    function resolveShujukuSilentBridge() {
+      const candidates = [];
+      try {
+        if (window.parent && window.parent !== window) candidates.push(window.parent.HatsuShujukuSilentBridge);
+      } catch (e) {}
+      try {
+        candidates.push(window.HatsuShujukuSilentBridge);
+      } catch (e) {}
+      return candidates.find((bridge) => bridge
+        && typeof bridge.prepareExternalGeneration === 'function'
+        && typeof bridge.commitExternalAssistant === 'function') || null;
+    }
+
+    async function waitForShujukuGenerationHook(timeoutMs = SHUJUKU_GENERATION_HOOK_TIMEOUT_MS, options) {
+      options = options && typeof options === 'object' ? options : {};
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < timeoutMs) {
+        try {
+          if (window.original_TavernHelper_generate_ACU
+              && typeof window.TavernHelper?.generate === 'function') return window.TavernHelper;
+        } catch (e) {}
+        try {
+          if (window.parent?.original_TavernHelper_generate_ACU
+              && typeof window.parent?.TavernHelper?.generate === 'function') return window.parent.TavernHelper;
+        } catch (e) {}
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      if (options.allowDirectFallback) {
+        const helper = getTavernHelper();
+        if (helper && typeof helper.generate === 'function') {
+          console.warn('[Hatsu Shujuku] shujuku_original_generation_direct_fallback');
+          return helper;
+        }
+      }
+      throw new Error('shujuku_original_generation_hook_unavailable');
+    }
+
+    async function emitShujukuGenerationAfterCommands(attempt, prompt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const eventSource = deps.eventSource || context?.eventSource;
+      const eventTypes = deps.eventTypes || context?.eventTypes || {};
+      const eventName = eventTypes.GENERATION_AFTER_COMMANDS || 'generation_after_commands';
+      if (!eventSource || typeof eventSource.emit !== 'function') throw new Error('shujuku_generation_event_unavailable');
+      const message = context?.chat?.[Number(attempt?.userMessageId)];
+      if (!message || message.is_user !== true) throw new Error('shujuku_generation_user_missing');
+      const params = {
+        prompt: String(prompt || ''),
+        user_input: String(prompt || ''),
+        _hatsu_original_adapter: true
+      };
+      await eventSource.emit(eventName, 'normal', params, false);
+      return String(params.prompt || params.user_input || prompt || '').trim();
+    }
+
+    async function emitShujukuGenerationStarted(attempt, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const eventSource = deps.eventSource || context?.eventSource;
+      const eventTypes = deps.eventTypes || context?.eventTypes || {};
+      const eventName = eventTypes.GENERATION_STARTED || 'generation_started';
+      if (!eventSource || typeof eventSource.emit !== 'function') throw new Error('shujuku_generation_event_unavailable');
+      await eventSource.emit(eventName, 'normal', {
+        automatic_trigger: false,
+        _hatsu_original_adapter: true,
+        _hatsu_user_message_id: Number(attempt?.userMessageId)
+      }, false);
+    }
+
+    async function emitShujukuGenerationEnded(assistantMessageId, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const eventSource = deps.eventSource || context?.eventSource;
+      const eventTypes = deps.eventTypes || context?.eventTypes || {};
+      const eventName = eventTypes.GENERATION_ENDED || 'generation_ended';
+      const messageId = Number(assistantMessageId);
+      if (!eventSource || typeof eventSource.emit !== 'function') throw new Error('shujuku_generation_event_unavailable');
+      if (!Number.isInteger(messageId) || messageId < 0) throw new Error('shujuku_generation_assistant_missing');
+      await eventSource.emit(eventName, messageId);
+    }
+
+    async function generateTextOnly(prompt, requestId, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const useShujukuWrapper = deps.useShujukuWrapper === true;
+      let helper = deps.tavernHelper || getTavernHelper();
+      if (useShujukuWrapper && !deps.tavernHelper) {
+        helper = await waitForShujukuGenerationHook(SHUJUKU_GENERATION_HOOK_TIMEOUT_MS, {
+          allowDirectFallback: true
+        });
+      }
+      if (!helper || typeof helper.generate !== 'function') throw new Error('text_generation_unavailable');
+      let originalGenerate = null;
+      try {
+        originalGenerate = window.parent?.original_TavernHelper_generate_ACU || null;
+      } catch (e) {}
+      try {
+        originalGenerate = originalGenerate || window.original_TavernHelper_generate_ACU || null;
+      } catch (e) {}
+      const generate = deps.generate || (useShujukuWrapper ? helper.generate : originalGenerate || helper.generate);
+      const generated = await generate.call(helper, {
+        user_input: String(prompt || ''),
+        should_stream: false,
+        should_silence: false,
+        generation_id: String(requestId || '')
+      });
+      const text = extractReplyTextFromGenerated(generated);
+      if (!text) throw new Error('text_generation_empty');
+      return text;
+    }
+
+    async function runShujukuSilentAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
+      const prepareAttempt = deps.prepareSameLayerAttempt || prepareSameLayerAttempt;
+      const bridge = deps.shujukuSilentBridge || resolveShujukuSilentBridge();
+      const prepareExternalGeneration = deps.prepareExternalGeneration || bridge?.prepareExternalGeneration;
+      const generate = deps.generateTextOnly || generateTextOnly;
+      const selectCommittedReply = deps.selectCommittedReplyForPrompt
+        || (typeof selectCommittedReplyForPrompt === 'function'
+          ? selectCommittedReplyForPrompt
+          : ((_prompt, text) => String(text || '').trim()));
+      const createAssistant = deps.createSilentChatMessage || createSilentChatMessage;
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const commitExternalAssistant = deps.commitExternalAssistant || bridge?.commitExternalAssistant;
+      const postReply = deps.postCommittedReply || postCommittedReply;
+      const compensateAttempt = deps.compensateHostGenerationAttempt || compensateHostGenerationAttempt;
+      const rollbackAssistant = deps.rollbackSilentAssistantMessage || rollbackSilentAssistantMessage;
+      let attempt = null;
+      let assistantId = -1;
+      let databaseCommitted = false;
+      try {
+        if (typeof prepareExternalGeneration !== 'function' || typeof commitExternalAssistant !== 'function') {
+          throw new Error('shujuku_silent_unavailable');
+        }
+        attempt = await prepareAttempt(envelope, deps);
+        const prepared = await prepareExternalGeneration({ envelope, attempt });
+        const prompt = String(prepared?.prompt || prepared || envelope.prompt || '').trim();
+        if (!prompt) throw new Error('shujuku_silent_prompt_empty');
+        const rawText = await generate(prompt, envelope.requestId, { ...deps, attempt });
+        const text = selectCommittedReply(envelope.prompt, rawText);
+        if (!isGeneratedTextCompatibleWithPrompt(envelope.prompt, text)) throw new Error('incompatible_generated_text');
+        assistantId = await createAssistant('assistant', text, envelope.requestId, attempt);
+        await persistChat();
+        await commitExternalAssistant({ envelope, attempt, assistantMessageId: assistantId, text });
+        databaseCommitted = true;
+        postReply(envelope.requestId, text, {
+          isFinal: true,
+          rawText,
+          renderedText: '',
+          messageId: assistantId,
+          channelLeaseId: envelope.channelLeaseId
+        });
+        attempt.assistantMessageId = assistantId;
+        attempt.status = 'replied';
+        return attempt;
+      } catch (error) {
+        const failedAttempt = attempt || attempts.get(envelope.attemptKey) || null;
+        if (!databaseCommitted && Number.isInteger(Number(assistantId)) && Number(assistantId) >= 0) {
+          await rollbackAssistant(assistantId, envelope.requestId, failedAttempt || attempt);
+        }
+        if (failedAttempt) await compensateAttempt(failedAttempt, String(error?.message || error || 'host_attempt_failed'), deps);
+        throw error;
+      }
+    }
+
+    function resolveShujukuOriginalBridge() {
+      const candidates = [];
+      try { if (window.parent && window.parent !== window) candidates.push(window.parent.HatsuShujukuOriginalBridge); } catch (e) {}
+      try { candidates.push(window.HatsuShujukuOriginalBridge); } catch (e) {}
+      return candidates.find((bridge) => bridge && typeof bridge.commitExternalAssistant === 'function') || null;
+    }
+
+    async function runShujukuOriginalSilentAttempt(envelope, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const attempts = deps.activeAttempts || activeHostGenerationAttempts;
+      const prepareAttempt = deps.prepareSameLayerAttempt || prepareSameLayerAttempt;
+      const generate = deps.generateTextOnly || generateTextOnly;
+      const selectCommittedReply = deps.selectCommittedReplyForPrompt
+        || (typeof selectCommittedReplyForPrompt === 'function'
+          ? selectCommittedReplyForPrompt
+          : ((_prompt, text) => String(text || '').trim()));
+      const createAssistant = deps.createSilentChatMessage || createSilentChatMessage;
+      const persistChat = deps.persistChatSilently || persistChatSilently;
+      const postReply = deps.postCommittedReply || postCommittedReply;
+      const bridge = deps.shujukuOriginalBridge || resolveShujukuOriginalBridge();
+      const commitExternalAssistant = deps.commitExternalAssistant || bridge?.commitExternalAssistant;
+      const compensateAttempt = deps.compensateHostGenerationAttempt || compensateHostGenerationAttempt;
+      const rollbackAssistant = deps.rollbackSilentAssistantMessage || rollbackSilentAssistantMessage;
+      let attempt = null;
+      let assistantId = -1;
+      let generationEndedEmitted = false;
+      try {
+        attempt = await prepareAttempt(envelope, deps);
+        await emitHostMessageSent(attempt.userMessageId, deps);
+        const plannedPrompt = await emitShujukuGenerationAfterCommands(attempt, envelope.prompt, deps);
+        await emitShujukuGenerationStarted(attempt, deps);
+        const rawText = await generate(plannedPrompt, envelope.requestId, {
+          ...deps,
+          attempt,
+          useShujukuWrapper: false,
+          allowDirectFallback: true
+        });
+        const text = selectCommittedReply(envelope.prompt, rawText);
+        if (!isGeneratedTextCompatibleWithPrompt(envelope.prompt, text)) throw new Error('incompatible_generated_text');
+        assistantId = await createAssistant('assistant', text, envelope.requestId, attempt);
+        await persistChat();
+        await emitShujukuGenerationEnded(assistantId, deps);
+        generationEndedEmitted = true;
+        postReply(envelope.requestId, text, { isFinal: true, rawText, renderedText: '', messageId: assistantId, channelLeaseId: envelope.channelLeaseId });
+        if (typeof commitExternalAssistant === 'function') {
+          Promise.resolve(commitExternalAssistant({
+            envelope,
+            attempt,
+            assistantMessageId: assistantId,
+            text
+          })).catch((error) => {
+            console.warn('[Hatsu Shujuku] asynchronous database fallback failed:', error);
+          });
+        }
+        attempt.assistantMessageId = assistantId;
+        attempt.status = 'replied';
+        return attempt;
+      } catch (error) {
+        const failedAttempt = attempt || attempts.get(envelope.attemptKey) || null;
+        if (!generationEndedEmitted && Number.isInteger(Number(assistantId)) && Number(assistantId) >= 0) await rollbackAssistant(assistantId, envelope.requestId, failedAttempt || attempt);
+        if (failedAttempt) await compensateAttempt(failedAttempt, String(error?.message || error || 'host_attempt_failed'), deps);
+        throw error;
+      }
+    }
+
     async function runHostGenerationAttempt(envelope, deps) {
       deps = deps && typeof deps === 'object' ? deps : {};
       const recordDebug = deps.recordHostGenerationAttemptDebug
@@ -1277,6 +1862,10 @@
         let result;
         if (adapter === 'current_transactional') {
           result = await runTransactionalPrompt(envelope.prompt, envelope.requestId, envelope.channelLeaseId);
+        } else if (adapter === 'shujuku_original_silent_v1') {
+          result = await runShujukuOriginalSilentAttempt(envelope, deps);
+        } else if (adapter === 'shujuku_silent_v1') {
+          result = await runShujukuSilentAttempt(envelope, deps);
         } else if (envelope.generationMode === 'opening_quiet') {
           result = await runOpeningQuietAttempt(envelope);
         } else if (envelope.generationMode === 'shujuku_same_layer') {
@@ -1338,6 +1927,8 @@
       try {
         const frame = document.getElementById('hatsu-st-page');
         frame?.contentWindow?.postMessage(payload, '*');
+        const niaFrame = document.getElementById('hatsu-nia-prototype-frame');
+        niaFrame?.contentWindow?.postMessage(payload, '*');
       } catch (error) {
         // 忽略跨域 frame 投递失败。
       }
@@ -1875,6 +2466,17 @@
       return '';
     }
 
+    function selectCommittedReplyForPrompt(promptText, generatedText) {
+      const prompt = String(promptText || '');
+      const reply = String(generatedText || '').trim();
+      if (!prompt.includes('[HATSU_OUTPUT_MODE:NIA_PRODUCER_WORK]')) return reply;
+      const pattern = /<NIA_WORK_RESULT>[\s\S]*?<\/NIA_WORK_RESULT>/gi;
+      let selected = '';
+      let match;
+      while ((match = pattern.exec(reply)) !== null) selected = String(match[0] || '').trim();
+      return selected;
+    }
+
 
     function getGenerationPayloadRequestId(generated) {
       if (!generated || typeof generated !== 'object') return '';
@@ -2075,6 +2677,20 @@
       return messageId;
     }
 
+    function replaceAssistantMessageText(index, text, deps) {
+      deps = deps && typeof deps === 'object' ? deps : {};
+      const context = deps.context || getContext();
+      const message = context?.chat?.[Number(index)];
+      if (!message || message.is_user) throw new Error('assistant_message_unavailable');
+      const value = String(text || '');
+      message.mes = value;
+      if (Array.isArray(message.swipes) && message.swipes.length > 0) {
+        const swipeIndex = Number.isInteger(Number(message.swipe_id)) ? Number(message.swipe_id) : 0;
+        message.swipes[swipeIndex] = value;
+      }
+      context.chatMetadata && (context.chatMetadata.tainted = true);
+    }
+
     function rollbackSilentUserMessage(index, requestId) {
       const context = getContext();
       if (!context || !Array.isArray(context.chat)) return;
@@ -2090,6 +2706,25 @@
       } catch (error) {
         // 忽略 DOM 清理失败。
       }
+    }
+
+    async function rollbackSilentAssistantMessage(index, requestId, attempt) {
+      const context = getContext();
+      if (!context || !Array.isArray(context.chat)) return;
+      const idx = Number(index);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= context.chat.length) return;
+      const message = context.chat[idx];
+      if (!message || message.is_user) return;
+      if (String(message?.extra?.hatsuRequestId || '') !== String(requestId || '')) return;
+      const attemptKey = String(attempt?.attemptKey || '');
+      if (attemptKey && String(message?.extra?.hatsuAttemptKey || '') !== attemptKey) return;
+      context.chat.splice(idx, 1);
+      context.chatMetadata && (context.chatMetadata.tainted = true);
+      try {
+        const mainDoc = getHostMainDocument();
+        mainDoc.querySelector(`#chat > .mes[mesid="${idx}"]`)?.remove();
+      } catch (error) {}
+      await persistChatSilently();
     }
 
     async function persistChatSilently() {
@@ -2110,7 +2745,7 @@
         isFinal: options.isFinal !== false,
         messageId: messageId >= 0 ? messageId : undefined
       };
-      window.postMessage(payload, '*');
+      postToFrame(payload);
       dispatchCommittedReplyEvent(payload);
       if (String(pendingRequestId || '') === String(requestId || '')) {
         clearPendingReplyRequest();
@@ -2118,13 +2753,13 @@
     }
 
     function postPrimaryAiError(requestId, channelLeaseId, error) {
-      window.postMessage({
+      postToFrame({
         source: 'hatsuboshi-produce-host',
         type: 'primaryAiError',
         requestId: String(requestId || ''),
         channelLeaseId: String(channelLeaseId || ''),
         error: String(error?.message || error || 'primary_generation_failed')
-      }, '*');
+      });
     }
     function normalizeSecondaryEnvelope(data, currentScope) {
       const jobId = String(data?.jobId || '').trim();
@@ -2389,7 +3024,7 @@
       });
     }
 
-    function postCharacterToFrame() {
+    function postCharacterToFrame(targetWindow = null) {
       const contextInfo = getCurrentContextInfo();
       const savedState = getSavedChatState();
       console.log('[st.html] postCharacterToFrame sending payload:', contextInfo.character, 'hasSavedState:', Boolean(savedState));
@@ -2401,7 +3036,11 @@
         hasSavedState: Boolean(savedState),
         savedState,
       };
-      window.postMessage(payload, '*');
+      if (targetWindow && typeof targetWindow.postMessage === 'function') {
+        targetWindow.postMessage(payload, '*');
+      } else {
+        postToFrame(payload);
+      }
     }
 
     function sendPromptToSillyTavern(prompt) {

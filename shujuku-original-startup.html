@@ -1,0 +1,30 @@
+<body>
+  <script>
+    (async function startHatsuShujukuOriginal() {
+      try {
+        window.HATSU_ASSET_BASE =
+          'http://127.0.0.1:8000/hatsu-produce-local/';
+        window.HATSU_HOST_GENERATION_ADAPTER =
+          'shujuku_original_silent_v1';
+
+        await import(
+          window.HATSU_ASSET_BASE +
+          'shujuku-original-local.js?v=20260803-5'
+        );
+        await window.HATSU_SHUJUKU_ORIGINAL_READY;
+        await import(
+          window.HATSU_ASSET_BASE +
+          'shujuku-original-bridge.js?v=20260804-1'
+        );
+
+        if (!window.HATSU_ST_BOOTSTRAP_STARTED) {
+          window.HATSU_ST_BOOTSTRAP_STARTED = true;
+          $('body').load(window.HATSU_ASSET_BASE + 'st.html?v=20260804-4');
+        }
+      } catch (error) {
+        console.error('[Hatsu Shujuku original startup]', error);
+        document.body.textContent = 'Shujuku startup failed: ' + String(error?.message || error);
+      }
+    })();
+  </script>
+</body>

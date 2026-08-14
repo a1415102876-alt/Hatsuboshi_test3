@@ -219,7 +219,8 @@ test("school entrance supports off-campus outing with preset destinations", () =
   assert.match(readFunction("openMapLocationOverlay"), /mapLocationOutingBtn/);
   assert.match(readFunction("openMapLocationOverlay"), /isSandboxOffCampusExitAtEntrance/);
   assert.match(readFunction("openFreeModeOutingOverlay"), /renderOffCampusTransitMap/);
-  assert.match(readFunction("openFreeModeOutingOverlay"), /FREE_MODE_OUTING_DESTINATIONS\.forEach/);
+  assert.match(readFunction("openFreeModeOutingOverlay"), /FREE_MODE_OUTING_DESTINATIONS\.filter/);
+  assert.match(readFunction("openFreeModeOutingOverlay"), /destinations\.forEach/);
   assert.match(readFunction("renderOffCampusTransitMap"), /off-campus-line-main/);
   assert.match(readFunction("renderOffCampusTransitMap"), /is-locked/);
   assert.match(readFunction("confirmFreeModeOutingDestination"), /startFreeModeOuting/);
@@ -448,8 +449,10 @@ test("map arrival freezes the pre-travel presence only for the first arrival pro
 test("apartment companion custom choice routes from the shared VN input", () => {
   const calls = [];
   const sandbox = {
+    state: {},
     document: { getElementById: () => ({ value: "  今天辛苦了，想再聊一会儿  " }) },
     isNsfwIntimacyActive: () => false,
+    isNiaPostAuditionChoiceActive: () => false,
     isMapLocationExploreActive: () => false,
     isApartmentCompanionSessionActive: () => true,
     isChoicePromptMode: () => true,
@@ -478,7 +481,7 @@ test("apartment companion custom choice advances ten minutes and requests the en
       eventMode: "choice_prompt",
       choiceStep: 1
     },
-    advanceFreeModeTime: (minutes) => calls.push(["advance", minutes]),
+    advanceApartmentTime: (minutes) => calls.push(["advance", minutes]),
     appendEveningJournalActivity: (title, detail) => calls.push(["journal", title, detail]),
     saveState: () => calls.push("save"),
     scanStorytellerNotificationAtCheckpoint: (trigger, options) => calls.push(["scan", trigger, options]),
@@ -507,7 +510,7 @@ test("apartment companion custom choice rejects blank input without state writes
   const sandbox = {
     state: { lastStory: "unchanged" },
     showToast: (...args) => calls.push(args),
-    advanceFreeModeTime: () => calls.push("forbidden")
+    advanceApartmentTime: () => calls.push("forbidden")
   };
   vm.runInNewContext(`${readFunction("handleApartmentCompanionCustomChoice")}; this.choose = handleApartmentCompanionCustomChoice;`, sandbox);
 
@@ -527,6 +530,10 @@ test("apartment companion continuation prompt includes the current custom action
     },
     idols: { 藤田琴音: { styles: { companion: "嘴硬但认真回应" } } },
     FREE_MODE_MAP_NIGHT_START_MINUTES: 1200,
+    formatApartmentDayLabel: () => "campus day 2",
+    formatApartmentClock: () => "20:00",
+    isNiaEveningActive: () => false,
+    getApartmentClockMinutes: () => 1200,
     canonicalIdolName: (name) => name,
     getAffinityStageLine: () => "好感阶段",
     getFreeModeRelationshipScore: () => 50,
@@ -536,9 +543,11 @@ test("apartment companion continuation prompt includes the current custom action
     buildProducerPromptSection: () => "制作人设定",
     summarizeMapExploreContext: () => "此前摘要",
     galgameRenderContract: () => "输出契约",
-    buildChoiceHardRules: () => "选项规则"
+    buildChoiceHardRules: () => "选项规则",
+    buildChoiceOnlyExample: () => "输出示例"
   };
-  vm.runInNewContext(`${readFunction("buildApartmentCompanionChatPrompt")}; this.build = buildApartmentCompanionChatPrompt;`, sandbox);
+  vm.runInNewContext(`${readFunction("getApartmentAffinityScore")}
+${readFunction("buildApartmentCompanionChatPrompt")}; this.build = buildApartmentCompanionChatPrompt;`, sandbox);
 
   const prompt = sandbox.build("藤田琴音", "训练复盘", {
     continuation: true,

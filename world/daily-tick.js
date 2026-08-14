@@ -55,7 +55,7 @@
     const castTrack = global.HatsuWorld?.castTrack;
     const plan = eventsPool?.composeDailyBroadcastEpisode?.(state, dayKey, helpers, castTrack)
       || {
-        host: "真城优",
+        host: "真诚优",
         topicId: "campus_daily_campus_routine",
         categoryId: "campus_daily",
         categoryLabel: "学园日常",
@@ -63,7 +63,7 @@
         brief: "日常广播",
         hooks: [],
         guests: [],
-        outline: "主持：真城优\n本期主题：本周学园概况"
+        outline: "主持：真诚优\n本期主题：本周学园概况"
       };
 
     const episode = {

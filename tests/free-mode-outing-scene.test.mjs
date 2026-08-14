@@ -136,8 +136,8 @@ test("outing scenes render assigned idols and facility resident NPCs through one
 });
 test("shopping mall outing scene uses the fullscreen page and shared wipe transition", () => {
   assert.equal(stripeCount, 6);
-  assert.match(style, /\.wipe-stripe\s*\{[\s\S]*height:\s*calc\(100vh \/ 6 \+ 2px\)/);
-  assert.match(style, /\.wipe-stripe\s*\{[\s\S]*top:\s*calc\(var\(--i\) \* \(100vh \/ 6\)\)/);
+  assert.match(style, /\.wipe-stripe\s*\{[\s\S]*height:\s*calc\(100% \/ 6 \+ 2px\)/);
+  assert.match(style, /\.wipe-stripe\s*\{[\s\S]*top:\s*calc\(var\(--i\) \* \(100% \/ 6\)\)/);
   assert.match(style, /\.free-mode-outing-scene-overlay\s*\{[\s\S]*place-items:\s*stretch/);
   assert.match(style, /\.free-mode-outing-scene-panel\s*\{[\s\S]*width:\s*100vw/);
   assert.match(style, /\.free-mode-outing-scene-panel\s*\{[\s\S]*height:\s*100svh/);

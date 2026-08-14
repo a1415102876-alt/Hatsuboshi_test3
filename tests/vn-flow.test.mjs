@@ -57,6 +57,24 @@ function readFunction(functionName) {
   throw new Error(`Could not parse ${functionName}`);
 }
 
+test("VN source sanitizer removes leaked HTML comment drafts", () => {
+  const sanitize = vm.runInNewContext(`(${readFunction("sanitizeVnStorySource")})`);
+  const sourceText = `<!-- 预备草稿：不要显示 <dialogue char="假角色">伪台词</dialogue> -->
+<narration>傍晚，练习室安静下来。</narration>`;
+
+  const cleaned = sanitize(sourceText);
+
+  assert.doesNotMatch(cleaned, /预备草稿|假角色|<!--|-->/);
+  assert.equal(cleaned, "<narration>傍晚，练习室安静下来。</narration>");
+});
+
+test("VN slide builder sends sanitized source to parsing and HCG controls", () => {
+  const body = readFunction("buildVnSlidesFromStory");
+  assert.match(body, /const cleanStory = sanitizeVnStorySource\(story\)/);
+  assert.match(body, /parseNovelSlides\(cleanStory\)/);
+  assert.match(body, /attachControlEventsToSlides\(parsed, cleanStory\)/);
+});
+
 test("choice continuation display starts from the selected option and not the previous story", () => {
   const buildChoiceContinuationDisplayStory = vm.runInNewContext(`(${readFunction("buildChoiceContinuationDisplayStory")})`);
   const intro = "前半段第一句。\n前半段第二句。";
@@ -123,6 +141,21 @@ test("ended VN dialogue clicks ignore control buttons", () => {
   const body = readFunction("handleVnSlidesEnd");
   assert.match(body, /target\.closest\("\.vn-controls"\)/);
   assert.match(body, /target\.closest\("\.vn-btn"\)/);
+});
+
+test("N.I.A plan review owns VN completion and supports missing-DOM fallback", () => {
+  const endBody = readFunction("handleVnSlidesEnd");
+  const openBody = readFunction("openNiaPlanReviewVn");
+  const completeBody = readFunction("completeNiaPlanReview");
+  const resumeBody = readFunction("resumeNiaPlanReviewIfNeeded");
+
+  assert.match(endBody, /pendingActionContext\?\.action === "nia_plan_review"/);
+  assert.match(endBody, /completeNiaPlanReview\(\)/);
+  assert.match(openBody, /!document\.getElementById\("eventOverlay"\)[\s\S]*completeNiaPlanReview\(\)/);
+  assert.match(completeBody, /planStatus !== "reviewing" \|\| !nia\.pendingReviewPlan/);
+  assert.match(completeBody, /pendingReviewPlan: null/);
+  assert.match(resumeBody, /openNiaPlanReviewVn\(nia\.pendingReviewPlan\)/);
+  assert.match(readFunction("getSceneBackground"), /nia_plan_review[\s\S]*Producer_Class\.png/);
 });
 
 test("VN log button opens the dark in-event dialogue history overlay", () => {

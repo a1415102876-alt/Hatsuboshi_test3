@@ -40,8 +40,10 @@ function clone(value) {
 
 function loadEnvelopeHelpers() {
   const context = {};
+  const modesDeclaration = bridgeSource.match(/const HOST_GENERATION_MODES = new Set\([^;]+;/)?.[0];
+  assert.ok(modesDeclaration, "HOST_GENERATION_MODES must exist");
   vm.runInNewContext([
-    "const HOST_GENERATION_MODES = new Set(['opening_quiet', 'shujuku_same_layer']);",
+    modesDeclaration,
     readFunction(bridgeSource, "createHostGenerationAttemptKey"),
     readFunction(bridgeSource, "normalizeHostGenerationEnvelope"),
     "this.createAttemptKey = createHostGenerationAttemptKey;",
@@ -49,6 +51,38 @@ function loadEnvelopeHelpers() {
   ].join("\n"), context);
   return context;
 }
+
+test("producer work commit selects only the required result tag", () => {
+  const selectCommittedReply = vm.runInNewContext(
+    `(${readFunction(bridgeSource, "selectCommittedReplyForPrompt")})`
+  );
+  const resultBlock = '<NIA_WORK_RESULT>{"schemaVersion":1,"story":"<narration>完成。</narration>"}</NIA_WORK_RESULT>';
+  const rawReply = [
+    '- ¿Cuál es la situación actual?',
+    '¡Que empiece la función!</konatan_planning~>',
+    resultBlock,
+    '<current_event>不应提交</current_event>',
+    '<tucao>不应提交</tucao>'
+  ].join('\n');
+
+  assert.equal(
+    selectCommittedReply('[HATSU_OUTPUT_MODE:NIA_PRODUCER_WORK]', rawReply),
+    resultBlock
+  );
+});
+
+test("sandbox First Live generation reaches the host adapter", () => {
+  const { normalizeEnvelope } = loadEnvelopeHelpers();
+  const result = clone(normalizeEnvelope({
+    requestId: "req-live",
+    channelLeaseId: "lease-live",
+    saveScope: "scope-a",
+    ownerKind: "sandbox_first_live",
+    generationMode: "sandbox_first_live",
+    prompt: "live prompt"
+  }));
+  assert.equal(result.ok, true);
+});
 
 test("secondary envelope v2 requires exact job request scope and kind", () => {
   const normalizeEnvelope = vm.runInNewContext(`(${readFunction(bridgeSource, "normalizeSecondaryEnvelope")})`);
@@ -65,6 +99,38 @@ test("secondary envelope v2 requires exact job request scope and kind", () => {
   assert.deepEqual(result.envelope, input);
   assert.deepEqual(clone(normalizeEnvelope({ ...input, jobId: "" }, "scope-a")), { ok: false, reason: "invalid_secondary_envelope" });
   assert.deepEqual(clone(normalizeEnvelope(input, "scope-b")), { ok: false, reason: "secondary_scope_mismatch" });
+});
+
+test("silent Shujuku adapter is a distinct host generation path", () => {
+  assert.match(bridgeSource, /'shujuku_silent_v1'/);
+  assert.match(bridgeSource, /function runShujukuSilentAttempt\(/);
+  const hostRunner = readFunction(bridgeSource, "runHostGenerationAttempt");
+  assert.match(hostRunner, /runShujukuSilentAttempt\(envelope/);
+  assert.match(hostRunner, /adapter === 'shujuku_silent_v1'/);
+});
+
+test("silent Shujuku attempt orders database preparation before silent assistant commit", () => {
+  const source = readFunction(bridgeSource, "runShujukuSilentAttempt");
+  const order = [
+    "attempt = await prepareAttempt(",
+    "const prepared = await prepareExternalGeneration(",
+    "const rawText = await generate(",
+    "assistantId = await createAssistant('assistant'",
+    "await commitExternalAssistant(",
+    "postReply(envelope.requestId"
+  ].map((needle) => source.indexOf(needle));
+  assert.ok(order.every((index) => index >= 0), `missing silent bridge step: ${order}`);
+  for (let index = 1; index < order.length; index += 1) {
+    assert.ok(order[index - 1] < order[index], `silent bridge order is invalid: ${order}`);
+  }
+  assert.doesNotMatch(source, /emitHostMessageSent\(/);
+  assert.doesNotMatch(source, /triggerNativeGeneration\(/);
+});
+
+test("silent text generation bypasses Shujuku's TavernHelper wrapper after explicit planning", () => {
+  const source = readFunction(bridgeSource, "generateTextOnly");
+  assert.match(source, /original_TavernHelper_generate_ACU/);
+  assert.match(source, /generate\.call\(helper/);
 });
 
 test("secondary reply echoes identity without prompt or API configuration", () => {
@@ -568,6 +634,30 @@ test("MESSAGE_SENT emits extension source and retries the two-argument host sign
   ]);
 });
 
+test("MESSAGE_SENT tolerates the host emitter cleanup bug after listeners run", async () => {
+  const calls = [];
+  const context = {};
+  vm.runInNewContext([
+    readFunction(bridgeSource, "emitHostMessageSent"),
+    "this.emitSent = emitHostMessageSent;"
+  ].join("\n"), context);
+  await context.emitSent(4, {
+    context: {
+      eventTypes: { MESSAGE_SENT: "message_sent" },
+      eventSource: {
+        async emit(...args) {
+          calls.push(args);
+          throw new ReferenceError("processPendingEffectRuns is not defined");
+        }
+      }
+    }
+  });
+  assert.deepEqual(clone(calls), [
+    ["message_sent", 4, "extension"],
+    ["message_sent", 4]
+  ]);
+});
+
 test("native generation prefers TavernHelper trigger and falls back to host slash execution", async () => {
   const helperCalls = [];
   const fallbackCalls = [];
@@ -633,7 +723,7 @@ test("same-layer generation preserves event order and returns the native assista
     channelLeaseId: "lease-1",
     saveScope: "scope-a",
     generationMode: "shujuku_same_layer",
-    prompt: "current prompt",
+    prompt: "[HATSU_OUTPUT_MODE:NIA_PRODUCER_WORK]",
     attemptKey: "req-1::lease-1::scope-a",
     status: "prepared",
     userMessageId: 4,
@@ -661,8 +751,11 @@ test("same-layer generation preserves event order and returns the native assista
     async triggerNativeGeneration() { order.push("trigger"); },
     async waitForExactBridgeAssistant() {
       order.push("wait-assistant");
-      return { index: 5, text: "native reply", rawText: "native reply", renderedText: "" };
+      return { index: 5, text: "raw planning + result", rawText: "raw planning + result", renderedText: "" };
     },
+    selectCommittedReplyForPrompt() { return "clean result"; },
+    isGeneratedTextCompatibleWithPrompt(_prompt, text) { return text === "clean result"; },
+    replaceAssistantMessageText(index, text) { order.push(`replace:${index}:${text}`); },
     stampTransactionalExtra() { order.push("stamp-assistant"); },
     async persistChatSilently() { order.push("persist-assistant"); },
     postCommittedReply(...args) { commits.push(args); },
@@ -675,14 +768,149 @@ test("same-layer generation preserves event order and returns the native assista
   assert.equal(syntheticAssistantCreates, 0);
   assert.equal(commits.length, 1);
   assert.equal(commits[0][0], "req-1");
-  assert.equal(commits[0][1], "native reply");
+  assert.ok(order.indexOf("replace:5:clean result") < order.indexOf("persist-assistant"));
+  assert.equal(commits[0][1], "clean result");
   assert.deepEqual(clone(commits[0][2]), {
     isFinal: true,
-    rawText: "native reply",
+    rawText: "raw planning + result",
     renderedText: "",
     messageId: 5,
     channelLeaseId: "lease-1"
   });
+});
+
+test("silent Shujuku generation executes the external database contract around one silent assistant", async () => {
+  const order = [];
+  const commits = [];
+  const attempt = {
+    requestId: "req-1",
+    channelLeaseId: "lease-1",
+    saveScope: "scope-a",
+    prompt: "[HATSU_OUTPUT_MODE:NIA_PRODUCER_WORK]",
+    attemptKey: "req-1::lease-1::scope-a",
+    userMessageId: 4,
+    status: "prepared"
+  };
+  const context = { isGeneratedTextCompatibleWithPrompt: () => true };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "runShujukuSilentAttempt"),
+    "this.runSilent = runShujukuSilentAttempt;"
+  ].join("\n"), context);
+
+  const result = await context.runSilent(attempt, {
+    activeAttempts: new Map([[attempt.attemptKey, attempt]]),
+    async prepareSameLayerAttempt() { order.push("prepare-user"); return attempt; },
+    shujukuSilentBridge: {
+      async prepareExternalGeneration() { order.push("prepare-db"); return { prompt: "planned prompt" }; },
+      async commitExternalAssistant(input) { order.push(`commit-db:${input.assistantMessageId}:${input.text}`); }
+    },
+    async generateTextOnly(prompt) { order.push(`generate:${prompt}`); return "raw planning + result"; },
+    selectCommittedReplyForPrompt() { return "clean result"; },
+    async createSilentChatMessage(role, text) { order.push(`create:${role}:${text}`); return 5; },
+    async persistChatSilently() { order.push("persist-assistant"); },
+    async rollbackSilentAssistantMessage() { assert.fail("success path must not roll back assistant"); },
+    postCommittedReply(...args) { order.push("post-reply"); commits.push(args); },
+    async compensateHostGenerationAttempt() { assert.fail("success path must not compensate"); }
+  });
+
+  assert.deepEqual(order, [
+    "prepare-user",
+    "prepare-db",
+    "generate:planned prompt",
+    "create:assistant:clean result",
+    "persist-assistant",
+    "commit-db:5:clean result",
+    "post-reply"
+  ]);
+  assert.equal(result.assistantMessageId, 5);
+  assert.equal(result.status, "replied");
+  assert.equal(commits.length, 1);
+  assert.equal(commits[0][1], "clean result");
+  assert.equal(commits[0][2].rawText, "raw planning + result");
+});
+
+test("original silent generation commits selected text before generation ended", async () => {
+  const created = [];
+  const posted = [];
+  const ended = [];
+  const attempt = {
+    requestId: "req-1",
+    channelLeaseId: "lease-1",
+    saveScope: "scope-a",
+    prompt: "[HATSU_OUTPUT_MODE:NIA_PRODUCER_WORK]",
+    attemptKey: "req-1::lease-1::scope-a",
+    userMessageId: 4,
+    status: "prepared"
+  };
+  const context = {
+    console,
+    isGeneratedTextCompatibleWithPrompt: (_prompt, text) => text === "clean result",
+    emitHostMessageSent: async () => {},
+    emitShujukuGenerationAfterCommands: async (_attempt, prompt) => prompt,
+    emitShujukuGenerationStarted: async () => {},
+    emitShujukuGenerationEnded: async (messageId) => { ended.push(messageId); }
+  };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "runShujukuOriginalSilentAttempt"),
+    "this.runOriginal = runShujukuOriginalSilentAttempt;"
+  ].join("\n"), context);
+
+  await context.runOriginal(attempt, {
+    activeAttempts: new Map([[attempt.attemptKey, attempt]]),
+    async prepareSameLayerAttempt() { return attempt; },
+    async generateTextOnly() { return "raw planning + result"; },
+    selectCommittedReplyForPrompt() { return "clean result"; },
+    async createSilentChatMessage(role, text) { created.push([role, text]); return 5; },
+    async persistChatSilently() {},
+    postCommittedReply(...args) { posted.push(args); },
+    shujukuOriginalBridge: { async commitExternalAssistant() {} },
+    async compensateHostGenerationAttempt() { assert.fail("success path must not compensate"); },
+    async rollbackSilentAssistantMessage() { assert.fail("success path must not roll back"); }
+  });
+
+  assert.deepEqual(created, [["assistant", "clean result"]]);
+  assert.deepEqual(ended, [5]);
+  assert.equal(posted[0][1], "clean result");
+  assert.equal(posted[0][2].rawText, "raw planning + result");
+});
+
+test("silent Shujuku generation removes its assistant when database commit fails", async () => {
+  const attempt = {
+    requestId: "req-1",
+    channelLeaseId: "lease-1",
+    saveScope: "scope-a",
+    prompt: "raw prompt",
+    attemptKey: "req-1::lease-1::scope-a",
+    userMessageId: 4,
+    status: "prepared"
+  };
+  const removed = [];
+  const compensated = [];
+  const context = { isGeneratedTextCompatibleWithPrompt: () => true };
+  vm.runInNewContext([
+    readFunction(bridgeSource, "runShujukuSilentAttempt"),
+    "this.runSilent = runShujukuSilentAttempt;"
+  ].join("\n"), context);
+
+  await assert.rejects(context.runSilent(attempt, {
+    activeAttempts: new Map([[attempt.attemptKey, attempt]]),
+    async prepareSameLayerAttempt() { return attempt; },
+    shujukuSilentBridge: {
+      async prepareExternalGeneration() { return { prompt: "planned prompt" }; },
+      async commitExternalAssistant() { throw new Error("database_commit_failed"); }
+    },
+    async generateTextOnly() { return "reply"; },
+    async createSilentChatMessage() { return 5; },
+    async persistChatSilently() {},
+    async rollbackSilentAssistantMessage(messageId, requestId, exactAttempt) {
+      removed.push([messageId, requestId, exactAttempt.attemptKey]);
+    },
+    async compensateHostGenerationAttempt(_attempt, reason) { compensated.push(reason); },
+    postCommittedReply() { assert.fail("failed database commit must not post a reply"); }
+  }), /database_commit_failed/);
+
+  assert.deepEqual(removed, [[5, "req-1", attempt.attemptKey]]);
+  assert.deepEqual(compensated, ["database_commit_failed"]);
 });
 
 test("failure before planning removes the exact unmodified hidden user floor", async () => {

@@ -1,7 +1,7 @@
 (function (global) {
   "use strict";
 
-  const BROADCAST_HOST = "真城优";
+  const BROADCAST_HOST = "真诚优";
   const BROADCAST_GUEST_COUNT_MIN = 1;
   const BROADCAST_GUEST_COUNT_MAX = 3;
 
@@ -30,7 +30,7 @@
     { id: "temari_uhl", idol: "月村手毬", title: "Unhappy Light", hooks: ["公开层面谈「讨厌的旧自己」"] },
     { id: "temari_itk", idol: "月村手毬", title: "一体いつから", hooks: ["语气克制，适合广播里慢慢展开"] },
     { id: "kotone_cute", idol: "藤田琴音", title: "世界一可愛い私", hooks: ["本人会半开玩笑地强调「可爱也是实力」"] },
-    { id: "kotone_fuwa", idol: "藤田琴音", title: "ふわふわ", hooks: ["轻松向，适合真城优调侃接话"] },
+    { id: "kotone_fuwa", idol: "藤田琴音", title: "ふわふわ", hooks: ["轻松向，适合真诚优调侃接话"] },
     { id: "hiro_koukei", idol: "筱泽广", title: "光景", hooks: ["偏静、偏观察，适合部长引导式提问"] },
     { id: "hiro_sunfade", idol: "筱泽广", title: "サンフェーデッド", hooks: ["可聊「做起来比想得难」的公开回忆"] },
     { id: "lilya_fragile", idol: "葛城莉莉娅", title: "Fragile Heart", hooks: ["海外视角下对学园舞台的新鲜感"] },
@@ -120,7 +120,7 @@
       id: "ara_kiguu",
       name: "あら、奇遇ね",
       idols: ["葛城莉莉娅", "紫云清夏"],
-      hooks: ["偶遇系轻故事，适合真城优串场吐槽"]
+      hooks: ["偶遇系轻故事，适合真诚优串场吐槽"]
     }
   ];
 
@@ -242,7 +242,7 @@
         {
           id: "mail_campus",
           title: "学园生活咨询",
-          brief: "真城优读虚构听众来信，嘉宾公开层回应；信件内容前端虚构，勿涉制作人私密。",
+          brief: "真诚优读虚构听众来信，嘉宾公开层回应；信件内容前端虚构，勿涉制作人私密。",
           hooks: ["「一年级偶像如何平衡课程与练习」", "「食堂推荐套餐是什么」"]
         },
         {
@@ -524,7 +524,7 @@
   }
 
   function buildBroadcastOutline(episode, state, castTrack) {
-    const guestText = (episode.guests || []).length ? episode.guests.join("、") : "（本期无来访嘉宾，真城优对听众独白）";
+    const guestText = (episode.guests || []).length ? episode.guests.join("、") : "（本期无来访嘉宾，真诚优对听众独白）";
     const hookText = (episode.hooks || []).length ? episode.hooks.join("；") : "";
     const guestNotes = buildGuestNotes(episode.guests || [], state, castTrack);
     const campusBlock = global.HatsuWorld?.campusBehavior?.buildCampusInjectionBlock?.(state, "broadcast") || "";

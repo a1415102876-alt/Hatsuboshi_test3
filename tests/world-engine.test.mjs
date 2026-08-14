@@ -49,11 +49,11 @@ test("world modules resolve cast track and daily broadcast", () => {
     canonicalIdolName: canonical
   });
   assert.ok(episode?.id);
-  assert.equal(episode.host, "真城优");
+  assert.equal(episode.host, "真诚优");
   assert.ok(episode.categoryId);
   assert.ok(episode.guests.length >= 1);
   assert.ok(episode.guests.length <= 3);
-  assert.match(episode.outline, /主持：真城优/);
+  assert.match(episode.outline, /主持：真诚优/);
   assert.match(episode.outline, /本期主题/);
 
   const summary = HatsuWorld.injection.composeWorldSummary(state, { scope: "produce" }, {

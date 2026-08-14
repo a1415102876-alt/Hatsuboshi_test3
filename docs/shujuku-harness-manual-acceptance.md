@@ -99,6 +99,54 @@ The override must be injected by the loader before the `st.html` bridge script e
 
 After the rollback check, remove the loader override and reload. The VN debug panel must return to `shujuku_v1`.
 
+## Experimental Silent Adapter
+
+Load the pinned local Shujuku patch before loading `st.html`. Do not also import the original Shujuku URL, because the local loader fetches and installs `spv3.7` itself.
+
+```html
+<body>
+  <script>
+    (async function startHatsuShujukuSilent() {
+      try {
+        window.HATSU_ASSET_BASE =
+          'http://127.0.0.1:8000/hatsu-produce-local/';
+        window.HATSU_HOST_GENERATION_ADAPTER = 'shujuku_silent_v1';
+
+        await import(
+          window.HATSU_ASSET_BASE + 'shujuku-silent-local.js?v=20260803-4'
+        );
+        await window.HATSU_SHUJUKU_SILENT_READY;
+
+        if (!window.HATSU_ST_BOOTSTRAP_STARTED) {
+          window.HATSU_ST_BOOTSTRAP_STARTED = true;
+          $('body').load(window.HATSU_ASSET_BASE + 'st.html');
+        }
+      } catch (error) {
+        console.error('[Hatsu Shujuku Silent] bootstrap failed:', error);
+        document.body.innerHTML =
+          '<pre style="padding:12px;color:#ffb4b4;white-space:pre-wrap">' +
+          'Hatsu Shujuku Silent 启动失败\n' +
+          String(error?.stack || error?.message || error) +
+          '</pre>';
+      }
+    })();
+  </script>
+</body>
+```
+
+Manual acceptance for this adapter must record:
+
+| Check | Expected | Status |
+| --- | --- | --- |
+| Adapter | VN debug reports `shujuku_silent_v1` | Not executed |
+| Planning | Exact hidden user floor receives Shujuku planning data | Not executed |
+| Assistant commit | One assistant floor is created with no full floor redraw | Not executed |
+| Database update | Shujuku processes the committed assistant and persists table data | Not executed |
+| Host events | No native `/trigger`, synthetic `GENERATION_ENDED`, or duplicate assistant | Not executed |
+| Frontend continuity | Hatsu iframe remains mounted with the same in-memory state | Not executed |
+
+Rollback is runtime-only: restore `current_transactional` and remove the local Shujuku import, or restore the original `shujuku_v1` loader and reload `st.html`.
+
 ## Acceptance Decision
 
 - PASS only if all A1-A16 rows and all rollback rows pass with evidence.

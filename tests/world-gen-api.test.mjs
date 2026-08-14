@@ -98,7 +98,7 @@ test("world gen parses and applies daily batch payload", () => {
 {
   "broadcast": {
     "title": "训练场早课见闻",
-    "brief": "真城优带听众聊清晨训练场的公开花絮与一年级干劲。",
+    "brief": "真诚优带听众聊清晨训练场的公开花絮与一年级干劲。",
     "categoryLabel": "学园日常",
     "guests": ["花海咲季"]
   },

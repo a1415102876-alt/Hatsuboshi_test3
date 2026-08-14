@@ -12,6 +12,20 @@
   const DIRECTOR_MODEL_CHANNEL_TIMEOUT_MS = 210 * 1000;
 
   const clone = (value) => JSON.parse(JSON.stringify(value));
+  const niaRoutes = globalThis.HatsuNiaRoutes || {};
+  const niaTrainingCore = globalThis.HatsuNiaTraining || {};
+  const niaRoundTransitionCore = globalThis.HatsuNiaRoundTransition || {};
+  const niaEveningCore = globalThis.HatsuNiaEvening || {};
+  const niaProducerWorkCore = globalThis.HatsuNiaProducerWork || {};
+  const niaLiveBusinessCore = globalThis.HatsuNiaLiveBusiness || {};
+  const niaRadioBusinessCore = globalThis.HatsuNiaRadioBusiness || {};
+  const niaTvBusinessCore = globalThis.HatsuNiaTvBusiness || {};
+  const niaAuditionCore = globalThis.HatsuNiaAudition || {};
+  const niaFanMilestoneCore = globalThis.HatsuNiaFanMilestone || {};
+  const niaScheduleShareCore = globalThis.HatsuNiaScheduleShare || {};
+  const niaSnsBusinessCore = globalThis.HatsuNiaSnsBusiness || {};
+  const niaMiniLiveCore = globalThis.HatsuNiaMiniLive || {};
+  const hatsuHcg = globalThis.HatsuHcg || {};
 
   const idols = {
     "藤田琴音": {
@@ -58,7 +72,7 @@
         lesson: "她会把课堂当成赢的工具。被指出弱点会先炸毛，然后要求具体胜利方案。",
         training: "高效率、强自尊，把身体管理也视为胜利条件。",
         outing: "外出也要服务于胜利：观察舞台、研究对手、恢复状态，最后转化成下一次赢的方案。",
-        companion: "喜欢被夸，但会装作理所当然。真正准确的夸奖会让她害羞。",
+        companion: "喜欢被夸，会欣然接受并迅速得意忘形。越准确的夸奖越会让她飘飘然。",
         rest: "休息必须被包装成胜利准备。她会确认这不是退让，而是为了下一次压倒性表现。"
       }
     },
@@ -281,7 +295,18 @@
   };
   const vnStandees = {
     "亚纱里老师": "./assets/novel-standees/asari-sensei.png",
-    "冰渡香名江": "./assets/novel-standees/Hiwatari-Kanae.png"
+    "冰渡香名江": "./assets/novel-standees/Hiwatari-Kanae.png",
+    "真诚优": "./assets/novel-standees/mashiro-yu.png",
+  "贺阳燐羽": "./assets/novel-standees/kaya-rinha.png"
+  };
+  const vnSpeakerAliases = {
+    "亚纱里": "亚纱里老师",
+    "根绪亚纱里": "亚纱里老师",
+    "优": "真诚优",
+    "优前辈": "真诚优",
+    "Mashiro Yu": "真诚优",
+    "燐羽": "贺阳燐羽",
+    "贺阳": "贺阳燐羽"
   };
   const residentNpcProfiles = {
     "亚纱里老师": {
@@ -556,6 +581,7 @@
     "商店街": "./assets/scenes/Shopping_Street.png",
     "购物中心": "./assets/scenes/Shopping_Mall.png",
     "游乐园": "./assets/scenes/MerryGoRound.png",
+    "水族馆": "./assets/scenes/Aquarium.png",
     "体育中心": "./assets/scenes/Sport Studio.png",
     "地方电台": DEFAULT_OUTING_SCENE,
     "电视台": DEFAULT_OUTING_SCENE,
@@ -961,6 +987,74 @@
   function getAffinityStageLine(idolName, trust) {
     const tag = getAffinityStageTag(idolName, trust);
     return tag ? `好感度阶段标签：${tag}` : "";
+  }
+
+  function isNiaSakiRoute() {
+    return canonicalIdolName(state.idol) === "花海咲季"
+      && (state.produceScenario === "nia" || state.launchMode === "nia");
+  }
+
+  function getNiaRouteForIdol(idolName) {
+    const canonical = canonicalIdolName(String(idolName || ""));
+    return canonical && typeof niaRoutes.getByIdol === "function"
+      ? niaRoutes.getByIdol(canonical)
+      : null;
+  }
+
+  function getCurrentNiaRoute() {
+    const preparingIdol = state.produceScenario === "nia" && state.launchMode !== "nia" ? selectedIdol : "";
+    return getNiaRouteForIdol(preparingIdol || state.idol || selectedIdol);
+  }
+
+  function isNiaRouteAvailable(idolName = selectedIdol || state.idol) {
+    return getNiaRouteForIdol(idolName)?.status === "available";
+  }
+
+  function rejectUnavailableNiaRoute() {
+    state.produceScenario = "";
+    state.launchMode = "produce";
+    state.nia = createDefaultNiaState();
+    state.activeStoryNode = null;
+    state.pendingActionContext = null;
+    state.pendingAiRequestId = "";
+    pendingAiRequestId = "";
+    saveState("nia.route_blocked_unavailable");
+    showToast("N.I.A 尚未开放", "这名偶像的 N.I.A 路线尚未开放。", "info");
+    openScenarioSelectionPanel();
+    return false;
+  }
+
+  function ensureNiaInheritedAffinity() {
+    const route = getCurrentNiaRoute();
+    if (!route || (state.produceScenario !== "nia" && state.launchMode !== "nia")) return false;
+    const affinity = Math.max(0, Number(route.inheritedAffinity?.value) || 0);
+    if (state.trust === affinity) return false;
+    state.trust = affinity;
+    return true;
+  }
+
+  function buildNiaAffinityContext() {
+    const route = getCurrentNiaRoute();
+    if (!route || (state.produceScenario !== "nia" && state.launchMode !== "nia")) return "";
+    const inherited = normalizeNiaState(state.nia).inheritedContext;
+    if (!inherited.confirmed) return "";
+    return [
+      "【N.I.A 继承关系】",
+      `担当偶像：${route.idolName}`,
+      `好感度阶段标签：${inherited.affinityTag}`,
+      `当前好感度：${inherited.affinityValue}/${inherited.affinityMax}`,
+      inherited.relationship ? `当前关系：${inherited.relationship}` : "",
+      inherited.promises ? `重要约定：${inherited.promises}` : "",
+      inherited.memories ? `珍贵回忆：${inherited.memories}` : "",
+      "N.I.A 接续前置剧本，不得将双方重置为初识、尚未建立信赖或普通合作关系。"
+    ].filter(Boolean).join("\n");
+  }
+
+  function withNiaAffinityContext(promptText) {
+    const prompt = String(promptText || "").trim();
+    const context = buildNiaAffinityContext();
+    if (!context || prompt.includes("【N.I.A 继承关系】")) return prompt;
+    return `${prompt}\n\n${context}`;
   }
 
   function clampFreeModeRelationshipScore(value) {
@@ -2358,10 +2452,418 @@
       resolution: "燕登台战胜星南夺第一，并打断制作人的谦虚，确认能赢星南是“我们的力量”；她把制作人认作并肩的人，而不只是利用的策士。"
     }
   };
+  function createDefaultNiaState() {
+    // baseState is constructed before the `state` binding exists; use the
+    // registered default route here and let normalizeNiaState apply a selected
+    // route's draft defaults once runtime state is available.
+    const route = getNiaRouteForIdol("花海咲季");
+    const draftDefaults = route?.draftDefaults || {};
+    return {
+      schemaVersion: 1,
+      mode: "nia",
+      round: 1,
+      phase: "draft",
+      openingStatus: "idle",
+      openingStory: "",
+      openingRequest: null,
+      firstRoundBriefingSeen: false,
+      inheritedContext: {
+        confirmed: false,
+        relationship: "",
+        promises: "",
+        memories: "",
+        affinityValue: 0,
+        affinityMax: 100,
+        affinityTag: ""
+      },
+      draft: {
+        goal: draftDefaults.goal || "让粉丝能够见到咲季的可爱之处",
+        image: draftDefaults.image || "不仅作为偶像实力强大，同时有着独属于咲季的独特魅力，不仅是可靠的姐姐，同时也是被夸就飘飘然，特别好哄的可爱偶像",
+        approach: draftDefaults.approach || "制作生活类Vlog，运营SNS，同时在面向新人偶像的综艺节目上露脸",
+        businessMethods: [],
+        miniLiveVenueId: "shopping_street"
+      },
+      plan: null,
+      pendingReviewPlan: null,
+      planStatus: "idle",
+      training: { active: false, fans: 0, fanTarget: 3000, actionIndex: 0 },
+      evening: typeof niaEveningCore.normalizeEvening === "function"
+        ? niaEveningCore.normalizeEvening({})
+        : { status: "idle", dayIndex: -1, clockMinutes: 1320, atApartment: false, companionIdol: "", startedAt: 0, completedAt: 0 },
+      eveningJournal: null,
+      interRoundOuting: typeof niaRoundTransitionCore.normalizeInterRoundOuting === "function"
+        ? niaRoundTransitionCore.normalizeInterRoundOuting({})
+        : { status: "idle", fromRound: 1, toRound: 2, destination: "", venueId: "", clockMinutes: 600, completionRequestId: "", summary: "", lastError: "", settlementApplied: false },
+      producerWork: typeof niaProducerWorkCore.normalizeProducerWork === "function"
+        ? niaProducerWorkCore.normalizeProducerWork({})
+        : { status: "idle", periodIndex: 0, periods: [], tasks: [] },
+      liveBusiness: typeof niaLiveBusinessCore.createLiveRuntime === "function"
+        ? niaLiveBusinessCore.createLiveRuntime({})
+        : { schemaVersion: 1, status: "idle", businessId: "", segments: [] },
+      liveBusinessContext: null,
+      radioBusiness: typeof niaRadioBusinessCore.createRadioRuntime === "function"
+        ? niaRadioBusinessCore.createRadioRuntime({})
+        : { schemaVersion: 1, status: "idle", businessId: "", segments: [] },
+      tvBusiness: typeof niaTvBusinessCore.createTvRuntime === "function"
+        ? niaTvBusinessCore.createTvRuntime({})
+        : { schemaVersion: 1, status: "idle", businessId: "", segments: [] },
+      radioBusinessContext: null,
+      audition: typeof niaAuditionCore.createAuditionRuntime === "function"
+        ? niaAuditionCore.createAuditionRuntime({})
+        : { schemaVersion: 1, status: "idle", auditionId: "", segments: [], rankings: [] },
+      auditionContext: null,
+      finaleLive: {
+        status: "idle",
+        videoUrl: "",
+        startedAt: 0,
+        completedAt: 0
+      },
+      fanMilestoneEvent: typeof niaFanMilestoneCore.normalizeFanMilestone === "function"
+        ? niaFanMilestoneCore.normalizeFanMilestone({})
+        : { eventId: "nia-saki-fans-5000", threshold: 5000, status: "idle", story: "", activeRequest: null, lastError: "", triggeredAtFans: 0, completedAt: 0, updatedAt: 0 },
+      scheduleShare: typeof niaScheduleShareCore.createScheduleShareState === "function"
+        ? niaScheduleShareCore.createScheduleShareState()
+        : { status: "idle", planId: "", threadId: "", attachmentMessageId: "", replyMessageId: "", requestId: "", error: "" },
+      snsBusiness: typeof niaSnsBusinessCore.createSnsPostRuntime === "function"
+        ? niaSnsBusinessCore.createSnsPostRuntime({})
+        : { schemaVersion: 1, status: "idle", businessId: "", draft: {}, post: {}, interaction: {}, result: null },
+      snsBusinessContext: null,
+      miniLiveBusiness: typeof niaMiniLiveCore.createMiniLiveRuntime === "function"
+        ? niaMiniLiveCore.createMiniLiveRuntime({})
+        : { schemaVersion: 1, status: "idle", businessId: "", venueId: "", lines: [], playbackIndex: 0, result: null },
+      miniLiveBusinessContext: null,
+      activeRequest: null,
+      processedOperationIds: [],
+      lastError: "",
+      updatedAt: 0
+    };
+  }
+
+  function normalizeNiaState(raw) {
+    const defaults = createDefaultNiaState();
+    const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    const draft = source.draft && typeof source.draft === "object" && !Array.isArray(source.draft) ? source.draft : {};
+    const cleanText = (value, fallback = "") => typeof value === "string" ? value.slice(0, 2000) : fallback;
+    const planStatuses = ["idle", "generating", "reviewing", "retryable_failed", "committed"];
+    const openingStatuses = ["idle", "generating", "ready", "completed", "retryable_failed"];
+    const phases = ["draft", "plan_ready", "inter_round_outing"];
+    const request = source.activeRequest && typeof source.activeRequest === "object" && !Array.isArray(source.activeRequest)
+      ? {
+          requestId: cleanText(source.activeRequest.requestId).slice(0, 160),
+          channelLeaseId: cleanText(source.activeRequest.channelLeaseId).slice(0, 160),
+          turnId: cleanText(source.activeRequest.turnId).slice(0, 160),
+          saveScope: cleanText(source.activeRequest.saveScope).slice(0, 300),
+          sessionEpoch: cleanText(source.activeRequest.sessionEpoch).slice(0, 160),
+          operationId: cleanText(source.activeRequest.operationId).slice(0, 160)
+        }
+      : null;
+    const openingRequestSource = source.openingRequest && typeof source.openingRequest === "object" && !Array.isArray(source.openingRequest)
+      ? source.openingRequest
+      : null;
+    const openingRequest = openingRequestSource
+      ? {
+          requestId: cleanText(openingRequestSource.requestId).slice(0, 160),
+          channelLeaseId: cleanText(openingRequestSource.channelLeaseId).slice(0, 160),
+          turnId: cleanText(openingRequestSource.turnId).slice(0, 160),
+          saveScope: cleanText(openingRequestSource.saveScope).slice(0, 300),
+          sessionEpoch: cleanText(openingRequestSource.sessionEpoch).slice(0, 160)
+        }
+      : null;
+    const rawInterRoundOuting = source.interRoundOuting
+      || (Number(source.round) === 1
+        && source.audition?.progressionApplied
+        && source.audition?.postAudition?.status === "completed"
+        ? { status: "ready" }
+        : {});
+    const route = getCurrentNiaRoute();
+    const routeAffinity = route?.inheritedAffinity || {};
+    const inheritedSource = source.inheritedContext && typeof source.inheritedContext === "object" && !Array.isArray(source.inheritedContext)
+      ? source.inheritedContext
+      : null;
+    const legacyRouteStarted = source.openingStatus && source.openingStatus !== "idle"
+      || source.planStatus && source.planStatus !== "idle"
+      || Boolean(source.plan)
+      || Boolean(source.training?.active)
+      || Number(source.training?.actionIndex) > 0;
+    const inheritedContext = {
+      confirmed: Boolean(inheritedSource?.confirmed) || (!inheritedSource && Boolean(legacyRouteStarted)),
+      relationship: cleanText(inheritedSource?.relationship, cleanText(routeAffinity.relationshipSummary)),
+      promises: cleanText(inheritedSource?.promises, cleanText(routeAffinity.promises)),
+      memories: cleanText(inheritedSource?.memories, cleanText(routeAffinity.memories)),
+      affinityValue: Math.max(0, Number(routeAffinity.value ?? inheritedSource?.affinityValue) || 0),
+      affinityMax: Math.max(1, Number(routeAffinity.max ?? inheritedSource?.affinityMax) || 100),
+      affinityTag: cleanText(routeAffinity.tag, cleanText(inheritedSource?.affinityTag)).slice(0, 80)
+    };
+    const freshRouteDraft = route?.draftDefaults
+      && !source.plan
+      && !source.training?.active
+      && (!source.openingStatus || source.openingStatus === "idle")
+      && (!source.planStatus || source.planStatus === "idle")
+      ? route.draftDefaults
+      : null;
+    return {
+      schemaVersion: 1,
+      mode: "nia",
+      round: Math.max(1, Math.floor(Number(source.round) || 1)),
+      phase: phases.includes(source.phase) ? source.phase : defaults.phase,
+      openingStatus: openingStatuses.includes(source.openingStatus) ? source.openingStatus : defaults.openingStatus,
+      openingStory: cleanText(source.openingStory, defaults.openingStory),
+      openingRequest: openingRequest?.requestId && openingRequest.channelLeaseId && openingRequest.turnId ? openingRequest : null,
+      firstRoundBriefingSeen: Boolean(source.firstRoundBriefingSeen),
+      inheritedContext,
+      draft: {
+        goal: cleanText(freshRouteDraft?.goal || draft.goal, defaults.draft.goal),
+        image: cleanText(freshRouteDraft?.image || draft.image, defaults.draft.image),
+        approach: cleanText(freshRouteDraft?.approach || draft.approach, defaults.draft.approach),
+        businessMethods: Array.isArray(draft.businessMethods)
+          ? draft.businessMethods.map((value) => cleanText(value).slice(0, 80)).filter(Boolean).slice(0, 2)
+          : [],
+        miniLiveVenueId: Object.prototype.hasOwnProperty.call(niaMiniLiveCore.VENUES || {}, draft.miniLiveVenueId)
+          ? draft.miniLiveVenueId
+          : "shopping_street"
+      },
+      plan: source.plan && typeof source.plan === "object" && !Array.isArray(source.plan) ? source.plan : null,
+      pendingReviewPlan: source.pendingReviewPlan && typeof source.pendingReviewPlan === "object" && !Array.isArray(source.pendingReviewPlan)
+        ? source.pendingReviewPlan
+        : null,
+      planStatus: planStatuses.includes(source.planStatus) ? source.planStatus : defaults.planStatus,
+      training: typeof niaTrainingCore.normalizeNiaTraining === "function"
+        ? niaTrainingCore.normalizeNiaTraining(source.training)
+        : { ...defaults.training },
+      evening: typeof niaEveningCore.normalizeEvening === "function"
+        ? niaEveningCore.normalizeEvening(source.evening)
+        : { ...defaults.evening },
+      eveningJournal: source.eveningJournal && typeof source.eveningJournal === "object" && !Array.isArray(source.eveningJournal)
+        ? clone(source.eveningJournal)
+        : null,
+      interRoundOuting: typeof niaRoundTransitionCore.normalizeInterRoundOuting === "function"
+        ? niaRoundTransitionCore.normalizeInterRoundOuting(rawInterRoundOuting)
+        : { ...defaults.interRoundOuting },
+      producerWork: typeof niaProducerWorkCore.reconcileFixedAppointments === "function"
+        ? niaProducerWorkCore.reconcileFixedAppointments(source.producerWork)
+        : { ...defaults.producerWork },
+      liveBusiness: typeof niaLiveBusinessCore.normalizeLiveRuntime === "function"
+        ? niaLiveBusinessCore.normalizeLiveRuntime(source.liveBusiness)
+        : (source.liveBusiness && typeof source.liveBusiness === "object" ? clone(source.liveBusiness) : { ...defaults.liveBusiness }),
+      liveBusinessContext: source.liveBusinessContext && typeof source.liveBusinessContext === "object" && !Array.isArray(source.liveBusinessContext)
+        ? clone(source.liveBusinessContext)
+        : null,
+      radioBusiness: typeof niaRadioBusinessCore.normalizeRadioRuntime === "function"
+        ? niaRadioBusinessCore.normalizeRadioRuntime(source.radioBusiness)
+        : (source.radioBusiness && typeof source.radioBusiness === "object" ? clone(source.radioBusiness) : { ...defaults.radioBusiness }),
+      tvBusiness: typeof niaTvBusinessCore.normalizeTvRuntime === "function"
+        ? niaTvBusinessCore.normalizeTvRuntime(source.tvBusiness)
+        : (source.tvBusiness && typeof source.tvBusiness === "object" ? clone(source.tvBusiness) : { ...defaults.tvBusiness }),
+      radioBusinessContext: source.radioBusinessContext && typeof source.radioBusinessContext === "object" && !Array.isArray(source.radioBusinessContext)
+        ? clone(source.radioBusinessContext)
+        : null,
+      audition: typeof niaAuditionCore.normalizeAuditionRuntime === "function"
+        ? niaAuditionCore.normalizeAuditionRuntime(source.audition)
+        : (source.audition && typeof source.audition === "object" ? clone(source.audition) : { ...defaults.audition }),
+      auditionContext: source.auditionContext && typeof source.auditionContext === "object" && !Array.isArray(source.auditionContext)
+        ? clone(source.auditionContext)
+        : null,
+      finaleLive: (() => {
+        const live = source.finaleLive && typeof source.finaleLive === "object" && !Array.isArray(source.finaleLive)
+          ? source.finaleLive
+          : {};
+        const statuses = ["idle", "playing", "completed"];
+        return {
+          status: statuses.includes(live.status) ? live.status : "idle",
+          videoUrl: cleanText(live.videoUrl, "").slice(0, 1000),
+          startedAt: Math.max(0, Number(live.startedAt) || 0),
+          completedAt: Math.max(0, Number(live.completedAt) || 0)
+        };
+      })(),
+      fanMilestoneEvent: typeof niaFanMilestoneCore.normalizeFanMilestone === "function"
+        ? niaFanMilestoneCore.normalizeFanMilestone(source.fanMilestoneEvent, route)
+        : (source.fanMilestoneEvent && typeof source.fanMilestoneEvent === "object"
+          ? clone(source.fanMilestoneEvent)
+          : { ...defaults.fanMilestoneEvent }),
+      scheduleShare: typeof niaScheduleShareCore.normalizeScheduleShare === "function"
+        ? niaScheduleShareCore.normalizeScheduleShare(source.scheduleShare)
+        : { ...defaults.scheduleShare },
+      snsBusiness: typeof niaSnsBusinessCore.normalizeSnsPostRuntime === "function"
+        ? niaSnsBusinessCore.normalizeSnsPostRuntime(source.snsBusiness)
+        : (source.snsBusiness && typeof source.snsBusiness === "object" ? clone(source.snsBusiness) : { ...defaults.snsBusiness }),
+      snsBusinessContext: source.snsBusinessContext && typeof source.snsBusinessContext === "object" && !Array.isArray(source.snsBusinessContext)
+        ? clone(source.snsBusinessContext)
+        : null,
+      miniLiveBusiness: typeof niaMiniLiveCore.normalizeMiniLiveRuntime === "function"
+        ? niaMiniLiveCore.normalizeMiniLiveRuntime(source.miniLiveBusiness)
+        : (source.miniLiveBusiness && typeof source.miniLiveBusiness === "object" ? clone(source.miniLiveBusiness) : { ...defaults.miniLiveBusiness }),
+      miniLiveBusinessContext: source.miniLiveBusinessContext && typeof source.miniLiveBusinessContext === "object" && !Array.isArray(source.miniLiveBusinessContext)
+        ? clone(source.miniLiveBusinessContext)
+        : null,
+      activeRequest: request?.requestId && request.channelLeaseId && request.turnId ? request : null,
+      processedOperationIds: Array.isArray(source.processedOperationIds)
+        ? source.processedOperationIds.map((value) => String(value || "").slice(0, 160)).filter(Boolean).slice(-12)
+        : [],
+      lastError: cleanText(source.lastError).slice(0, 500),
+      updatedAt: Math.max(0, Number(source.updatedAt) || 0)
+    };
+  }
+
+  function isNiaInterRoundOutingActive() {
+    if (state.produceScenario !== "nia" || state.launchMode !== "nia") return false;
+    const status = normalizeNiaState(state.nia).interRoundOuting?.status;
+    return ["ready", "selecting", "exploring", "completing", "retryable_failed"].includes(status);
+  }
+
+  function prepareNiaInterRoundOuting(fromRound = normalizeNiaState(state.nia).round) {
+    if (typeof niaRoundTransitionCore.prepareInterRoundOuting !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const sourceRound = Math.max(1, Math.floor(Number(fromRound) || nia.round));
+    if (nia.round !== sourceRound || !["idle", "ready", "completed"].includes(nia.interRoundOuting.status)) return false;
+    state.nia = {
+      ...nia,
+      phase: "inter_round_outing",
+      interRoundOuting: niaRoundTransitionCore.prepareInterRoundOuting(
+        nia.interRoundOuting,
+        Date.now(),
+        { fromRound: sourceRound, toRound: sourceRound + 1 }
+      ),
+      updatedAt: Date.now()
+    };
+    saveState("nia.inter_round_outing_ready");
+    return true;
+  }
+
+  function getNiaPlanDisplayDay(actionIndex, round = normalizeNiaState(state.nia).round) {
+    return typeof niaRoundTransitionCore.getPlanDisplayDay === "function"
+      ? niaRoundTransitionCore.getPlanDisplayDay(round, actionIndex)
+      : Number(actionIndex || 0) + 1;
+  }
+
+  function getNiaInterRoundOuting() {
+    return normalizeNiaState(state.nia).interRoundOuting;
+  }
+
+  function beginNiaInterRoundOuting() {
+    const nia = normalizeNiaState(state.nia);
+    const prepared = typeof niaRoundTransitionCore.beginDestinationSelection === "function"
+      ? niaRoundTransitionCore.beginDestinationSelection(nia.interRoundOuting)
+      : nia.interRoundOuting;
+    if (prepared.status !== "selecting") return false;
+    const runtime = prepared.freeModeSnapshot
+      ? prepared
+      : { ...prepared, freeModeSnapshot: clone(state.freeMode || {}) };
+    state.nia = { ...nia, phase: "inter_round_outing", interRoundOuting: runtime, updatedAt: Date.now() };
+    ensureFreeModeTimeDefaults();
+    state.freeMode.active = true;
+    state.freeMode.clockMinutes = prepared.clockMinutes;
+    state.freeMode.activeLocationId = null;
+    state.freeMode.activeOutingDestination = null;
+    setNiaPrototypeVisible(false);
+    saveState("nia.inter_round_outing_select");
+    openFreeModeOutingOverlay();
+    return true;
+  }
+
+  function startNiaInterRoundOutingAtDestination(destination) {
+    const chosen = String(destination || "").trim();
+    const venue = getFreeModeOutingVenueByDestination(chosen);
+    const nia = normalizeNiaState(state.nia);
+    const started = typeof niaRoundTransitionCore.startInterRoundOuting === "function"
+      ? niaRoundTransitionCore.startInterRoundOuting(nia.interRoundOuting, { destination: chosen, venueId: venue?.id || "" })
+      : { ok: false, runtime: nia.interRoundOuting };
+    if (!started.ok) return false;
+    state.nia = { ...nia, phase: "inter_round_outing", interRoundOuting: started.runtime, updatedAt: Date.now() };
+    ensureFreeModeTimeDefaults();
+    state.freeMode.active = true;
+    state.freeMode.clockMinutes = started.runtime.clockMinutes;
+    saveState("nia.inter_round_outing_started");
+    if (venue) openFreeModeOutingScene(venue.id, "with_idol");
+    else startFreeModeOuting(chosen, "with_idol");
+    return true;
+  }
+
+  function buildNiaInterRoundOutingClosingPrompt() {
+    const nia = normalizeNiaState(state.nia);
+    const outing = nia.interRoundOuting;
+    const targetRound = Math.max(2, Number(outing.toRound) || (Number(nia.round) + 1));
+    const previousRound = Math.max(1, Number(outing.fromRound) || Number(nia.round));
+    return `[初星育成系统：N.I.A 第${targetRound}轮第1日 · 外出收尾]
+
+担当偶像：${state.idol || "花海咲季"}
+外出地点：${outing.destination}
+当前时间：N.I.A 第${targetRound}轮第1日 ${formatFreeModeClock(outing.clockMinutes)}
+上一轮试镜结果：第${previousRound}轮已完成，赛后复盘和衔接剧情已经结束。
+上一轮复盘摘要：${nia.auditionContext?.postAuditionSummary || nia.audition?.continuitySummary || `偶像完成了第${previousRound}轮试镜并确认下一轮目标。`}
+当天探索记录：${state.lastStory || "两人与担当偶像在地点内进行了轻松探索。"}
+
+请写一段完整、简短的外出收尾：承接当天的地点和互动，让担当偶像从试镜后的紧绷状态自然放松下来，并留下进入第${targetRound}轮规划前的情绪或关系承接。
+- 这是已经结束的 N.I.A 固定外出日，不要开始第${targetRound}轮训练或规划。
+- 不要输出选项，不要修改粉丝、能力或压力数值，不要宣布第${targetRound}轮试镜结果。
+- 只输出 VN 正文，使用现有 VN XML 标签；不要输出 Markdown 或解释。
+
+${outputContract("请写 500 字以内的完整收尾场景，一次写完，不要待续。")}`;
+  }
+
+  function failNiaInterRoundOuting(message = "外出收尾生成失败，请重新生成。", reason = "generation_failed") {
+    const nia = normalizeNiaState(state.nia);
+    const outing = nia.interRoundOuting;
+    const active = nia.activeRequest;
+    if (active?.requestId && active.channelLeaseId) releasePrimaryModelChannel(active.requestId, active.channelLeaseId, reason);
+    const runtime = typeof niaRoundTransitionCore.failInterRoundCompletion === "function"
+      ? niaRoundTransitionCore.failInterRoundCompletion(outing, active?.requestId, message)
+      : { ...outing, status: "retryable_failed", lastError: message, completionRequestId: "" };
+    state.nia = { ...nia, phase: "inter_round_outing", interRoundOuting: runtime, activeRequest: null, lastError: String(message || ""), updatedAt: Date.now() };
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    state.activeStoryNode = null;
+    state.pendingActionContext = null;
+    state.eventMode = "none";
+    setElementHidden("eventOverlay", true);
+    saveState("nia.inter_round_outing_failed");
+    render();
+    showToast("外出收尾失败", "可以重新进入当前地点，或点击行动区的重试按钮。", "warn");
+    return false;
+  }
+
+  function finishNiaInterRoundOutingDay() {
+    const nia = normalizeNiaState(state.nia);
+    const outing = nia.interRoundOuting;
+    if (!isNiaInterRoundOutingActive() || !["exploring", "retryable_failed"].includes(outing.status)) return false;
+    const requestId = createRequestId();
+    const dispatch = acquirePrimaryEntryDispatch(requestId, "nia_inter_round_outing", { turnId: createHarnessId("nia-outing-turn") });
+    if (!dispatch.ok) return false;
+    const begun = typeof niaRoundTransitionCore.beginInterRoundCompletion === "function"
+      ? niaRoundTransitionCore.beginInterRoundCompletion(outing, requestId)
+      : { ok: false, runtime: outing };
+    if (!begun.ok) return false;
+    const activeRequest = dispatch.owner ? {
+      requestId,
+      channelLeaseId: dispatch.owner.channelLeaseId,
+      turnId: dispatch.owner.turnId || "",
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch,
+      operationId: requestId
+    } : null;
+    const prompt = buildNiaInterRoundOutingClosingPrompt();
+    state.nia = { ...nia, phase: "inter_round_outing", interRoundOuting: begun.runtime, activeRequest, lastError: "", updatedAt: Date.now() };
+    state.pendingActionContext = { action: "nia_inter_round_outing", actionContext: { phase: "generating", requestId } };
+    state.eventMode = "none";
+    state.lastPrompt = prompt;
+    state.lastStory = "正在整理今天的外出回忆……";
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    closeFreeModeOutingScene();
+    closeFreeModeOutingOverlay();
+    saveState("nia.inter_round_outing_closing");
+    render();
+    openEventOverlay(`N.I.A · 第${outing.toRound}轮外出`, "正在生成外出收尾……", buildAiWaitingStory(state.lastStory));
+    if (!requestHostPromptSend(prompt, requestId, { channelLeaseId: activeRequest?.channelLeaseId, ownerKind: "nia_inter_round_outing", turnId: activeRequest?.turnId })) {
+      failNiaInterRoundOuting("外出收尾请求发送失败，请重新生成。", "send_failed");
+    }
+    return true;
+  }
+
   const baseState = {
     uiVersion: UI_VERSION,
     gameMode: "classic",
     launchMode: null,
+    produceScenario: "",
     launchMenuPaused: false,
     sandbox: {
       openingComplete: false,
@@ -2371,6 +2873,7 @@
       secondIdolUnlocked: false,
       firstLiveChallenge: defaultSandboxFirstLiveChallenge()
     },
+    nia: createDefaultNiaState(),
     idol: null,
     day: 1,
     round: 1,
@@ -2446,6 +2949,7 @@
       skipLessonTrainingAiStory: false
     },
     lastStory: "请选择行动",
+    lastDisplayStory: "",
     lastEventTitle: "",
     lastEventResult: "",
     lastEventStory: "",
@@ -2470,6 +2974,7 @@
     pendingOptionMinutes: [],
     selectedChoiceText: "",
     selectedChoiceRating: "",
+    apartmentDialogue: null,
     bondChoiceRound: 0,
     bondFirstChoiceText: "",
     dailySummary: {
@@ -2495,20 +3000,54 @@
 
   const statLabels = { Vo: "Vocal", Da: "Dance", Vi: "Visual", stamina: "体力", stress: "压力", trust: "信赖" };
   const statShort = { Vo: "Vo.", Da: "Da.", Vi: "Vi." };
-  const statIcons = { Vo: "mic", Da: "dance", Vi: "visual" };
   const statColors = { Vo: "#ff4f9a", Da: "#26a9f4", Vi: "#ffca35" };
-  const actionIcons = { lesson: "book", training: "dance", rest: "rest", outing: "map", companion: "chat", intimacy: "heart", freechat: "chat", interaction: "star", gift: "heart", bond: "heart", day_summary: "file", phone: "phone", next_day: "calendar", world_map: "map", live: "mic" };
+  const statMiniImages = { Vo: "UI/Vo_Mini.png", Da: "UI/Da_Mini.png", Vi: "UI/Vi_mini.png" };
+  const ratingSpriteImage = "UI/rating-sprite-sheet.png";
+  const ratingSpriteRanks = ["E", "E+", "D", "D+", "C", "C+", "B", "B+", "A", "A+", "S", "S+", "SS", "SS+", "SSS", "SSS+"];
+  const ratingSpriteOffsets = {
+    "E": [-7.8, -16.3], "E+": [-3.7, -16.5], "D": [7.5, -16.5], "D+": [12.1, -16.5],
+    "C": [-5.6, -3.0], "C+": [-0.5, -3.0], "B": [8.9, -3.0], "B+": [13.4, -3.2],
+    "A": [-4.6, 11.5], "A+": [-0.3, 11.3], "S": [11.3, 11.7], "S+": [14.2, 11.5],
+    "SS": [-0.8, 22.0], "SS+": [-3.5, 22.2], "SSS": [0.0, 22.0], "SSS+": [8.8, 21.9]
+  };
+  const trainingActionImages = { Vo: "UI/Vo.png", Da: "UI/Da.png", Vi: "UI/Vi.png" };
+  const lessonActionImages = { Vo: "UI/Lesson_Vo.png", Da: "UI/Lesson_Da.png", Vi: "UI/Lesson_Vi.png" };
+  const trainingSpImage = "UI/SP.png";
+  const actionIcons = { lesson: "book", training: "dance", rest: "rest", outing: "map", nia_campus_activity: "map", nia_evening_go_home: "home", companion: "chat", intimacy: "heart", freechat: "chat", interaction: "star", gift: "heart", bond: "heart", day_summary: "file", phone: "phone", next_day: "calendar", world_map: "map", live: "mic" };
   const promptPanels = { prompt: "tabPrompt", log: "tabLog", debug: "tabDebug" };
   const idolBackgroundStatus = new Map();
   let activePromptTab = "prompt";
   let activeModal = null;
   let activeModalTab = null;
   let selectedIdol = null;
+  let selectedProduceScenario = "hatsu";
+
+  const PRODUCE_SCENARIOS = {
+    hatsu: {
+      label: "初",
+      kicker: "定期公演",
+      logo: "./assets/scenarios/hajime-logo.png",
+      background: "./assets/scenarios/hajime-background.png",
+      slogan: "定期公演《初》——那是只有初星学园偶像科中\n成绩优异者才能站上的舞台。\n磨砺自身，如今，她们即将绽放光芒——",
+      cta: "进入「初」剧本",
+      theme: "#ec5b96"
+    },
+    nia: {
+      label: "N.I.A",
+      kicker: "NEXT IDOL AUDITION",
+      logo: "./assets/scenarios/nia-logo.png",
+      background: "./assets/scenarios/nia-background.png",
+      slogan: "《NEXT IDOL AUDITION》——简称“N.I.A”\n角逐肩负下一代使命的偶像顶点的战斗拉开序幕！\n聚集粉丝，如今，迈向荣耀的舞台——",
+      cta: "进入「N.I.A」剧本",
+      theme: "#16a4b3"
+    }
+  };
   let hoverTimeout = null;
 
   const BGM_CONFIG = {
     select: "./assets/bgm/select.mp3",
     lobby: "./assets/bgm/lobby.mp3",
+    nia_base: "./assets/bgm/nia-office.mp3",
     lesson: "./assets/bgm/lesson.mp3",
     outing: "./assets/bgm/out.mp3",
     talk: "./assets/bgm/talk.mp3",
@@ -2534,10 +3073,10 @@
       this.audioA.loop = true;
       this.audioB.loop = true;
       this.currentAudio = this.audioA;
-      
+
       const savedVolume = localStorage.getItem("hatsuProduceBgmVolume");
       if (savedVolume !== null) this.volume = parseFloat(savedVolume);
-      
+
       const savedMuted = localStorage.getItem("hatsuProduceBgmMuted");
       if (savedMuted !== null) this.muted = savedMuted === "true";
 
@@ -2568,7 +3107,7 @@
 
       nextAudio.src = src;
       nextAudio.volume = 0;
-      
+
       nextAudio.play()
         .then(() => {
           this.currentAudio = nextAudio;
@@ -2597,10 +3136,10 @@
       const targetVolume = this.muted ? 0 : this.volume;
       const step = 0.05;
       const intervalMs = 50;
-      
+
       let prevVol = prevAudio.volume;
       let nextVol = 0;
-      
+
       this.fadeInterval = setInterval(() => {
         let done = true;
 
@@ -2630,7 +3169,7 @@
       this.targetKey = null;
       this.currentKey = null;
       if (this.fadeInterval) clearInterval(this.fadeInterval);
-      
+
       const fadeOut = (audio) => {
         if (!audio || audio.paused) return;
         let vol = audio.volume;
@@ -2643,7 +3182,7 @@
           }
         }, 50);
       };
-      
+
       fadeOut(this.audioA);
       fadeOut(this.audioB);
     },
@@ -2665,6 +3204,34 @@
     }
   };
 
+  function isNiaBaseBgmActive() {
+    const selectionStage = document.getElementById("selectionStage");
+    const selectionVisible = selectionStage && !selectionStage.classList.contains("is-hidden");
+
+    if (selectionVisible) {
+      const scenarioPanel = document.getElementById("scenarioPanel");
+      const scenarioPreview = document.getElementById("scenarioPreview");
+      const producerPanel = document.getElementById("producerPanel");
+      const inheritancePanel = document.getElementById("niaInheritancePanel");
+      const previewingNia = scenarioPanel
+        && !scenarioPanel.classList.contains("is-hidden")
+        && scenarioPreview
+        && !scenarioPreview.hidden
+        && selectedProduceScenario === "nia";
+      const preparingNia = producerPanel
+        && !producerPanel.classList.contains("is-hidden")
+        && state.produceScenario === "nia";
+      const confirmingInheritance = inheritancePanel
+        && !inheritancePanel.classList.contains("is-hidden")
+        && state.produceScenario === "nia";
+      return Boolean(previewingNia || preparingNia || confirmingInheritance);
+    }
+
+    return state.produceScenario === "nia"
+      && state.launchMode === "nia"
+      && !state.launchMenuPaused;
+  }
+
   function isPhoneMusicPlaying() {
     const audio = document.getElementById("phoneMusicAudio");
     return !!(audio && !audio.paused && !audio.ended && audio.currentTime > 0);
@@ -2685,7 +3252,8 @@
 
     const selectionStage = document.getElementById("selectionStage");
     if (selectionStage && !selectionStage.classList.contains("is-hidden")) {
-      bgmManager.play("select");
+      if (isNiaBaseBgmActive()) bgmManager.play("nia_base");
+      else bgmManager.play("select");
       return;
     }
 
@@ -2716,7 +3284,8 @@
         bgmManager.play("live_prep");
         return;
       }
-      bgmManager.play("lobby");
+      if (isNiaBaseBgmActive()) bgmManager.play("nia_base");
+      else bgmManager.play("lobby");
       return;
     }
 
@@ -2755,7 +3324,8 @@
       return;
     }
 
-    bgmManager.play("lobby");
+    if (isNiaBaseBgmActive()) bgmManager.play("nia_base");
+    else bgmManager.play("lobby");
   }
 
   function setElementHidden(id, hidden) {
@@ -2790,8 +3360,40 @@
       container.setAttribute("hidden", "");
     }, 1300);
   }
+
+  let niaEntryTransitionPlaying = false;
+  function triggerNiaEntryTransition(callback) {
+    if (niaEntryTransitionPlaying) return;
+    const container = document.getElementById("niaEntryTransition");
+    if (!container) {
+      callback();
+      return;
+    }
+    niaEntryTransitionPlaying = true;
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    const openDelay = reducedMotion ? 60 : 1180;
+    const finishDelay = reducedMotion ? 120 : 1600;
+    container.removeAttribute("hidden");
+    container.classList.remove("is-playing");
+    void container.offsetWidth;
+    container.classList.add("is-playing");
+    window.setTimeout(callback, openDelay);
+    window.setTimeout(() => {
+      container.classList.remove("is-playing");
+      container.setAttribute("hidden", "");
+      niaEntryTransitionPlaying = false;
+    }, finishDelay);
+  }
   const recentHostPromptDispatches = [];
   let pendingAiRequestId = "";
+  let niaBusinessSession = null;
+  let niaRadioBusinessSession = null;
+  let niaTvBusinessSession = null;
+  let niaSnsBusinessSession = null;
+  let niaMiniLiveSession = null;
+  let niaMiniLiveApiLoadPromise = null;
+  let niaSnsSelectedCommentId = "";
+  let niaAuditionSession = null;
   let primaryModelChannelOwner = null;
   let primaryModelChannelTimeoutId = 0;
   const primaryModelChannelDebug = {
@@ -3251,6 +3853,7 @@
 
   function saveState(reason = "state.save") {
     globalThis.HatsuIdolRoster?.saveResponsibleProfile?.(state);
+    state.nia = normalizeNiaState(state.nia);
     state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
     state.harness.persistenceRevision += 1;
     const willMirrorToHost = isSillyTavernHost() && hostStateReady && Boolean(activeHostSaveScope);
@@ -3263,12 +3866,33 @@
     if (pendingAiRequestId) {
       state.lastRequestId = pendingAiRequestId;
     }
+    if (typeof isApartmentDialogueSessionActive === "function" && isApartmentDialogueSessionActive()) {
+      syncApartmentDialogueCheckpoint();
+    }
     localStorage.setItem(activeStorageKey, JSON.stringify(state));
     if (willMirrorToHost) requestHostStateSave(state.harness.hostSaveSequence);
   }
 
   function resolveHostState(remoteState, localState) {
     if (remoteState && typeof remoteState === "object" && !Array.isArray(remoteState)) {
+      const remoteIsNia = remoteState.produceScenario === "nia" || remoteState.nia?.mode === "nia";
+      const localIsNia = localState?.produceScenario === "nia" || localState?.nia?.mode === "nia";
+      if (remoteIsNia && localIsNia && localState?.idol && remoteState?.idol) {
+        const remoteRevision = Math.max(
+          Number(remoteState.harness?.persistenceRevision) || 0,
+          Number(remoteState.nia?.updatedAt) || 0
+        );
+        const localRevision = Math.max(
+          Number(localState.harness?.persistenceRevision) || 0,
+          Number(localState.nia?.updatedAt) || 0
+        );
+        // Host snapshots can lag behind the local mirror while a save request
+        // is in flight. Do not roll a later N.I.A round back to an older phone
+        // conversation; the newer local snapshot will be mirrored again.
+        if (localRevision > remoteRevision) {
+          return { source: "local", state: localState, shouldMigrate: true };
+        }
+      }
       return { source: "remote", state: remoteState, shouldMigrate: false };
     }
     if (localState?.idol) {
@@ -3647,6 +4271,7 @@
       state.pendingAiRequestId = "";
       saveState();
       render();
+      if (!resumeNiaModeIfNeeded() && !isNiaEveningActive()) resumeApartmentDialogueIfNeeded();
       return true;
     } catch {
       return false;
@@ -3710,6 +4335,262 @@
       confirmedIdols: getConfirmedSandboxIdols(),
       createProfile: createFreshSandboxIdolProfile
     });
+  }
+
+  function extractLatestApartmentDialogueSegment(fullStory) {
+    const text = String(fullStory || "").trim();
+    if (!text) return "";
+    const chunks = text.split(/\n\n(?=<narration>▶\s*制作人)/);
+    const latest = String(chunks[chunks.length - 1] || text).trim();
+    return latest.slice(0, 4000);
+  }
+
+  function resolveApartmentDialogueDisplayStory(checkpointOrStory = "") {
+    if (checkpointOrStory && typeof checkpointOrStory === "object") {
+      const explicit = String(checkpointOrStory.displayStory || "").trim();
+      if (explicit) return explicit.slice(0, 4000);
+      return extractLatestApartmentDialogueSegment(checkpointOrStory.lastStory);
+    }
+    return extractLatestApartmentDialogueSegment(checkpointOrStory);
+  }
+
+  function resolveVnLoadingSlideText(story) {
+    const raw = String(story || "").trim();
+    if (!raw) return "正在等待角色卡 AI 生成本次小剧情...";
+    const waitingLine = (raw.match(/(?:正在等待|等待角色卡|等待 AI|等待 SillyTavern|正在重新生成)[^\n]*$/m) || [])[0] || "";
+    if (raw.length > 280 && (/等待角色卡|等待 AI|等待 SillyTavern|正在重新生成|正在等待/.test(raw))) {
+      const chosen = (raw.match(/<narration>▶[\s\S]*?<\/narration>/g) || []).slice(-1)[0] || "";
+      return [chosen, waitingLine || "正在等待角色卡 AI 生成本次小剧情..."].filter(Boolean).join("\n\n");
+    }
+    return raw;
+  }
+
+  function normalizeApartmentDialogueCheckpoint(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const kind = ["companion_chat", "nsfw_intimacy"].includes(value.kind) ? value.kind : "";
+    let status = ["generating", "awaiting_choice", "closing"].includes(value.status) ? value.status : "";
+    const pendingActionContext = value.pendingActionContext && typeof value.pendingActionContext === "object"
+      && !Array.isArray(value.pendingActionContext)
+      ? value.pendingActionContext
+      : null;
+    const options = Array.isArray(value.pendingOptionTexts)
+      ? value.pendingOptionTexts.map((item) => String(item || "").trim().slice(0, 240)).filter(Boolean).slice(0, 4)
+      : [];
+    if (!kind || !status || !pendingActionContext) return null;
+    if (kind === "companion_chat" && pendingActionContext.action !== "apartment_companion") return null;
+    if (kind === "nsfw_intimacy" && pendingActionContext.action !== "intimacy") return null;
+    // 选项不齐时降级为 generating，不要整份存档作废
+    if (status === "awaiting_choice" && options.length !== 4) status = "generating";
+    // 若仍保留完整 4 选项，优先视为可继续选择
+    if (status === "generating" && options.length === 4) status = "awaiting_choice";
+    const lastStory = String(value.lastStory || "").slice(-8000);
+    const displayStory = String(value.displayStory || "").trim()
+      ? String(value.displayStory || "").trim().slice(0, 4000)
+      : extractLatestApartmentDialogueSegment(lastStory);
+    return {
+      kind,
+      status,
+      eventMode: status === "closing" ? "choice_resolution" : "choice_prompt",
+      choiceStep: Number.isInteger(Number(value.choiceStep)) ? Number(value.choiceStep) : (status === "closing" ? 2 : 1),
+      pendingActionContext: clone(pendingActionContext),
+      pendingOptionTexts: options,
+      lastStory,
+      displayStory,
+      lastPrompt: String(value.lastPrompt || "").slice(0, 16000),
+      lastDebug: String(value.lastDebug || "").slice(0, 400),
+      intimacyRoute: value.intimacyRoute === "nsfw" || value.intimacyRoute === "normal"
+        ? value.intimacyRoute
+        : (kind === "nsfw_intimacy" ? "nsfw" : null),
+      companionIdol: String(value.companionIdol || pendingActionContext?.actionContext?.companionIdol || pendingActionContext?.actionContext?.inviteIdol || "").trim().slice(0, 120),
+      topic: String(value.topic || pendingActionContext?.actionContext?.companionTopic || "").trim().slice(0, 240),
+      updatedAt: Math.max(0, Number(value.updatedAt) || 0)
+    };
+  }
+
+  function isApartmentDialogueSessionActive(context = state.pendingActionContext) {
+    if (!context || typeof context !== "object") return false;
+    if (context.actionContext?.nsfwCgTest) return false;
+    if (context.action === "apartment_companion") return true;
+    return context.action === "intimacy"
+      && (context.intimacyMode === "nsfw" || context.actionContext?.intimacyMode === "nsfw" || state.intimacyRoute === "nsfw")
+      && Boolean(context.actionContext?.apartmentInvite);
+  }
+
+  function syncApartmentDialogueCheckpoint(statusOverride = "") {
+    if (!isApartmentDialogueSessionActive()) return false;
+    const ctx = state.pendingActionContext;
+    const kind = ctx.action === "apartment_companion" ? "companion_chat" : "nsfw_intimacy";
+    const options = Array.isArray(state.pendingOptionTexts)
+      ? state.pendingOptionTexts.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 4)
+      : [];
+    let status = String(statusOverride || "").trim();
+    if (!status) {
+      if (state.eventMode === "choice_resolution") status = "closing";
+      else if (options.length === 4 && !pendingAiRequestId) status = "awaiting_choice";
+      else status = "generating";
+    }
+    if (!["generating", "awaiting_choice", "closing"].includes(status)) return false;
+    // 有完整选项且没有在途请求时，优先保存为可继续选择，避免误标 generating 丢掉选项
+    if (status !== "closing" && options.length === 4 && !pendingAiRequestId) {
+      status = "awaiting_choice";
+    }
+    if (status === "awaiting_choice" && options.length !== 4) status = "generating";
+    const lastStory = String(state.lastStory || "").slice(-8000);
+    const displayStory = String(state.lastDisplayStory || "").trim()
+      ? String(state.lastDisplayStory || "").trim().slice(0, 4000)
+      : extractLatestApartmentDialogueSegment(lastStory);
+    state.apartmentDialogue = {
+      kind,
+      status,
+      eventMode: status === "closing" ? "choice_resolution" : "choice_prompt",
+      choiceStep: status === "closing" ? 2 : 1,
+      pendingActionContext: clone(ctx),
+      // 即使进入 generating，也尽量保留上一组完整选项，便于恢复时回退
+      pendingOptionTexts: options.length === 4 ? options : [],
+      lastStory,
+      displayStory,
+      lastPrompt: String(state.lastPrompt || "").slice(0, 16000),
+      lastDebug: String(state.lastDebug || "").slice(0, 400),
+      intimacyRoute: kind === "nsfw_intimacy" ? "nsfw" : (state.intimacyRoute || null),
+      companionIdol: String(
+        ctx.actionContext?.companionIdol
+        || ctx.actionContext?.inviteIdol
+        || ""
+      ).trim().slice(0, 120),
+      topic: String(ctx.actionContext?.companionTopic || "").trim().slice(0, 240),
+      updatedAt: Date.now()
+    };
+    return true;
+  }
+
+  function clearApartmentDialogueCheckpoint() {
+    if (!state.apartmentDialogue) return false;
+    state.apartmentDialogue = null;
+    return true;
+  }
+
+  function isPlayableApartmentDisplayStory(story) {
+    const text = String(story || "").trim();
+    if (text.length < 12) return false;
+    if (/正在恢复公寓对话|正在等待角色卡|等待 SillyTavern|正在重新生成剧情/.test(text)) return false;
+    return /<(?:narration|dialogue)\b/i.test(text) || /[。！？…]/.test(text);
+  }
+
+  function resumeApartmentDialoguePrompt(title, resultLabel, overlayStory, toastDetail) {
+    openEventOverlay(title, resultLabel, overlayStory);
+    const prompt = String(state.lastPrompt || "").trim();
+    if (!prompt) {
+      showToast("已恢复公寓对话", "缺少提示词，请重新开始该互动，或点击编辑重发。", "warn");
+      return true;
+    }
+    const requestId = createRequestId();
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.eventMode = state.eventMode === "choice_resolution" ? "choice_resolution" : "choice_prompt";
+    saveState("apartment.dialogue.resume_resend");
+    setEventActionsEnabled(false, true);
+    if (requestHostPromptSend(prompt, requestId)) {
+      showToast("已恢复公寓对话", toastDetail || "上次生成中断，已自动重新发送提示词。", "info");
+      return true;
+    }
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    openAiPromptOverlay("当前页面未连接 SillyTavern。请复制或编辑提示词后手动发送。");
+    showToast("已恢复公寓对话", "请点击重新生成或手动发送提示词。", "warn");
+    return true;
+  }
+
+  function resumeApartmentDialogueIfNeeded() {
+    if (state.launchMenuPaused) return false;
+    let checkpoint = normalizeApartmentDialogueCheckpoint(state.apartmentDialogue);
+    if (!checkpoint && isApartmentDialogueSessionActive()) {
+      syncApartmentDialogueCheckpoint();
+      checkpoint = normalizeApartmentDialogueCheckpoint(state.apartmentDialogue);
+    }
+    if (!checkpoint) return false;
+
+    state.pendingActionContext = clone(checkpoint.pendingActionContext);
+    state.eventMode = checkpoint.eventMode;
+    state.choiceStep = checkpoint.choiceStep;
+    state.pendingOptionTexts = checkpoint.status === "awaiting_choice"
+      ? [...checkpoint.pendingOptionTexts]
+      : [];
+    state.pendingOptionMinutes = [];
+    state.selectedChoiceText = "";
+    state.selectedChoiceRating = "";
+    state.lastStory = checkpoint.lastStory || state.lastStory || "";
+    state.lastDisplayStory = resolveApartmentDialogueDisplayStory(checkpoint);
+    state.lastPrompt = checkpoint.lastPrompt || state.lastPrompt || "";
+    state.lastDebug = checkpoint.lastDebug || state.lastDebug || "";
+    if (checkpoint.kind === "nsfw_intimacy") state.intimacyRoute = "nsfw";
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+
+    if (checkpoint.kind === "companion_chat" && checkpoint.companionIdol) {
+      setApartmentCompanionIdol(checkpoint.companionIdol);
+    }
+    if (isNiaEveningActive() && typeof niaEveningCore.enterEveningApartment === "function") {
+      const nia = normalizeNiaState(state.nia);
+      state.nia = {
+        ...nia,
+        evening: niaEveningCore.enterEveningApartment(
+          nia.evening,
+          checkpoint.companionIdol || nia.evening.companionIdol || ""
+        ),
+        updatedAt: Date.now()
+      };
+    } else if (state.freeMode) {
+      state.freeMode.active = true;
+      state.freeMode.atApartment = true;
+      if (checkpoint.companionIdol) state.freeMode.apartmentCompanionIdol = checkpoint.companionIdol;
+      document.body.classList.add("is-free-mode-active");
+    }
+
+    closeApartmentGoHomeOverlay();
+    if (typeof renderProducerApartmentStage === "function") renderProducerApartmentStage();
+
+    const title = checkpoint.kind === "nsfw_intimacy"
+      ? (typeof nsfwIntimacyActionTitle === "function" ? nsfwIntimacyActionTitle() : "公寓邀约 · NSFW 亲密")
+      : `公寓 · ${checkpoint.companionIdol || "同行偶像"}`;
+    const displayStory = state.lastDisplayStory || "";
+    if (checkpoint.status === "awaiting_choice") {
+      // 只重播最近一轮正文，避免把累计历史整段塞进对话框
+      openEventOverlay(title, "请做出你的选择", displayStory || "请选择回应。");
+      // 恢复后尽快进入选项，避免玩家以为没有存档
+      queueMicrotask(() => {
+        if (!isApartmentDialogueSessionActive()) return;
+        if (state.pendingOptionTexts?.length !== 4) return;
+        if (pendingAiRequestId) return;
+        try {
+          stopVnAuto();
+          if (Array.isArray(vnSlides) && vnSlides.length) {
+            vnCurrentIndex = vnSlides.length;
+          }
+          handleVnSlidesEnd();
+        } catch (error) {
+          console.warn("[apartment-dialogue] resume choices failed:", error);
+        }
+      });
+      showToast("已恢复公寓对话", "已从存档继续上次未完成的对话。", "info");
+      return true;
+    }
+    if (checkpoint.status === "closing") {
+      return resumeApartmentDialoguePrompt(
+        title,
+        "上次收尾中断，正在重新请求",
+        buildChoicePendingDisplayStory("", "<narration>▶ 制作人选择结束本次互动</narration>"),
+        "收尾曾中断，已自动重新发送提示词。"
+      );
+    }
+    const overlayStory = isPlayableApartmentDisplayStory(displayStory)
+      ? `${displayStory}\n\n<narration>上次生成中断，正在重新请求后续剧情与选项...</narration>`
+      : buildAiWaitingStory("正在恢复公寓对话...");
+    return resumeApartmentDialoguePrompt(
+      title,
+      "上次生成中断，正在重新请求",
+      overlayStory,
+      "生成曾中断，已自动重新发送提示词。"
+    );
   }
 
   function normalizeStorytellerEventConversation(value) {
@@ -3801,9 +4682,22 @@
 
   function ensureStateShape(options = {}) {
     state.harness = normalizeHarnessState(state.harness, runtimeSessionEpoch);
+    state.nia = normalizeNiaState(state.nia);
+    if (state.nia.planStatus === "generating" && state.nia.activeRequest?.sessionEpoch !== runtimeSessionEpoch) {
+      state.nia = {
+        ...state.nia,
+        phase: "draft",
+        planStatus: "retryable_failed",
+        activeRequest: null,
+        lastError: "页面已经重新载入，请重新提交企划。"
+      };
+    }
     state.appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
     state.gameMode = state.gameMode === "hybrid" ? "hybrid" : "classic";
-    state.launchMode = ["produce", "sandbox"].includes(state.launchMode) ? state.launchMode : null;
+    state.launchMode = ["produce", "sandbox", "nia"].includes(state.launchMode) ? state.launchMode : null;
+    state.produceScenario = ["hatsu", "nia"].includes(state.produceScenario)
+      ? state.produceScenario
+      : (state.launchMode === "nia" ? "nia" : "");
     state.launchMenuPaused = Boolean(state.launchMenuPaused);
     state.sandbox = {
       openingComplete: false,
@@ -3831,6 +4725,13 @@
       state.launchMode = state.gameMode === "hybrid" ? "sandbox" : "produce";
     }
     state.idol = state.idol ? canonicalIdolName(state.idol) : state.idol;
+    if (state.produceScenario === "nia" && state.idol && typeof niaProducerWorkCore.normalizeProducerWork === "function") {
+      state.nia = {
+        ...state.nia,
+        producerWork: niaProducerWorkCore.normalizeProducerWork(state.nia.producerWork, state.idol)
+      };
+    }
+    ensureNiaInheritedAffinity();
     state.affinity = {
       openingComplete: false,
       unlocked: [],
@@ -4029,6 +4930,8 @@
     state.pendingOptionMinutes = Array.isArray(state.pendingOptionMinutes) ? state.pendingOptionMinutes : [];
     state.selectedChoiceText = state.selectedChoiceText || "";
     state.selectedChoiceRating = state.selectedChoiceRating || "";
+    state.apartmentDialogue = normalizeApartmentDialogueCheckpoint(state.apartmentDialogue);
+    state.lastDisplayStory = String(state.lastDisplayStory || "").slice(0, 4000);
     state.bondChoiceRound = Number.isInteger(state.bondChoiceRound) ? state.bondChoiceRound : 0;
     state.bondFirstChoiceText = state.bondFirstChoiceText || "";
     state.dailySummary = {
@@ -7752,7 +8655,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   function isChoicePromptAction(action) {
-    return action === "outing" || action === "companion" || action === "intimacy" || action === "bond" || action === "map_location" || action === "apartment_companion" || action === "storyteller_event";
+    return action === "outing" || action === "companion" || action === "intimacy" || action === "bond" || action === "map_location" || action === "apartment_companion" || action === "storyteller_event" || action === "nia_business";
   }
 
   function isChoicePromptMode() {
@@ -7765,6 +8668,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
 
   function currentChoiceActionTitle() {
     if (isNsfwIntimacyActive()) return nsfwIntimacyActionTitle();
+    if (state.pendingActionContext?.action === "nia_business") return "N.I.A · 营业现场";
     if (state.pendingActionContext?.action === "storyteller_event") return "初星世界事件";
     if (state.pendingActionContext?.action === "map_location") {
       const actionContext = state.pendingActionContext.actionContext || {};
@@ -7877,7 +8781,10 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   function isApartmentNsfwInviteActive() {
-    return isNsfwIntimacyActive() && Boolean(state.pendingActionContext?.actionContext?.apartmentInvite);
+    // CG 测试可复用亲密多轮框架，但绝不能冒充普通公寓邀约
+    return isNsfwIntimacyActive()
+      && Boolean(state.pendingActionContext?.actionContext?.apartmentInvite)
+      && !Boolean(state.pendingActionContext?.actionContext?.nsfwCgTest);
   }
 
   function getNsfwIntimacyTargetIdol() {
@@ -7886,13 +8793,32 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     return state.idol;
   }
 
+  function getApartmentAffinityScore(idolName) {
+    const canonical = canonicalIdolName(idolName);
+    if (!canonical || !idols[canonical]) return 0;
+    if (isNiaEveningActive()) {
+      return canonical === getCurrentAffinityIdolName()
+        ? Math.round(clamp(Number(state.trust) || 0, 0, 100))
+        : 0;
+    }
+    return getFreeModeRelationshipScore(canonical);
+  }
+
   function getApartmentNsfwEligibleIdols() {
+    if (isNiaEveningActive()) {
+      const current = getCurrentAffinityIdolName();
+      if (!current) return [];
+      const score = getApartmentAffinityScore(current);
+      return score >= INTIMACY_NSFW_UNLOCK_TRUST
+        ? [{ name: current, score, isAssigned: true }]
+        : [];
+    }
     ensureFreeModeRelationships();
     const current = getCurrentAffinityIdolName();
     return Object.keys(idols)
       .map((name) => ({
         name,
-        score: getFreeModeRelationshipScore(name),
+        score: getApartmentAffinityScore(name),
         isAssigned: name === current
       }))
       .filter((row) => row.score >= INTIMACY_NSFW_UNLOCK_TRUST)
@@ -7903,15 +8829,19 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const canonical = canonicalIdolName(idolName);
     if (!canonical) return "";
     if (isApartmentNsfwInviteActive() || isFreeModeActive()) {
-      const score = getFreeModeRelationshipScore(canonical);
+      const score = getApartmentAffinityScore(canonical);
       return `${getAffinityStageLine(canonical, score)}（当前好感度：${score}/100）`;
     }
     return getAffinityStageLine(canonical, state.trust);
   }
 
   function buildNsfwIntimacyScheduleLine() {
+    if (isNsfwCgTestActive()) {
+      const scene = resolveNsfwCgTestSceneFromContext(state.pendingActionContext?.actionContext || {});
+      return `当前时间：CG 测试模式，地点：${scene.label}`;
+    }
     if (isApartmentNsfwInviteActive()) {
-      return `当前时间：${formatFreeModeDayLabel()} · ${formatFreeModeClock()}，地点：制作人私人公寓（夜间私密空间）`;
+      return `当前时间：${formatApartmentDayLabel()} · ${formatApartmentClock()}，地点：制作人私人公寓（夜间私密空间）`;
     }
     return `当前日程：第 ${state.day} 天，${roundLabel()}`;
   }
@@ -7928,6 +8858,30 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
 - 公寓内只有制作人与 ${targetIdol}，不要引入无关第三者闯入。`;
   }
 
+  function resolveNsfwCgTestSceneFromContext(actionContext = {}) {
+    return NSFW_CG_TEST_SCENES.find((item) => item.id === actionContext.sceneId)
+      || NSFW_CG_TEST_SCENES.find((item) => item.path === actionContext.scenePath)
+      || NSFW_CG_TEST_SCENES[0];
+  }
+
+  function buildNsfwCgTestLockPromptSection(actionContext = {}) {
+    if (!actionContext?.nsfwCgTest) return "";
+    const targetIdol = canonicalIdolName(actionContext.inviteIdol) || getNsfwIntimacyTargetIdol() || "";
+    const poseId = String(actionContext.lockedPoseId || "").trim();
+    const scene = resolveNsfwCgTestSceneFromContext(actionContext);
+    const poseEntry = typeof hatsuHcg.getPoseEntry === "function"
+      ? hatsuHcg.getPoseEntry(targetIdol, poseId)
+      : null;
+    const poseLabel = poseEntry?.label || poseId || "未指定";
+    return `【CG 测试锁定 · 仅测试模式，不影响普通公寓邀约规则】
+- 本轮是 NSFW CG 测试，不是普通公寓邀约。
+- 场景固定为：${scene.label}。正文必须发生在该场景，不要更换地点。
+- 当前锁定姿势：${poseId || "未指定"}${poseId && poseLabel !== poseId ? `（${poseLabel}）` : ""}。
+- 进入身体接触时必须输出 <nsfw_mode>on</nsfw_mode>，并输出 <pose id="${poseId || "当前锁定姿势"}"/>。
+- 在玩家通过前端「更换姿势」之前，禁止输出其他 pose id，也禁止自行 pose hide / nsfw_mode=off（收尾轮除外）。
+- 四个 option 只写制作人行动或台词，不要写换姿势、换场景、结束之类选项；换姿势与结束入口由前端单独提供。`;
+  }
+
   function clearIntimacyRoute() {
     state.intimacyRoute = null;
   }
@@ -7939,6 +8893,10 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   function nsfwIntimacyActionTitle() {
+    if (isNsfwCgTestActive()) {
+      const target = getNsfwIntimacyTargetIdol();
+      return target ? `CG 测试 · ${target}` : "NSFW CG 测试";
+    }
     if (isApartmentNsfwInviteActive()) {
       const target = getNsfwIntimacyTargetIdol();
       return target ? `公寓 · ${target}` : "公寓邀约";
@@ -7985,6 +8943,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     if (isHybridFacilityActive()) {
       exitHybridFacility();
     }
+    completeCurrentNiaOrdinaryActionAfterPlayback();
     markHarnessProduceTurn("completed_without_narrative");
     saveState();
     render();
@@ -8001,6 +8960,9 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       showToast("需要担当偶像", "请先选择本次育成的担当。", "warn");
       return;
     }
+    if (state.produceScenario === "nia" && resumeBlockingNiaFanMilestone()) return;
+    if (state.produceScenario === "nia" && resumeBlockingNiaEvening()) return;
+    const niaOrdinaryAction = isCurrentNiaOrdinaryPlanAction(action, attribute);
     const hybridFacility = isHybridFacilityActive();
     if (hybridFacility) {
       const kind = state.freeMode.facilityKind;
@@ -8024,18 +8986,18 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
         showToast("体力不足", "当前体力不足以进行该行动。", "warn");
         return;
       }
-    } else if (!state.affinity.openingComplete) {
+    } else if (!niaOrdinaryAction && !state.affinity.openingComplete) {
       recordDebugOpeningDispatch("行动拦截：openingComplete 为 false");
       triggerAffinityStory(0);
       return;
-    } else if (state.liveReady) {
+    } else if (!niaOrdinaryAction && state.liveReady) {
       startFirstLive();
       return;
-    } else if (isBondEventDay()) {
+    } else if (!niaOrdinaryAction && isBondEventDay()) {
       showToast("羁绊事件日", "今天需要先完成已解锁的羁绊事件。", "warn");
       triggerAffinityStory(pendingRequiredBondThreshold());
       return;
-    } else if (!isActionAvailable(action)) {
+    } else if (!niaOrdinaryAction && !isActionAvailable(action)) {
       if (isSummaryRound()) {
         showToast("总结轮次", "请选择今日总结或进入下一天。", "warn");
       } else {
@@ -8099,7 +9061,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       const choiceContext = state.pendingActionContext.actionContext;
       state.eventMode = "choice_prompt";
       state.choiceStep = 1;
-      
+
       const baseRewards = action === "outing" ? [10, 8, 6, 4] : action === "companion" ? [20, 15, 10, 5] : [0, 0, 0, 0];
       // 随机分配
       const shuffled = [...baseRewards].sort(() => Math.random() - 0.5);
@@ -8107,23 +9069,23 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       state.pendingOptionTexts = [];
       state.selectedChoiceText = "";
       state.selectedChoiceRating = "";
-      
+
       const actionName = isNsfwIntimacyActive() ? nsfwIntimacyActionTitle() : actionLabel(action, attribute);
       const requestId = createRequestId();
       pendingAiRequestId = requestId;
-      
+
       const prompt = isNsfwIntimacyActive()
         ? buildNsfwIntimacyOpeningPrompt(choiceContext)
         : buildChoicePhase1Prompt(action, attribute, shuffled, choiceContext);
-      
-      const resultSummary = action === "outing" 
-        ? `准备前往：${actionContext.destination || "散步"}` 
+
+      const resultSummary = action === "outing"
+        ? `准备前往：${actionContext.destination || "散步"}`
         : action === "companion"
           ? `交流主题：${actionContext.companionTopic || "日常闲聊"}`
           : isNsfwIntimacyActive()
             ? `与${state.idol}进行 NSFW 亲密互动`
             : `与${state.idol}进行普通亲密互动`;
-      
+
       const story = action === "outing"
         ? `正在前往 ${actionContext.destination || "散步"}...`
         : action === "companion"
@@ -8131,7 +9093,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
           : isNsfwIntimacyActive()
             ? `正在准备与${state.idol}的 NSFW 亲密场景...`
             : `正在准备与${state.idol}的普通亲密场景...`;
-        
+
       state.lastStory = story;
       state.lastPrompt = prompt;
       state.lastDebug = action === "intimacy"
@@ -8139,16 +9101,16 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
           ? "NSFW 亲密开场：等待 AI 生成 VN 剧情与 4 个选项（含自定义/结束入口）。"
           : "普通亲密：等待 AI 设计 4 个选项。本行动固定结算体力 +38、压力 -10、信赖 +20。"
         : `第一阶段剧情生成：等待 AI 设计 4 个选项。加成映射：\n` + shuffled.map((r, i) => `选项 ${i + 1} 对应加成 +${r}`).join("\n");
-      
+
       saveState();
       render();
-      
+
       setElementHidden("eventChoices", true);
       const actionsEl = document.getElementById("eventActions");
       if (actionsEl) actionsEl.style.display = "none";
-      
+
       openEventOverlay(actionName, buildAiWaitingResult(resultSummary), buildAiWaitingStory(story));
-      
+
       if (!requestHostPromptSend(prompt, requestId)) {
         openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制提示词后手动发送。");
       }
@@ -8170,7 +9132,9 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const tuning = getActionTuning(state.idol, action);
 
     if (action === "lesson") {
-      delta[attribute] = tuning.lessonGain;
+      delta[attribute] = typeof niaTrainingCore.applyNiaTrainingGainMultiplier === "function"
+        ? niaTrainingCore.applyNiaTrainingGainMultiplier(tuning.lessonGain, isNiaTrainingActive())
+        : tuning.lessonGain;
       delta.stamina = tuning.staminaDelta;
       delta.stress = 1;
       randomEvent = rollActionEvent(action, attribute);
@@ -8180,7 +9144,10 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
         const baseGain = item === attribute
           ? Math.round(28 + Number(state.growth?.[item] || 0) * 0.8)
           : Math.round(Number(state.growth?.[item] || 0) * 0.15);
-        delta[item] = calculateTrainingGain(baseGain, tuning.trainingMultiplier, spActive);
+        const calculatedGain = calculateTrainingGain(baseGain, tuning.trainingMultiplier, spActive);
+        delta[item] = typeof niaTrainingCore.applyNiaTrainingGainMultiplier === "function"
+          ? niaTrainingCore.applyNiaTrainingGainMultiplier(calculatedGain, isNiaTrainingActive())
+          : calculatedGain;
       });
       delta.stamina = tuning.staminaDelta;
       delta.stress = spActive ? 3 : 2;
@@ -8219,6 +9186,9 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const locationText = action === "outing" && actionContext.destination ? `外出地点：${actionContext.destination}` : "";
     const resultSummary = [locationText, resultText, eventText].filter(Boolean).join("，");
     const requestId = ordinaryPrimaryDispatch?.requestId || createRequestId();
+    if (niaOrdinaryAction && isCurrentNiaCompanionTrainingDay()) {
+      state.pendingActionContext.actionContext.niaOperationId = requestId;
+    }
     const willGenerateOrdinaryNarrative = isHarnessOrdinaryAction(action)
       && !(["lesson", "training"].includes(action) && isSkipLessonTrainingAiStoryEnabled());
     const storytellerAttachment = attachStorytellerCandidateToOrdinaryTurn(action, attribute, actionContext, {
@@ -8263,7 +9233,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       });
     } else {
       state.log.unshift({ day: state.day, round: state.round, phase: getPhase(), action: actionName, result: resultSummary, rawAction: action, rawAttribute: attribute });
-      advanceRound();
+      if (!niaOrdinaryAction) advanceRound();
     }
     state.log = state.log.slice(0, 24);
     rollSpCandidates();
@@ -8411,6 +9381,22 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
         render();
         openHarnessRecoveryOverlay(state.harness.activeTurn);
       }
+    } else if (owner.ownerKind === "nia_opening") {
+      failNiaOpeningRequest(reason === "timeout" ? "N.I.A 开场生成超时，可以重新尝试。" : "N.I.A 开场生成失败，可以重新尝试。", reason);
+    } else if (owner.ownerKind === "nia_plan") {
+      failNiaPlanRequest(reason === "timeout" ? "企划生成超时，可以重新提交。" : "企划生成失败，可以重新提交。", reason);
+    } else if (owner.ownerKind === "nia_business") {
+      failNiaBusiness(reason === "timeout" ? "营业生成超时，请重新尝试。" : "酒馆主API生成失败，请重新尝试。", reason);
+    } else if (owner.ownerKind === "nia_radio_business") {
+      failNiaRadioBusiness(reason === "timeout" ? "广播生成超时，请重新尝试。" : "酒馆主API生成失败，请重新尝试。", reason);
+    } else if (owner.ownerKind === "nia_audition") {
+      failNiaAudition(reason === "timeout" ? "试镜生成超时，本段可以重新尝试。" : "酒馆主API生成失败，本段可以重新尝试。", reason);
+    } else if (owner.ownerKind === "nia_producer_work") {
+      failNiaProducerWork(reason === "timeout" ? "制作人工作生成超时，可以保留方案重试。" : "制作人工作生成失败，可以保留方案重试。", reason);
+    } else if (owner.ownerKind === "nia_inter_round_outing") {
+      failNiaInterRoundOuting(reason === "timeout" ? "外出收尾生成超时，可以重新生成。" : "外出收尾生成失败，可以重新生成。", reason);
+    } else if (owner.ownerKind === "nia_tv_business") {
+      failNiaTvBusiness(reason === "timeout" ? "电视节目生成超时，可以重试。" : "电视节目生成失败，可以重试。", reason);
     } else if (owner.ownerKind === "phone_chat") {
       if (pendingAiRequestId === requestId) pendingAiRequestId = "";
       resetPhoneChatPendingState();
@@ -8499,6 +9485,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
     const labels = {
       ordinary_action: "上一项育成行动仍在生成剧情",
       opening: "担当开场剧情正在生成",
+      nia_opening: "N.I.A 开场剧情正在生成",
       ordinary_recovery: "上一项行动正在恢复叙事",
       map_explore: "地图探索正在生成场景",
       map_recovery: "地图探索正在恢复叙事",
@@ -8508,6 +9495,10 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       sandbox_first_live_recovery: "校内舞台 First Live 正在恢复叙事",
       phone_chat: "手机私聊正在等待回复",
       broadcast: "广播完整稿正在生成",
+      nia_business: "N.I.A 营业剧情正在生成",
+      nia_radio_business: "《初星放送部》正在生成",
+      nia_producer_work: "N.I.A 制作人工作正在生成",
+      nia_plan: "N.I.A 企划正在生成",
       free_chat: "担当闲聊正在等待回复",
       idol_interaction: "偶像互动剧情正在生成",
       manual_prompt: "编辑后的剧情请求正在生成",
@@ -9304,14 +10295,36 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
   }
 
   function galgameRenderContract(mode = "normal") {
-    if (mode === "choice") {
-      return `【初星学园 Galgame 渲染规则契约】
-- 选项剧情必须输出完整四个 option。
-- <story> 内只用 <dialogue char="角色名"> 与 <narration>；不要 Markdown、列表、数值结算或标签外说明。
+    if (mode === "nsfw_choice") {
+      return `[HATSU_OUTPUT_MODE:NSFW_CHOICE_STORY]
+【初星学园 Galgame 渲染规则契约 · NSFW 选项】
+- 这是 NSFW 亲密多轮选项剧情，不是普通外出/聊天选项剧情。
+- 必须输出完整四个 <option1>～<option4>，且写在 </story> 之后、【初星正文结束】之前。
+- <story> 内使用 <dialogue char="角色名"> 与 <narration>，并可额外使用 <nsfw_mode> 与 <pose>；不要 Markdown、列表、数值结算或标签外说明。
+- 不要把 option 放进 <story>，也不要用 1.2.3.4. 或正文台词引号代替 option 标签。
 - 【初星正文结束】之后必须额外输出 <sum>1-2句剧情小结</sum>。`;
     }
 
-    return `【初星学园 Galgame 渲染规则契约】
+    if (mode === "nsfw") {
+      return `[HATSU_OUTPUT_MODE:NSFW_STORY]
+【初星学园 Galgame 渲染规则契约 · NSFW 正文】
+- 这是 NSFW 亲密收尾/无选项正文，不是普通剧情。
+- 正文写在【初星正文开始】…【初星正文结束】内，使用 <dialogue char="角色名"> 与 <narration>，并可额外使用 <nsfw_mode> 与 <pose>。
+- 不要输出 option、Markdown、列表或数值结算。
+- 【初星正文结束】之后必须额外输出 <sum>1-2句剧情小结</sum>。`;
+    }
+
+    if (mode === "choice") {
+      return `[HATSU_OUTPUT_MODE:CHOICE_STORY]
+【初星学园 Galgame 渲染规则契约】
+- 选项剧情必须输出完整四个 <option1>～<option4>，且写在 </story> 之后、【初星正文结束】之前。
+- <story> 内只用 <dialogue char="角色名"> 与 <narration>；不要 Markdown、列表、数值结算或标签外说明。
+- 不要把 option 放进 <story>，也不要用 1.2.3.4. 或正文台词引号代替 option 标签。
+- 【初星正文结束】之后必须额外输出 <sum>1-2句剧情小结</sum>。`;
+    }
+
+    return `[HATSU_OUTPUT_MODE:NORMAL_STORY]
+【初星学园 Galgame 渲染规则契约】
 - 正文写在【初星正文开始】…【初星正文结束】内，普通剧情中只使用：<dialogue char="角色名"> 与 <narration>。
 - 不要输出 option、Markdown、列表或数值结算。
 - 【初星正文结束】之后必须额外输出 <sum>1-2句剧情小结</sum>：从时间、空间、地点、人物、行为、对话、事件概括本次正文；<sum> 不进入 story。`;
@@ -9331,7 +10344,7 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
       storyNote = ""
     } = options;
     const tagList = phase1
-      ? "<story> + <option1>～<option4>"
+      ? `<story> + <option1>～<option4>${includeRelationship ? " + <relationship_update>" : ""}`
       : includeTime
         ? `<story> + <option1>～<option4> + <time1>～<time4>${includeRelationship ? " + <relationship_update>" : ""}`
         : "<story> + <option1>～<option4>";
@@ -9378,21 +10391,26 @@ ${outputContract("请写 700 字以内的完整送礼场景，自然收束，不
 - 四个 option 风味不同，制作人第一人称。`;
   }
 
-  function buildChoiceOnlyExample() {
+  function buildChoiceOnlyExample(includeRelationship = false) {
+    const relationshipLine = includeRelationship
+      ? "\n<relationship_update>{}</relationship_update>"
+      : "";
     return `输出示例：
 【初星正文开始】
 <story>...</story>
 <option1>...</option1>
 <option2>...</option2>
 <option3>...</option3>
-<option4>...</option4>
+<option4>...</option4>${relationshipLine}
 【初星正文结束】
 <sum>1-2句概括本次选项剧情。</sum>`;
   }
 
   function buildMapExploreChoiceOutputBlock(options = {}) {
     const { includeRelationship = true } = options;
-    return `${buildMapExploreChoiceExample(includeRelationship)}
+    return `[HATSU_OUTPUT_MODE:CHOICE_STORY]
+
+${buildMapExploreChoiceExample(includeRelationship)}
 
 ${buildChoiceHardRules({ includeTime: true, includeRelationship })}`;
   }
@@ -9427,6 +10445,35 @@ ${lines.map((line) => `- ${line}`).join("\n")}
     if (!cleaned) return "（暂无上文摘要；若当前不是担当开场，请直接写本次行动现场。）";
     return cleaned.length > 420 ? `${cleaned.slice(0, 420)}...` : cleaned;
   }
+
+  function buildNiaCompanionTrainingContinuity() {
+    if (!isCurrentNiaCompanionTrainingDay()) return "";
+    const training = niaTrainingCore.ensureCompanionTrainingDay(state.nia.training);
+    const phase = niaTrainingCore.getCompanionTrainingPhase(training);
+    const day = niaTrainingCore.getCurrentNiaPlanAction(state.nia) || {};
+    const plan = state.nia?.plan || {};
+    const shared = `
+
+N.I.A 同日陪同训练：
+- 本轮企划目标：${plan.goal?.playerGoal || "围绕已确认企划推进"}
+- 本轮公开形象：${plan.publicImage || "按已确认企划塑造"}
+- 今日目的：${day.purpose || day.title || "帮助偶像解决当前困难并取得进展"}`;
+    if (phase === "morning") {
+      return `${shared}
+- 当前是上午阶段。建立今天面对的具体困难，并让本次行动取得可观察的第一步进展。
+- 不要在结尾直接写完一整天；为下午继续验证或调整方法留下自然承接点。`;
+    }
+    if (phase === "afternoon") {
+      return `${shared}
+- 上午已经发生：${training.companionDay?.morningSummary || "上午已完成一次培养行动。"}
+- 直接承接上午已经发生的训练结果，不要重新介绍同一个困难。
+- 本次必须验证上午的方法、巩固成果、调整路径，或处理上午暴露的新问题。
+- 即使玩家再次选择相同属性，也不能复刻上午的场景结构和对白。
+- 本次回复结束时写清楚下午取得的实际进展，供傍晚活动继续承接。`;
+    }
+    return "";
+  }
+
   function buildPrompt(action, attribute, resultText, randomEvent = null, actionContext = {}) {
     const profile = idols[state.idol];
     const actionName = actionLabel(action, attribute);
@@ -9447,7 +10494,7 @@ ${summarizeProduceActionContext()}
 连续性要求：
 - 本轮是当前日程的「${actionName}」，必须直接写本次行动现场和行动后的反应。
 - 如果上文已经完成担当开场或确认担当关系，不要重写担当开场，不要再次写初遇、递名片、递契约书或重新签约。
-- 不要把课程、训练、休息或外出写成重新建立育成关系；只写前端已经结算的本次行动。`;
+- 不要把课程、训练、休息或外出写成重新建立育成关系；只写前端已经结算的本次行动。${buildNiaCompanionTrainingContinuity()}`;
 
     const eventPrompt = randomEvent ? `
 
@@ -9512,7 +10559,7 @@ ${directorPrompt ? `${directorPrompt}\n\n` : ""}${storytellerIncidentPrompt ? `$
     const actionStyle = action === "intimacy"
       ? `${profile.styles.companion || profile.styles.rest} 这是信赖值60后解锁的普通亲密互动，重点写安心、信任、被允许靠近与互相照顾。`
       : profile.styles[action] || profile.styles.rest;
-    
+
     const destinationPrompt = action === "outing" && actionContext.destination ? `
 本次外出地点：${actionContext.destination}
 
@@ -9535,8 +10582,8 @@ ${actionContext.companionTopic}
     const tierDescriptions = {
       20: "【完美回复/完美互动】：最契合你的隐藏心思或真实性格，展现出极强的默契，能让你感到非常受触动或心跳加速。",
       15: "【极佳回复/极佳互动】：优秀的互动回复，你感到非常开心，反应积极热切。",
-      10: action === "outing" 
-        ? "【完美回复/完美互动】：最契合你的隐藏心思或真实性格，展现出极强的默契，能让你感到非常受触动或心跳加速。" 
+      10: action === "outing"
+        ? "【完美回复/完美互动】：最契合你的隐藏心思或真实性格，展现出极强的默契，能让你感到非常受触动或心跳加速。"
         : "【普通回复】：中规中矩的互动，没有说错话但有些普通或老套。",
       8: "【极佳回复/极佳互动】：优秀的互动回复，你感到非常开心，反应积极热切。",
       6: "【普通回复】：中规中矩的互动，没有说错话但有些普通或老套。",
@@ -10203,6 +11250,16 @@ ${intimacyRule}${companionTopicLine}
 ${renderContract}`;
   }
 
+  function buildNsfwHcgPromptSection(targetIdol = "") {
+    const idol = canonicalIdolName(targetIdol) || getNsfwIntimacyTargetIdol() || state.idol || "";
+    if (typeof hatsuHcg.buildNsfwHcgTagContract === "function") {
+      return hatsuHcg.buildNsfwHcgTagContract(idol);
+    }
+    return `【NSFW 视觉标签契约】
+- 在 <story> 内可额外使用 <nsfw_mode>on</nsfw_mode> / <nsfw_mode>off</nsfw_mode> 与 <pose id="姿势ID"/>。
+- 进入成人向身体接触时先输出 nsfw_mode=on，再在对应画面页前输出 pose。`;
+  }
+
   function buildNsfwIntimacyOptionContract() {
     return `选项生成要求：
 - 必须输出 4 个由 AI 设计的制作人行动选项，供玩家在 VN 界面点选。
@@ -10214,12 +11271,19 @@ ${renderContract}`;
   function buildNsfwIntimacyOpeningPrompt(actionContext = {}) {
     const targetIdol = canonicalIdolName(actionContext.inviteIdol) || state.idol;
     const profile = idols[targetIdol] || {};
-    const apartmentInvite = Boolean(actionContext.apartmentInvite);
+    const isCgTest = Boolean(actionContext.nsfwCgTest);
+    // 与普通公寓邀约互斥：测试标记存在时绝不走公寓场景前提
+    const apartmentInvite = Boolean(actionContext.apartmentInvite) && !isCgTest;
     const actionStyle = `${profile.styles.companion || profile.styles.rest} 这是信赖值100后解锁的 NSFW 亲密互动，必须写成人向亲密、情欲张力、身体接触与彼此允许靠近的内容。`;
-    const header = apartmentInvite
-      ? "[初星育成系统：公寓邀约 · NSFW 亲密 · 开场]"
-      : "[初星育成系统：NSFW 亲密 · 开场]";
-    const sceneSection = apartmentInvite ? `\n${buildApartmentNsfwSceneSection(targetIdol)}\n` : "";
+    const header = isCgTest
+      ? "[初星育成系统：NSFW CG 测试 · 开场]"
+      : apartmentInvite
+        ? "[初星育成系统：公寓邀约 · NSFW 亲密 · 开场]"
+        : "[初星育成系统：NSFW 亲密 · 开场]";
+    // 普通公寓邀约仍走公寓场景前提；CG 测试只注入锁定条款，避免污染正常邀约
+    const sceneSection = isCgTest
+      ? `\n${buildNsfwCgTestLockPromptSection(actionContext)}\n`
+      : (apartmentInvite ? `\n${buildApartmentNsfwSceneSection(targetIdol)}\n` : "");
     return `${header}
 
 互动对象：${targetIdol}
@@ -10243,8 +11307,13 @@ ${buildProducerPromptSection()}
 请生成本次 NSFW 亲密的开场剧情，并设计 4 个制作人第一人称选项。
 ${buildNsfwIntimacyOptionContract()}
 
-${galgameRenderContract("choice")}
-${buildChoiceHardRules({ phase1: true })}
+${buildNsfwHcgPromptSection(targetIdol)}
+
+${galgameRenderContract("nsfw_choice")}
+${buildChoiceHardRules({
+      phase1: true,
+      storyNote: "3. <story> 内除 dialogue/narration 外，仅可额外使用 nsfw_mode 与 pose 视觉标签。"
+    })}
 
 ${buildChoiceOnlyExample()}`;
   }
@@ -10253,10 +11322,16 @@ ${buildChoiceOnlyExample()}`;
     const targetIdol = getNsfwIntimacyTargetIdol();
     const profile = idols[targetIdol] || {};
     const apartmentInvite = isApartmentNsfwInviteActive();
-    const header = apartmentInvite
-      ? "[初星育成系统：公寓邀约 · NSFW 亲密 · 继续]"
-      : "[初星育成系统：NSFW 亲密 · 继续]";
-    const sceneSection = apartmentInvite ? `\n${buildApartmentNsfwSceneSection(targetIdol)}\n` : "";
+    const actionContext = state.pendingActionContext?.actionContext || {};
+    const isCgTest = Boolean(actionContext.nsfwCgTest);
+    const header = isCgTest
+      ? "[初星育成系统：NSFW CG 测试 · 继续]"
+      : apartmentInvite
+        ? "[初星育成系统：公寓邀约 · NSFW 亲密 · 继续]"
+        : "[初星育成系统：NSFW 亲密 · 继续]";
+    const sceneSection = isCgTest
+      ? `\n${buildNsfwCgTestLockPromptSection(actionContext)}\n`
+      : (apartmentInvite ? `\n${buildApartmentNsfwSceneSection(targetIdol)}\n` : "");
     return `${header}
 
 互动对象：${targetIdol}
@@ -10283,18 +11358,31 @@ ${profile.core || "按初星学园偶像设定自然发挥。"}
 请承接上文，写出 ${targetIdol} 的反应与场景推进，并重新设计 4 个新的互动分支选项。
 ${buildNsfwIntimacyOptionContract()}
 
-${galgameRenderContract("choice")}
-${buildChoiceHardRules({ storyNote: "3. <story> 只写本轮新增内容，不要重复已发生剧情全文。" })}`;
+${buildNsfwHcgPromptSection(targetIdol)}
+
+${galgameRenderContract("nsfw_choice")}
+${buildChoiceHardRules({
+      phase1: true,
+      storyNote: "3. <story> 只写本轮新增内容，不要重复已发生剧情全文；除 dialogue/narration 外仅可额外使用 nsfw_mode 与 pose。四个 <option> 必须紧跟 </story> 之后。"
+    })}
+
+${buildChoiceOnlyExample()}`;
   }
 
   function buildNsfwIntimacyClosingPrompt() {
     const targetIdol = getNsfwIntimacyTargetIdol();
     const profile = idols[targetIdol] || {};
     const apartmentInvite = isApartmentNsfwInviteActive();
-    const header = apartmentInvite
-      ? "[初星育成系统：公寓邀约 · NSFW 亲密 · 收尾]"
-      : "[初星育成系统：NSFW 亲密 · 收尾]";
-    const sceneSection = apartmentInvite ? `\n${buildApartmentNsfwSceneSection(targetIdol)}\n` : "";
+    const actionContext = state.pendingActionContext?.actionContext || {};
+    const isCgTest = Boolean(actionContext.nsfwCgTest);
+    const header = isCgTest
+      ? "[初星育成系统：NSFW CG 测试 · 收尾]"
+      : apartmentInvite
+        ? "[初星育成系统：公寓邀约 · NSFW 亲密 · 收尾]"
+        : "[初星育成系统：NSFW 亲密 · 收尾]";
+    const sceneSection = isCgTest
+      ? `\n${buildNsfwCgTestLockPromptSection(actionContext)}\n- 收尾轮可以切换到 aftercare_embrace，并以 nsfw_mode=off 结束。\n`
+      : (apartmentInvite ? `\n${buildApartmentNsfwSceneSection(targetIdol)}\n` : "");
     const dailySummarySection = state.pendingActionContext?.actionContext?.isDailyFinalAction
       ? `
 
@@ -10307,10 +11395,12 @@ ${getAffinityStageLine(state.idol, state.trust)}
 ${buildDailySummaryContract()}`
       : "";
     const renderContract = state.pendingActionContext?.actionContext?.isDailyFinalAction
-      ? `${galgameRenderContract("normal")}
+      ? `${galgameRenderContract("nsfw")}
 - 先写【初星正文开始】…【初星正文结束】收尾剧情，再写【今日总结开始】…【今日总结结束】。
 - 请写 600 字以内的 NSFW 亲密收尾正文。${dailySummarySection}`
-      : `${outputContract("请写 600 字以内的 NSFW 亲密收尾正文。")}`;
+      : `${galgameRenderContract("nsfw")}
+- 不要改算前端已结算数值；正文前后不要输出系统说明。
+- 请写 600 字以内的 NSFW 亲密收尾正文。`;
 
     return `${header}
 
@@ -10332,7 +11422,10 @@ ${buildNsfwIntimacyChatContextLine()}
 - 不要再提供新的选项。
 - 让场景自然收束，可写亲密后的安抚、余韵与告别。
 - 不要退回到普通亲密 / 清水互动的语气。
+- 收尾时请输出合适的视觉标签：可用 <pose id="aftercare_embrace"/>，并以 <nsfw_mode>off</nsfw_mode> 结束 NSFW 模式。
 - 限制在 600 字以内。
+
+${buildNsfwHcgPromptSection(targetIdol)}
 
 ${renderContract}`;
   }
@@ -10361,6 +11454,41 @@ ${seed}
 叙事要求：担当开场剧情，写选择理由与对方反应，停在育成正式开始；不推进日程，不改数值。
 
 ${outputContract("请写 500 字以内的开场剧情。")}`;
+  }
+
+  function buildNiaOpeningPrompt() {
+    const profile = idols[state.idol] || {};
+    const route = getCurrentNiaRoute();
+    const opening = route?.opening || {};
+    const anchors = Array.isArray(opening.anchors) && opening.anchors.length
+      ? opening.anchors
+      : [
+          "制作人向咲季说明 NEXT IDOL AUDITION，以及由粉丝投票支持偶像晋级的粉丝投票机制。",
+          "咲季意识到吸引粉丝是参赛的起点，并把吸粉、选拔和排名视为新的战斗。",
+          "佑芽登场，姐妹约定通过各自的选拔积累粉丝，不依靠对方让路。",
+          "咲季与佑芽约定最终在 FINALE 正面对决，结尾进入第一轮企划准备。"
+        ];
+    return `[N.I.A 育成系统：担当开场]
+
+担当偶像：${state.idol || route?.idolName || "担当偶像"}
+绑定角色卡：${state.boundCharacter?.name || "未绑定，按担当偶像写"}
+角色核心：${profile.core || "遵循角色卡与世界书中的既有设定。"}
+${buildProducerPromptSection()}
+
+剧情定位：
+这是签署 N.I.A 育成合约后的独立开场。故事结束后，制作人才会开始制定第一轮吸粉企划；本段不推进日程、不结算数值。
+
+固定剧情：第 ${Number(opening.episode) || 11} 话。
+正文必须依次完成以下剧情锚点：
+${anchors.map((anchor, index) => `${index + 1}. ${anchor}`).join("\n")}
+
+叙事要求：
+- 可以补充场景、动作、心理与制作人的反应，但不能改变上述事件顺序。
+- 不要提前描写选拔结果或 FINALE 胜负，不要写已经开始营业或训练。
+- 让咲季主动理解并接受目标，不要把她写成只听制作人说明的被动角色。
+- 一次完整写完，自然收束，不要生成选项，不要写“待续”。
+
+${outputContract("请写 1000 字以内的 N.I.A 开场剧情。")}`;
   }
 
   function buildLivePrompt() {
@@ -10901,6 +12029,128 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     return true;
   }
 
+  function failNiaOpeningRequest(message, reason = "generation_failed") {
+    const nia = normalizeNiaState(state.nia);
+    const active = nia.openingRequest;
+    if (active && isPrimaryModelLeaseCurrent(active.requestId, active.channelLeaseId)) {
+      releasePrimaryModelChannel(active.requestId, active.channelLeaseId, reason);
+    }
+    if (pendingAiRequestId === active?.requestId) pendingAiRequestId = "";
+    state.pendingAiRequestId = pendingAiRequestId;
+    state.nia = {
+      ...nia,
+      openingStatus: "retryable_failed",
+      openingRequest: null,
+      lastError: String(message || "N.I.A 开场生成未完成，可以重新尝试。"),
+      updatedAt: Date.now()
+    };
+    if (state.harness?.activeTurn?.kind === "nia_opening" && state.harness.activeTurn.requestId === active?.requestId) {
+      state.harness.activeTurn = {
+        ...state.harness.activeTurn,
+        status: "recovery_required",
+        failureReason: String(reason || "generation_failed"),
+        updatedAt: Date.now()
+      };
+    }
+    saveState("nia.opening_failed");
+    return false;
+  }
+
+  function openNiaOpeningVn(story = normalizeNiaState(state.nia).openingStory) {
+    const nia = normalizeNiaState(state.nia);
+    const openingStory = String(story || nia.openingStory || "").trim();
+    if (!openingStory) return false;
+    state.launchMode = "nia";
+    state.nia = { ...nia, openingStatus: "ready", openingStory, openingRequest: null };
+    state.activeStoryNode = { type: "niaOpening", ready: true };
+    state.pendingActionContext = { action: "nia_opening", actionContext: { phase: "opening" } };
+    state.eventMode = "none";
+    state.lastStory = openingStory;
+    saveState("nia.opening_playback");
+    openEventOverlay("N.I.A · 新的战斗", "通往 FINALE 的起点", openingStory);
+    return true;
+  }
+
+  function startNiaOpeningStory(source = "startNiaOpeningStory") {
+    if (!isNiaRouteAvailable(state.idol)) {
+      return rejectUnavailableNiaRoute();
+    }
+    ensureNiaInheritedAffinity();
+    state.nia = normalizeNiaState(state.nia);
+    if (!state.nia.inheritedContext.confirmed) {
+      selectedIdol = canonicalIdolName(state.idol || selectedIdol);
+      openNiaInheritancePanel();
+      showToast("请先确认前情", "填写与担当已有的关系、约定和回忆后再开始 N.I.A。", "info");
+      return false;
+    }
+    if (state.nia.openingStatus === "ready" && state.nia.openingStory) {
+      return openNiaOpeningVn(state.nia.openingStory);
+    }
+    if (state.nia.openingStatus === "completed") {
+      openNiaPrototype();
+      return true;
+    }
+    const prompt = buildNiaOpeningPrompt();
+    const requestId = createRequestId();
+    const turnId = createHarnessId("nia-opening-turn");
+    const dispatch = acquirePrimaryEntryDispatch(requestId, "nia_opening", { turnId });
+    if (!dispatch.ok) return false;
+    const promptCapture = captureHarnessGenerationPrompt(prompt);
+    const openingRequest = dispatch.owner
+      ? {
+          requestId,
+          channelLeaseId: dispatch.owner.channelLeaseId,
+          turnId,
+          saveScope: activeHostSaveScope,
+          sessionEpoch: runtimeSessionEpoch
+        }
+      : null;
+    state.launchMode = "nia";
+    state.activeStoryNode = { type: "niaOpening", ready: false };
+    state.nia = {
+      ...state.nia,
+      openingStatus: "generating",
+      openingStory: "",
+      openingRequest,
+      lastError: "",
+      updatedAt: Date.now()
+    };
+    state.harness.activeTurn = {
+      kind: "nia_opening",
+      action: "nia_opening",
+      ownerKind: "nia_opening",
+      source: String(source || "startNiaOpeningStory"),
+      turnId,
+      requestId,
+      requestIds: [requestId],
+      channelLeaseId: dispatch.owner?.channelLeaseId || "",
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch,
+      status: "generating",
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+      ...promptCapture
+    };
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = prompt;
+    state.lastStory = "正在生成 N.I.A 开场剧情……";
+    saveState("nia.opening_dispatch");
+    render();
+    openEventOverlay("N.I.A · 新的战斗", "正在生成开场剧情", buildAiWaitingStory(`${state.idol || "担当偶像"}与制作人的 N.I.A 故事即将开始。`));
+    const sent = requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: dispatch.owner?.channelLeaseId || "",
+      ownerKind: "nia_opening",
+      turnId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) {
+      failNiaOpeningRequest("当前页面未连接 SillyTavern，N.I.A 开场提示词已保留。", "dispatch_failed");
+      openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制 N.I.A 开场提示词后手动发送。");
+    }
+    return sent;
+  }
+
   function triggerAffinityStory(threshold) {
     let prompt = "";
     let requestId = "";
@@ -10970,6 +12220,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
 
   // First Live 演出视频：仅使用远程 CDN，本地不 bundled 视频资源
   const VIDEO_CDN = "https://pub-cfdeb8f85de84d8193695eca002e7880.r2.dev";
+  const NIA_FINALE_LIVE_VIDEO = `${VIDEO_CDN}/assets/campusmode/Hanami-Saki-Campusmode.mp4`;
   const idolVideoFiles = {
     "藤田琴音": "fujita-kotone-live.mp4",
     "月村手毬": "tsukimura-temari-live.mp4",
@@ -10991,6 +12242,64 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       `${VIDEO_CDN}/${file}`
     ])
   );
+
+  function completeNiaFinaleLive() {
+    const nia = normalizeNiaState(state.nia);
+    if (nia.finaleLive?.status !== "playing") return false;
+    state.nia = {
+      ...nia,
+      finaleLive: {
+        ...nia.finaleLive,
+        status: "completed",
+        completedAt: Date.now()
+      },
+      activeRequest: null,
+      updatedAt: Date.now()
+    };
+    state.activeStoryNode = null;
+    state.pendingActionContext = null;
+    setElementHidden("eventOverlay", true);
+    saveState("nia.finale_live.completed");
+    render();
+    reconcileNiaFanMilestoneAfterSettlement();
+    return true;
+  }
+
+  function startNiaFinaleLive() {
+    const nia = normalizeNiaState(state.nia);
+    if (Number(nia.round) < 3 || nia.finaleLive?.status === "completed") return false;
+    deferredLivePostReply = null;
+    state.nia = {
+      ...nia,
+      finaleLive: {
+        status: "playing",
+        videoUrl: NIA_FINALE_LIVE_VIDEO,
+        startedAt: Date.now(),
+        completedAt: 0
+      },
+      updatedAt: Date.now()
+    };
+    state.activeStoryNode = { type: "niaFinaleLive", ready: false };
+    state.pendingActionContext = { action: "nia_finale_live", actionContext: { phase: "playing" } };
+    saveState("nia.finale_live.started");
+    render();
+    setElementHidden("eventOverlay", true);
+    triggerWipeTransition(() => playLiveVideo(NIA_FINALE_LIVE_VIDEO, completeNiaFinaleLive));
+    return true;
+  }
+
+  function resumeNiaFinaleLiveIfNeeded() {
+    if (state.produceScenario !== "nia") return false;
+    const nia = normalizeNiaState(state.nia);
+    if (nia.finaleLive?.status !== "playing") return false;
+    state.nia = nia;
+    state.activeStoryNode = { type: "niaFinaleLive", ready: false };
+    state.pendingActionContext = { action: "nia_finale_live", actionContext: { phase: "playing" } };
+    render();
+    setElementHidden("eventOverlay", true);
+    triggerWipeTransition(() => playLiveVideo(nia.finaleLive.videoUrl || NIA_FINALE_LIVE_VIDEO, completeNiaFinaleLive));
+    return true;
+  }
 
   function isLiveTheaterActive() {
     const overlay = document.getElementById("liveTheater");
@@ -11227,8 +12536,8 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
         );
       } else {
         openEventOverlay(
-          "First Live 演后记", 
-          buildAiWaitingResult(formatLiveResult(result)), 
+          "First Live 演后记",
+          buildAiWaitingResult(formatLiveResult(result)),
           buildAiWaitingStory("演出后后台剧情等待角色卡 AI 回复生成。")
         );
       }
@@ -11475,16 +12784,94 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   }
 
   function isProduceLaunch() {
-    return state.launchMode === "produce";
+    return state.launchMode === "produce" || isNiaTrainingActive();
+  }
+
+  function isNiaTrainingActive() {
+    return state.launchMode === "nia" && Boolean(state.nia?.training?.active);
+  }
+
+  function isCurrentNiaCompanionTrainingDay() {
+    if (!isNiaTrainingActive() || typeof niaTrainingCore.isCompanionTrainingPlanDay !== "function") return false;
+    return niaTrainingCore.isCompanionTrainingPlanDay(niaTrainingCore.getCurrentNiaPlanAction(state.nia));
+  }
+
+  function getCurrentNiaCompanionTrainingPhase() {
+    if (!isCurrentNiaCompanionTrainingDay()) return "";
+    return niaTrainingCore.getCompanionTrainingPhase(state.nia.training);
+  }
+
+  function isCurrentNiaOrdinaryPlanAction(action, attribute) {
+    if (!isNiaTrainingActive()) return false;
+    if (isCurrentNiaCompanionTrainingDay()) {
+      return niaTrainingCore.isCompanionTrainingPeriodAction(state.nia.training, { action, attribute });
+    }
+    return niaTrainingCore.matchesNiaOrdinaryPlanAction(state.nia, { action, attribute });
+  }
+
+  function summarizeNiaTrainingPeriodStory(story) {
+    return String(story || "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/【初星正文(?:开始|结束)】/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 2000);
+  }
+
+  function completeCurrentNiaOrdinaryActionAfterPlayback() {
+    if (!isNiaTrainingActive() || pendingAiRequestId || state.eventMode !== "none") return false;
+    const training = niaTrainingCore.normalizeNiaTraining(state.nia.training);
+    const completedDayIndex = training.actionIndex;
+    const companionTrainingDay = isCurrentNiaCompanionTrainingDay();
+    const operationId = String(
+      state.pendingActionContext?.actionContext?.niaOperationId
+      || state.harness?.activeTurn?.requestId
+      || state.lastRequestId
+      || ""
+    );
+    const completion = companionTrainingDay
+      ? niaTrainingCore.completeCompanionTrainingPeriod(state.nia.training, {
+          operationId,
+          summary: summarizeNiaTrainingPeriodStory(state.lastStory)
+        })
+      : niaTrainingCore.advanceNiaOrdinaryPlanAction(state.nia, state.pendingActionContext);
+    if (!completion.completed) return false;
+    state.nia = {
+      ...normalizeNiaState(state.nia),
+      training: completion.training,
+      updatedAt: Date.now()
+    };
+    if (completion.training.actionIndex > completedDayIndex) activateNiaEveningAfterDayCompletion(completedDayIndex);
+    state.pendingActionContext = null;
+    state.choiceStep = 0;
+    state.pendingChoiceRewards = [];
+    state.pendingOptionTexts = [];
+    state.selectedChoiceText = "";
+    state.selectedChoiceRating = "";
+    return true;
   }
 
   function shouldShowLaunchStage() {
     if (state.launchMenuPaused) return true;
+    if (state.launchMode === "nia") return !isNiaTrainingActive();
     return !state.idol && !state.launchMode;
   }
 
   function hasResumableGameplay() {
     if (!state.idol) return false;
+    // N.I.A uses its own opening/round state and does not populate the
+    // classic affinity opening flag. Treat an active or committed N.I.A
+    // save as resumable so the launch menu cannot strand it.
+    if (state.produceScenario === "nia" || state.nia?.mode === "nia") {
+      const nia = normalizeNiaState(state.nia);
+      return Boolean(
+        nia.training?.active
+        || nia.planStatus === "committed"
+        || nia.planStatus === "reviewing"
+        || nia.openingStatus === "completed"
+        || nia.interRoundOuting?.status && nia.interRoundOuting.status !== "idle"
+      );
+    }
     if (state.launchMode === "sandbox" || state.gameMode === "hybrid") {
       return Boolean(state.sandbox?.openingComplete && state.sandbox?.inviteComplete);
     }
@@ -11509,6 +12896,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
 
   function normalizeBootFlowState() {
     if (state.idol) return;
+    if (state.launchMode === "nia") return;
     if (state.launchMode === "sandbox" && !state.sandbox?.openingComplete) return;
     if (!state.launchMode) return;
     if (!shouldShowLaunchStage() && !shouldShowSelectionStage()) {
@@ -11571,6 +12959,55 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     document.getElementById("prodPersonalityInput").value = state.producer?.personality || "";
     document.getElementById("prodStyleInput").value = state.producer?.style || "";
     document.getElementById("prodSettingsInput").value = state.producer?.settings || "";
+  }
+
+  function openNiaInheritancePanel() {
+    const route = getNiaRouteForIdol(selectedIdol);
+    if (!route || route.status !== "available") return rejectUnavailableNiaRoute();
+    const nia = normalizeNiaState(state.nia);
+    const inherited = nia.inheritedContext;
+    document.getElementById("selectPanel")?.classList.add("is-hidden");
+    document.getElementById("scenarioPanel")?.classList.add("is-hidden");
+    document.getElementById("producerPanel")?.classList.add("is-hidden");
+    document.getElementById("sandboxApiPanel")?.classList.add("is-hidden");
+    document.getElementById("niaInheritancePanel")?.classList.remove("is-hidden");
+    document.getElementById("niaInheritanceIdol").textContent = route.idolName;
+    document.getElementById("niaInheritanceAffinity").textContent = `${inherited.affinityValue} / ${inherited.affinityMax} · ${inherited.affinityTag}`;
+    document.getElementById("niaRelationshipInput").value = inherited.relationship;
+    document.getElementById("niaPromisesInput").value = inherited.promises;
+    document.getElementById("niaMemoriesInput").value = inherited.memories;
+    applySelectStageBackground(selectedIdol);
+  }
+
+  function completeNiaProducerSetup() {
+    const route = getNiaRouteForIdol(selectedIdol);
+    if (!route || route.status !== "available") return rejectUnavailableNiaRoute();
+    const relationship = document.getElementById("niaRelationshipInput")?.value.trim() || "";
+    const promises = document.getElementById("niaPromisesInput")?.value.trim() || "";
+    const memories = document.getElementById("niaMemoriesInput")?.value.trim() || "";
+    state.launchMode = "produce";
+    applyIdolPreset(selectedIdol, true);
+    const nia = normalizeNiaState(state.nia);
+    state.nia = {
+      ...nia,
+      inheritedContext: {
+        confirmed: true,
+        relationship: relationship.slice(0, 2000),
+        promises: promises.slice(0, 2000),
+        memories: memories.slice(0, 2000),
+        affinityValue: Math.max(0, Number(route.inheritedAffinity.value) || 0),
+        affinityMax: Math.max(1, Number(route.inheritedAffinity.max) || 100),
+        affinityTag: String(route.inheritedAffinity.tag || "").slice(0, 80)
+      },
+      updatedAt: Date.now()
+    };
+    ensureNiaInheritedAffinity();
+    document.getElementById("niaInheritancePanel")?.classList.add("is-hidden");
+    document.getElementById("selectPanel")?.classList.remove("is-hidden");
+    saveState("nia.contract_signed");
+    showToast("前情已继承", `制作人与 ${selectedIdol} 的 N.I.A 育成正式开启！`, "gold");
+    triggerNiaEntryTransition(() => startNiaOpeningStory("确认前情并签署 N.I.A 合约"));
+    return true;
   }
 
   function updateSandboxApiTestStatus(message) {
@@ -11669,14 +13106,142 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     return sent;
   }
 
-  function openProducerSetupPanel() {
+  function resetScenarioPreview() {
+    const selectVisual = document.querySelector(".select-visual");
+    const preview = document.getElementById("scenarioPreview");
+    const background = document.getElementById("selectVisualBg");
+    const confirmContainer = document.getElementById("scenarioConfirmContainer");
+    selectVisual?.classList.remove("is-scenario-preview", "is-scenario-hatsu", "is-scenario-nia");
+    if (preview) preview.hidden = true;
+    if (confirmContainer) {
+      confirmContainer.style.display = "none";
+      confirmContainer.classList.remove("is-visible");
+    }
+    ["selectKicker", "selectTitle", "selectDesc", "selectRules"].forEach((id) => {
+      const element = document.getElementById(id);
+      if (element) element.hidden = false;
+    });
+    if (background) {
+      background.style.backgroundImage = "";
+      background.classList.remove("has-image");
+    }
+    updateBgm();
+  }
+
+  function renderScenarioPreview(scenarioId = selectedProduceScenario) {
+    const requestedScenarioId = scenarioId in PRODUCE_SCENARIOS ? scenarioId : "hatsu";
+    const niaLocked = requestedScenarioId === "nia" && !isNiaRouteAvailable(selectedIdol);
+    const scenario = PRODUCE_SCENARIOS[requestedScenarioId] || PRODUCE_SCENARIOS.hatsu;
+    selectedProduceScenario = requestedScenarioId;
+    const selectVisual = document.querySelector(".select-visual");
+    const preview = document.getElementById("scenarioPreview");
+    const logo = document.getElementById("scenarioPreviewLogo");
+    const slogan = document.getElementById("scenarioSlogan");
+    const background = document.getElementById("selectVisualBg");
+    const confirmContainer = document.getElementById("scenarioConfirmContainer");
+    const confirmButton = document.getElementById("confirmScenarioBtn");
+    const baseUrl = window.HATSU_ASSET_BASE || document.baseURI;
+
+    selectVisual?.classList.remove("is-scenario-hatsu", "is-scenario-nia");
+    selectVisual?.classList.add("is-scenario-preview", `is-scenario-${selectedProduceScenario}`);
+    ["selectKicker", "selectTitle", "selectDesc", "selectRules"].forEach((id) => {
+      const element = document.getElementById(id);
+      if (element) element.hidden = true;
+    });
+    if (preview) preview.hidden = false;
+    if (logo) {
+      logo.src = new URL(scenario.logo, baseUrl).href;
+      logo.alt = `${scenario.label} 剧本标志`;
+    }
+    if (slogan) slogan.textContent = scenario.slogan;
+    if (background) {
+      const imageUrl = new URL(scenario.background, baseUrl).href;
+      const tint = selectedProduceScenario === "nia"
+        ? "linear-gradient(180deg, rgba(5,31,39,.01), rgba(4,26,34,.12))"
+        : "linear-gradient(180deg, rgba(48,18,37,.01), rgba(38,15,31,.1))";
+      background.style.backgroundImage = `${tint}, url("${imageUrl}")`;
+      background.classList.add("has-image");
+    }
+    if (confirmContainer) {
+      confirmContainer.style.display = "flex";
+      confirmContainer.classList.add("is-visible");
+    }
+    if (confirmButton) {
+      confirmButton.style.backgroundColor = scenario.theme;
+      confirmButton.style.boxShadow = `0 8px 24px ${scenario.theme}66`;
+      const label = confirmButton.querySelector("span");
+      if (label) label.textContent = niaLocked ? "N.I.A 暂未开放" : scenario.cta;
+      confirmButton.disabled = niaLocked;
+      confirmButton.setAttribute("aria-disabled", String(niaLocked));
+      confirmButton.title = niaLocked ? "当前担当偶像的 N.I.A 路线尚未开放" : "";
+    }
+    document.querySelectorAll(".scenario-card").forEach((card) => {
+      const active = card.dataset.scenario === selectedProduceScenario;
+      card.classList.toggle("is-active", active);
+      card.setAttribute("aria-pressed", String(active));
+      const locked = card.dataset.scenario === "nia" && !isNiaRouteAvailable(selectedIdol);
+      card.disabled = locked;
+      card.classList.toggle("is-locked", locked);
+      card.setAttribute("aria-disabled", String(locked));
+      card.title = locked ? "当前担当偶像的 N.I.A 路线尚未开放" : "";
+    });
+    updateBgm();
+  }
+
+  function openScenarioSelectionPanel() {
+    if (isSandboxLaunch()) {
+      openProducerSetupPanel();
+      return;
+    }
     const selectPanel = document.getElementById("selectPanel");
+    const scenarioPanel = document.getElementById("scenarioPanel");
     const producerPanel = document.getElementById("producerPanel");
     const sandboxApiPanel = document.getElementById("sandboxApiPanel");
+    const niaInheritancePanel = document.getElementById("niaInheritancePanel");
     if (selectPanel) selectPanel.classList.add("is-hidden");
+    if (scenarioPanel) scenarioPanel.classList.remove("is-hidden");
+    if (producerPanel) producerPanel.classList.add("is-hidden");
+    if (sandboxApiPanel) sandboxApiPanel.classList.add("is-hidden");
+    if (niaInheritancePanel) niaInheritancePanel.classList.add("is-hidden");
+    const idolLabel = document.getElementById("scenarioIdolLabel");
+    if (idolLabel) idolLabel.textContent = selectedIdol ? `当前担当：${selectedIdol}` : "";
+    const idolConfirm = document.getElementById("selectConfirmContainer");
+    if (idolConfirm) {
+      idolConfirm.style.display = "none";
+      idolConfirm.classList.remove("is-visible");
+    }
+    selectedProduceScenario = PRODUCE_SCENARIOS[state.produceScenario] && (
+      state.produceScenario !== "nia" || isNiaRouteAvailable(selectedIdol)
+    ) ? state.produceScenario : "hatsu";
+    renderScenarioPreview(selectedProduceScenario);
+  }
+
+  function confirmProduceScenario() {
+    if (!PRODUCE_SCENARIOS[selectedProduceScenario]) return;
+    if (selectedProduceScenario === "nia" && !isNiaRouteAvailable(selectedIdol)) {
+      showToast("N.I.A 尚未开放", "当前担当偶像的 N.I.A 路线尚未开放。", "info");
+      renderScenarioPreview("hatsu");
+      return;
+    }
+    state.produceScenario = selectedProduceScenario;
+    saveState("produce.scenario_selected");
+    openProducerSetupPanel();
+  }
+
+  function openProducerSetupPanel() {
+    const selectPanel = document.getElementById("selectPanel");
+    const scenarioPanel = document.getElementById("scenarioPanel");
+    const producerPanel = document.getElementById("producerPanel");
+    const sandboxApiPanel = document.getElementById("sandboxApiPanel");
+    const niaInheritancePanel = document.getElementById("niaInheritancePanel");
+    if (selectPanel) selectPanel.classList.add("is-hidden");
+    if (scenarioPanel) scenarioPanel.classList.add("is-hidden");
     if (producerPanel) producerPanel.classList.remove("is-hidden");
     if (sandboxApiPanel) sandboxApiPanel.classList.add("is-hidden");
+    if (niaInheritancePanel) niaInheritancePanel.classList.add("is-hidden");
 
+    resetScenarioPreview();
+    applySelectStageBackground(selectedIdol);
     const copy = getProducerSetupCopy(selectedIdol);
     const kicker = document.getElementById("selectKicker");
     const title = document.getElementById("selectTitle");
@@ -11690,15 +13255,21 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       confirmContainer.classList.remove("is-visible");
     }
     populateProducerSetupForm();
+    const producerStartLabel = document.querySelector("#producerStartBtn span");
+    if (producerStartLabel) producerStartLabel.textContent = state.produceScenario === "nia" ? "继续填写前情" : "签署合约";
   }
 
   function restoreIdolSelectionPanel() {
     const selectPanel = document.getElementById("selectPanel");
+    const scenarioPanel = document.getElementById("scenarioPanel");
     const producerPanel = document.getElementById("producerPanel");
     const sandboxApiPanel = document.getElementById("sandboxApiPanel");
+    const niaInheritancePanel = document.getElementById("niaInheritancePanel");
     if (selectPanel) selectPanel.classList.remove("is-hidden");
+    if (scenarioPanel) scenarioPanel.classList.add("is-hidden");
     if (producerPanel) producerPanel.classList.add("is-hidden");
     if (sandboxApiPanel) sandboxApiPanel.classList.add("is-hidden");
+    if (niaInheritancePanel) niaInheritancePanel.classList.add("is-hidden");
 
     const kicker = document.getElementById("selectKicker");
     const title = document.getElementById("selectTitle");
@@ -11715,6 +13286,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       confirmContainer.style.display = "flex";
       confirmContainer.classList.add("is-visible");
     }
+    updateBgm();
   }
 
   function renderLaunchStage() {
@@ -11778,6 +13350,9 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       if (!state.freeMode?.active) {
         enterSandboxCampusAfterOpening();
       }
+    }
+    if (!resumeNiaModeIfNeeded()) {
+      resumeApartmentDialogueIfNeeded();
     }
     showToast("继续游戏", `欢迎回来，${state.idol}。`, "info");
   }
@@ -11893,6 +13468,9 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     worldMapLayoutState.drag = null;
     closeMapLocationOverlay();
     setElementHidden("eventOverlay", true);
+    if (isApartmentDialogueSessionActive()) {
+      syncApartmentDialogueCheckpoint();
+    }
     state.launchMenuPaused = true;
     state.freeMode = {
       ...(state.freeMode || {}),
@@ -11901,7 +13479,13 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       facilityKind: null,
       facilityLocationId: null
     };
+    // 公寓对话进度保留在 apartmentDialogue，不随 pendingActionContext 一并丢弃
     state.pendingActionContext = null;
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
     document.body.classList.remove("is-free-mode-active", "is-hybrid-facility-active");
     saveState();
     render();
@@ -11956,6 +13540,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   }
 
   function isFreeModeActive() {
+    if (isNiaInterRoundOutingActive()) return true;
     if (!state.freeMode?.active) return false;
     if (state.freeMode.layoutEditBypass) return true;
     if (isHybridCampusMode()) return true;
@@ -12037,13 +13622,20 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     if (!Number.isFinite(Number(state.freeMode.clockMinutes))) {
       state.freeMode.clockMinutes = FREE_MODE_DAY_START_MINUTES;
     }
+    if (isNiaInterRoundOutingActive()) {
+      const outing = getNiaInterRoundOuting();
+      state.freeMode.clockMinutes = outing.clockMinutes;
+    }
     if (!state.freeMode.presence || typeof state.freeMode.presence !== "object") {
       state.freeMode.presence = {};
     }
   }
 
   function formatFreeModeClock(minutes = state.freeMode?.clockMinutes) {
-    const total = Number(minutes);
+    const runtimeMinutes = arguments.length === 0 && isNiaInterRoundOutingActive()
+      ? getNiaInterRoundOuting().clockMinutes
+      : minutes;
+    const total = Number(runtimeMinutes);
     const safe = Number.isFinite(total) ? total : FREE_MODE_DAY_START_MINUTES;
     const hours = Math.floor(safe / 60);
     const mins = String(safe % 60).padStart(2, "0");
@@ -12074,6 +13666,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
 
   function formatFreeModeDayLabel() {
     ensureFreeModeTimeDefaults();
+    if (isNiaInterRoundOutingActive()) return `N.I.A 第${getNiaInterRoundOuting().toRound}轮第 1 日`;
     if (isSandboxLaunch()) {
       return `学园第 ${state.freeMode.postLiveDay} 天`;
     }
@@ -12085,22 +13678,47 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     return `${state.freeMode.postLiveDay}@${state.freeMode.clockMinutes}`;
   }
 
+  function isNiaEveningActive() {
+    return Boolean(
+      state.produceScenario === "nia"
+      && state.launchMode === "nia"
+      && typeof niaEveningCore.isEveningActive === "function"
+      && niaEveningCore.isEveningActive(normalizeNiaState(state.nia).evening)
+    );
+  }
+
+  function getApartmentClockMinutes() {
+    if (isNiaEveningActive()) return normalizeNiaState(state.nia).evening.clockMinutes;
+    ensureFreeModeTimeDefaults();
+    return state.freeMode.clockMinutes;
+  }
+
+  function formatApartmentClock() {
+    return formatFreeModeClock(getApartmentClockMinutes());
+  }
+
+  function formatApartmentDayLabel() {
+    if (isNiaEveningActive()) {
+      const evening = normalizeNiaState(state.nia).evening;
+      return `N.I.A Day ${evening.dayIndex + 1}`;
+    }
+    return formatFreeModeDayLabel();
+  }
+
   function isMapLocationExploreActive() {
     return state.pendingActionContext?.action === "map_location";
   }
 
   function isProducerApartmentNightVisual() {
-    if (!isFreeModeActive() || !state.freeMode?.atApartment) return false;
+    if (!isProducerApartmentActive()) return false;
     if (isHybridFacilityActive() || worldMapLayoutState.editorActive) return false;
-    ensureFreeModeTimeDefaults();
-    return state.freeMode.clockMinutes >= FREE_MODE_MAP_NIGHT_START_MINUTES;
+    return getApartmentClockMinutes() >= FREE_MODE_MAP_NIGHT_START_MINUTES;
   }
 
   function isProducerApartmentLateNight() {
-    if (!isFreeModeActive() || !state.freeMode?.atApartment) return false;
+    if (!isProducerApartmentActive()) return false;
     if (isHybridFacilityActive() || worldMapLayoutState.editorActive) return false;
-    ensureFreeModeTimeDefaults();
-    return state.freeMode.clockMinutes >= FREE_MODE_DAY_END_MINUTES;
+    return getApartmentClockMinutes() >= FREE_MODE_DAY_END_MINUTES;
   }
 
   function isProducerApartmentEvening() {
@@ -12109,8 +13727,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
 
   function isProducerApartmentMorning() {
     if (!isProducerApartmentActive()) return false;
-    ensureFreeModeTimeDefaults();
-    return state.freeMode.clockMinutes < FREE_MODE_DAY_END_MINUTES;
+    return getApartmentClockMinutes() < FREE_MODE_DAY_END_MINUTES;
   }
 
   function isApartmentCompanionSessionActive() {
@@ -12118,15 +13735,25 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   }
 
   function getApartmentCompanionIdol() {
-    const raw = String(state.freeMode?.apartmentCompanionIdol || "").trim();
+    const raw = String(
+      isNiaEveningActive()
+        ? normalizeNiaState(state.nia).evening.companionIdol
+        : state.freeMode?.apartmentCompanionIdol
+      || ""
+    ).trim();
     const canonical = canonicalIdolName(raw);
     return canonical && idols[canonical] ? canonical : "";
   }
 
   function setApartmentCompanionIdol(idolName) {
-    if (!state.freeMode) return;
     const canonical = canonicalIdolName(idolName);
-    state.freeMode.apartmentCompanionIdol = canonical && idols[canonical] ? canonical : "";
+    const companionIdol = canonical && idols[canonical] ? canonical : "";
+    if (isNiaEveningActive() && typeof niaEveningCore.setEveningCompanion === "function") {
+      const nia = normalizeNiaState(state.nia);
+      state.nia = { ...nia, evening: niaEveningCore.setEveningCompanion(nia.evening, companionIdol), updatedAt: Date.now() };
+      return;
+    }
+    if (state.freeMode) state.freeMode.apartmentCompanionIdol = companionIdol;
   }
 
   function resolveIdolStandeeSrc(idolName) {
@@ -12135,8 +13762,11 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     if (vnStandees[canonical]) return vnStandees[canonical];
     const profile = idols[canonical];
     if (profile?.background) {
-      const baseName = profile.background.split("/").pop();
-      return `./assets/novel-standees/${baseName}`;
+      const baseName = new URL(profile.background, document.baseURI).pathname.split("/").pop();
+      const path = `./assets/novel-standees/${baseName}`;
+      return typeof window.HATSU_RESOLVE_ASSET_URL === "function"
+        ? window.HATSU_RESOLVE_ASSET_URL(path)
+        : new URL(path, window.HATSU_ASSET_BASE || document.baseURI).href;
     }
     return profile?.avatar || "";
   }
@@ -12157,6 +13787,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   function resolvePortraitForSpeaker(speaker) {
     const appearance = globalThis.HatsuPortraits.normalizeAppearanceState(state.appearance);
     const canonicalSpeaker = canonicalIdolName(speaker);
+    const npcSpeaker = vnSpeakerAliases[String(speaker || "").trim()] || canonicalSpeaker;
     const standardKey = globalThis.HatsuPortraits.characterKeyForSpeaker(
       speaker,
       state.producer?.name,
@@ -12165,8 +13796,8 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       appearance.bindings.producer.aliases
     );
     const characterKey = standardKey || (
-      canonicalSpeaker && !idols[canonicalSpeaker] && vnStandees[canonicalSpeaker]
-        ? `npc:${canonicalSpeaker}`
+      npcSpeaker && !idols[npcSpeaker] && vnStandees[npcSpeaker]
+        ? `npc:${npcSpeaker}`
         : ""
     );
     if (!characterKey) {
@@ -12190,19 +13821,47 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     };
   }
 
+  function resolvePortraitForSpeakerVisualCue(speaker) {
+    const visual = globalThis.HatsuPortraitExpressions?.parseSpeakerVisualCue?.(speaker) || {
+      rawSpeaker: String(speaker || "").trim(),
+      speaker: String(speaker || "").trim(),
+      visualTag: "",
+      assetPath: "",
+      matched: false
+    };
+    const portrait = resolvePortraitForSpeaker(visual.speaker);
+    if (!visual.matched || !visual.assetPath) {
+      return { ...visual, portrait };
+    }
+    const presetUrl = typeof window.HATSU_RESOLVE_ASSET_URL === "function"
+      ? window.HATSU_RESOLVE_ASSET_URL(visual.assetPath)
+      : new URL(visual.assetPath, window.HATSU_ASSET_BASE || document.baseURI).href;
+    return {
+      ...visual,
+      portrait: {
+        ...portrait,
+        speaker: visual.rawSpeaker,
+        url: presetUrl,
+        fallbackUrl: portrait.fallbackUrl || portrait.url || presetUrl,
+        source: "preset",
+        transform: { ...globalThis.HatsuPortraits.DEFAULT_TRANSFORM }
+      }
+    };
+  }
+
   function applyResolvedPortraitToImage(img, resolved) {
     if (!img || !resolved) return false;
     const transform = globalThis.HatsuPortraits.normalizeTransform(resolved.transform);
-    img.src = String(resolved.url || "");
     img.style.setProperty("--portrait-scale", String(transform.scale));
     img.style.setProperty("--portrait-x", `${transform.offsetX}px`);
     img.style.setProperty("--portrait-y", `${transform.offsetY}px`);
     img.dataset.portraitSpeaker = String(resolved.speaker || "");
     img.dataset.portraitCharacterKey = String(resolved.characterKey || "");
-    img.dataset.portraitUserUrl = resolved.source === "user" ? String(resolved.url || "") : "";
+    img.dataset.portraitUserUrl = ["user", "preset"].includes(resolved.source) ? String(resolved.url || "") : "";
     img.dataset.portraitFallbackUrl = String(resolved.fallbackUrl || resolved.url || "");
     img.dataset.portraitFallbackApplied = "0";
     img.onerror = () => handlePortraitImageError(img, resolved.speaker || resolved.characterKey);
+    img.src = String(resolved.url || "");
     return Boolean(resolved.url);
   }
 
@@ -12222,18 +13881,19 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   }
 
   function getProducerApartmentSceneBackground() {
-    ensureFreeModeTimeDefaults();
-    return state.freeMode.clockMinutes >= FREE_MODE_MAP_NIGHT_START_MINUTES
+    return getApartmentClockMinutes() >= FREE_MODE_MAP_NIGHT_START_MINUTES
       ? PRODUCER_APARTMENT_SCENE
       : PRODUCER_APARTMENT_DAY_SCENE;
   }
 
   function isProducerApartmentActive() {
+    if (isNiaEveningActive()) return Boolean(normalizeNiaState(state.nia).evening.atApartment);
     return Boolean(state.freeMode?.atApartment);
   }
 
   function getFreeModeTravelEndMinutes() {
     ensureFreeModeTimeDefaults();
+    if (isNiaInterRoundOutingActive()) return Number(niaRoundTransitionCore.DAY_END_MINUTES) || FREE_MODE_DAY_END_MINUTES;
     return state.freeMode.eveningStayExtended ? FREE_MODE_LATE_END_MINUTES : FREE_MODE_DAY_END_MINUTES;
   }
 
@@ -12244,7 +13904,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   function canBringAssignedIdolHome() {
     const idol = getCurrentAffinityIdolName();
     if (!idol) return false;
-    return getFreeModeRelationshipScore(idol) >= INTIMACY_NSFW_UNLOCK_TRUST;
+    return getApartmentAffinityScore(idol) >= INTIMACY_NSFW_UNLOCK_TRUST;
   }
 
   function getEveningGoHomeOptions(phase = 1) {
@@ -12383,6 +14043,13 @@ ${idolLine}
   }
 
   function cloneEveningRelationshipSnapshot() {
+    if (isNiaEveningActive()) {
+      const idolName = getCurrentAffinityIdolName();
+      return {
+        idols: idolName ? { [idolName]: getApartmentAffinityScore(idolName) } : {},
+        npcs: {}
+      };
+    }
     ensureFreeModeRelationships();
     if (typeof ensureFreeModeNpcRelationships === "function") ensureFreeModeNpcRelationships();
     const idolsSnapshot = {};
@@ -12397,13 +14064,15 @@ ${idolLine}
   }
 
   function ensureEveningJournal(forceReset = false) {
-    if (!isFreeModeActive()) return null;
-    ensureFreeModeTimeDefaults();
-    const day = Number(state.freeMode.postLiveDay) || 1;
-    const journal = state.freeMode.eveningJournal;
+    if (!isFreeModeActive() && !isNiaEveningActive()) return null;
+    if (!isNiaEveningActive()) ensureFreeModeTimeDefaults();
+    const day = isNiaEveningActive()
+      ? normalizeNiaState(state.nia).evening.dayIndex + 1
+      : Number(state.freeMode.postLiveDay) || 1;
+    const journal = isNiaEveningActive() ? state.nia?.eveningJournal : state.freeMode.eveningJournal;
     if (!forceReset && journal && Number(journal.day) === day) return journal;
     const relationships = cloneEveningRelationshipSnapshot();
-    state.freeMode.eveningJournal = {
+    const nextJournal = {
       day,
       snapshot: {
         trust: Number(state.trust) || 0,
@@ -12420,14 +14089,16 @@ ${idolLine}
       tasks: [],
       statNotes: []
     };
-    return state.freeMode.eveningJournal;
+    if (isNiaEveningActive()) state.nia = { ...normalizeNiaState(state.nia), eveningJournal: nextJournal, updatedAt: Date.now() };
+    else state.freeMode.eveningJournal = nextJournal;
+    return nextJournal;
   }
 
   function appendEveningJournalActivity(label, detail = "") {
     const journal = ensureEveningJournal();
     if (!journal) return;
     journal.activities.push({
-      time: formatFreeModeClock(),
+      time: formatApartmentClock(),
       label: String(label || "").trim(),
       detail: String(detail || "").trim()
     });
@@ -12437,7 +14108,7 @@ ${idolLine}
     const journal = ensureEveningJournal();
     if (!journal) return;
     journal.tasks.push({
-      time: formatFreeModeClock(),
+      time: formatApartmentClock(),
       label: String(label || "").trim(),
       detail: String(detail || "").trim()
     });
@@ -12554,9 +14225,9 @@ ${idolLine}
       avatar.src = profile.avatar || "";
       avatar.alt = state.idol ? `${state.idol}头像` : "担当头像";
     }
-    if (schedule) schedule.textContent = formatFreeModeClock();
+    if (schedule) schedule.textContent = formatApartmentClock();
     if (name) name.textContent = formatIdolDisplayName(state.idol || "制作人");
-    if (dayValue) dayValue.textContent = String(state.freeMode?.postLiveDay || 1);
+    if (dayValue) dayValue.textContent = formatApartmentDayLabel();
     const notes = document.getElementById("daySummaryNotes");
     if (notes) {
       notes.innerHTML = buildFreeModeEveningSummaryLines().map((line) => {
@@ -12578,8 +14249,8 @@ ${idolLine}
   }
 
   function enterProducerApartment(options = {}) {
-    if (!isFreeModeActive()) return false;
-    if (state.freeMode?.atApartment) return true;
+    if (!isFreeModeActive() && !isNiaEveningActive()) return false;
+    if (isProducerApartmentActive()) return true;
     if (pendingAiRequestId && !options.force) {
       showToast("请稍候", "等待当前剧情生成完成后再移动。", "warn");
       return false;
@@ -12593,7 +14264,14 @@ ${idolLine}
     closeVnChoicesOverlay();
     hideVnCustomChoicePanel();
     setElementHidden("eventOverlay", true);
-    if (state.freeMode) {
+    if (isNiaEveningActive() && typeof niaEveningCore.enterEveningApartment === "function") {
+      const nia = normalizeNiaState(state.nia);
+      state.nia = {
+        ...nia,
+        evening: niaEveningCore.enterEveningApartment(nia.evening, options.companionIdol || ""),
+        updatedAt: Date.now()
+      };
+    } else if (state.freeMode) {
       state.freeMode.activeLocationId = null;
       state.freeMode.activeOutingDestination = null;
       state.freeMode.facilityKind = null;
@@ -12625,13 +14303,13 @@ ${idolLine}
   }
 
   function openApartmentGoHomeOverlay() {
-    if (!isFreeModeActive() || isHybridFacilityActive() || isProducerApartmentActive()) return;
+    if ((!isFreeModeActive() && !isNiaEveningActive()) || isHybridFacilityActive() || isProducerApartmentActive()) return;
     if (pendingAiRequestId) {
       showToast("请稍候", "等待当前剧情生成完成后再回公寓。", "warn");
       return;
     }
     const badge = document.getElementById("apartmentGoHomePhaseBadge");
-    if (badge) badge.textContent = `${formatFreeModeDayLabel()} · ${formatFreeModeClock()}`;
+    if (badge) badge.textContent = `${formatApartmentDayLabel()} · ${formatApartmentClock()}`;
     setElementHidden("apartmentGoHomeOverlay", false);
   }
 
@@ -12641,7 +14319,7 @@ ${idolLine}
 
   function openApartmentCompanionPickOverlay() {
     const badge = document.getElementById("apartmentCompanionPickPhaseBadge");
-    if (badge) badge.textContent = `${formatFreeModeDayLabel()} · ${formatFreeModeClock()}`;
+    if (badge) badge.textContent = `${formatApartmentDayLabel()} · ${formatApartmentClock()}`;
     renderApartmentCompanionPickList();
     setElementHidden("apartmentCompanionPickOverlay", false);
   }
@@ -12685,7 +14363,7 @@ ${idolLine}
 
   function confirmApartmentGoHomeWithIdol(idolName) {
     const targetIdol = canonicalIdolName(idolName);
-    if (!targetIdol || getFreeModeRelationshipScore(targetIdol) < INTIMACY_NSFW_UNLOCK_TRUST) {
+    if (!targetIdol || getApartmentAffinityScore(targetIdol) < INTIMACY_NSFW_UNLOCK_TRUST) {
       showToast("好感不足", `需要与偶像的好感度达到 ${INTIMACY_NSFW_UNLOCK_TRUST}。`, "warn");
       return;
     }
@@ -12725,18 +14403,20 @@ ${idolLine}
 
   function canReturnToCampusFromApartment() {
     if (!isProducerApartmentActive()) return false;
+    if (isNiaEveningActive()) return false;
     ensureFreeModeTimeDefaults();
     return state.freeMode.clockMinutes < FREE_MODE_DAY_END_MINUTES;
   }
 
   function syncProducerApartmentState() {
-    if (!isFreeModeActive()) return;
+    if (!isFreeModeActive() && !isNiaEveningActive()) return;
     if (isProducerApartmentMorning()) return;
   }
 
   function getApartmentInitiativeVisitorCandidate() {
     if (!isProducerApartmentActive() || isApartmentCompanionSessionActive()) return null;
-    const minutes = Number(state.freeMode?.clockMinutes || 0);
+    if (isNiaEveningActive()) return null;
+    const minutes = getApartmentClockMinutes();
     if (minutes < 18 * 60 || minutes >= 23 * 60) return null;
     const storyteller = state.freeMode?.world?.storyteller;
     const api = globalThis.HatsuWorldStorytellerInitiative;
@@ -12866,7 +14546,7 @@ ${idolLine}
       bg.style.backgroundImage = "";
     }
     const clock = document.getElementById("producerApartmentClock");
-    if (clock) clock.textContent = `${formatFreeModeDayLabel()} · ${formatFreeModeClock()}`;
+    if (clock) clock.textContent = `${formatApartmentDayLabel()} · ${formatApartmentClock()}`;
     const companion = getApartmentCompanionIdol();
     const standeeBtn = document.getElementById("apartmentCompanionStandeeBtn");
     const standeeImg = document.getElementById("apartmentCompanionStandeeImg");
@@ -12906,7 +14586,12 @@ ${idolLine}
       campusBtn.hidden = !canReturnToCampusFromApartment();
     }
     const sleepBtn = document.getElementById("apartmentSleepBtn");
-    if (sleepBtn) sleepBtn.hidden = !lateNight;
+    if (sleepBtn) {
+      sleepBtn.hidden = !lateNight;
+      sleepBtn.title = isNiaEveningActive()
+        ? "结束今天，进入下一项 N.I.A 日程。"
+        : "结束今天，从 08:00 开始新的学园日程。";
+    }
     const inviteBtn = document.getElementById("apartmentInviteBtn");
     if (inviteBtn) {
       inviteBtn.hidden = !lateNight;
@@ -12965,13 +14650,329 @@ ${idolLine}
       return;
     }
     const badge = document.getElementById("apartmentInvitePhaseBadge");
-    if (badge) badge.textContent = `${formatFreeModeDayLabel()} · ${formatFreeModeClock()}`;
+    if (badge) badge.textContent = `${formatApartmentDayLabel()} · ${formatApartmentClock()}`;
     renderApartmentInviteList();
     setElementHidden("apartmentInviteOverlay", false);
   }
 
   function closeApartmentInviteOverlay() {
     setElementHidden("apartmentInviteOverlay", true);
+  }
+
+  const NSFW_CG_TEST_SCENES = [
+    { id: "apartment_night", label: "制作人公寓 · 夜", path: PRODUCER_APARTMENT_SCENE },
+    { id: "apartment_day", label: "制作人公寓 · 日", path: PRODUCER_APARTMENT_DAY_SCENE },
+    { id: "dorm", label: "学生宿舍", path: "./assets/scenes/Dorm.png" },
+    { id: "rest", label: "休息室", path: "./assets/scenes/rest.png" },
+    { id: "producer_class", label: "制作人教室", path: "./assets/scenes/Producer_Class.png" },
+    { id: "campus", label: "校园", path: "./assets/scenes/campus.png" }
+  ];
+
+  let nsfwCgTestSelection = {
+    idol: "",
+    poseId: "",
+    sceneId: "apartment_night"
+  };
+  // lab: 开局测试台；pose_picker: 测试流程中仅换姿势（不影响普通邀约）
+  let nsfwCgTestLabMode = "lab";
+
+  function listNsfwCgTestIdols() {
+    return Object.keys(idols).filter((name) => {
+      const slug = typeof hatsuHcg.resolveCharacterSlug === "function"
+        ? hatsuHcg.resolveCharacterSlug(name)
+        : "";
+      const poses = typeof hatsuHcg.listPoseIds === "function" ? hatsuHcg.listPoseIds(name) : [];
+      return Boolean(slug && poses.length);
+    });
+  }
+
+  function listNsfwCgTestPoseEntries(idolName) {
+    const name = canonicalIdolName(idolName) || idolName;
+    const ids = typeof hatsuHcg.listPoseIds === "function" ? hatsuHcg.listPoseIds(name) : [];
+    return ids.map((id) => {
+      const entry = typeof hatsuHcg.getPoseEntry === "function" ? hatsuHcg.getPoseEntry(name, id) : null;
+      return {
+        id,
+        label: entry?.label || id
+      };
+    });
+  }
+
+  function isNsfwCgTestActive() {
+    return Boolean(state.pendingActionContext?.actionContext?.nsfwCgTest);
+  }
+
+  function getNsfwCgTestScene() {
+    return NSFW_CG_TEST_SCENES.find((item) => item.id === nsfwCgTestSelection.sceneId) || NSFW_CG_TEST_SCENES[0];
+  }
+
+  function syncNsfwCgTestPoseDefault() {
+    const poses = listNsfwCgTestPoseEntries(nsfwCgTestSelection.idol);
+    if (!poses.length) {
+      nsfwCgTestSelection.poseId = "";
+      return;
+    }
+    if (!poses.some((item) => item.id === nsfwCgTestSelection.poseId)) {
+      nsfwCgTestSelection.poseId = poses[0].id;
+    }
+  }
+
+  function renderNsfwCgTestLab() {
+    const idolList = document.getElementById("nsfwCgTestIdolList");
+    const sceneList = document.getElementById("nsfwCgTestSceneList");
+    const poseList = document.getElementById("nsfwCgTestPoseList");
+    const summary = document.getElementById("nsfwCgTestSummary");
+    const previewBtn = document.getElementById("nsfwCgTestPreviewBtn");
+    const inviteBtn = document.getElementById("nsfwCgTestInviteBtn");
+    const confirmPoseBtn = document.getElementById("nsfwCgTestConfirmPoseBtn");
+    const cancelBtn = document.getElementById("nsfwCgTestCancelBtn");
+    if (!idolList || !sceneList || !poseList) return;
+    const pickingPose = nsfwCgTestLabMode === "pose_picker";
+
+    const idolsReady = listNsfwCgTestIdols();
+    idolList.innerHTML = "";
+    idolsReady.forEach((name) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `nsfw-cg-test-chip${name === nsfwCgTestSelection.idol ? " is-active" : ""}`;
+      btn.textContent = name;
+      btn.disabled = pickingPose;
+      btn.addEventListener("click", () => {
+        if (pickingPose) return;
+        nsfwCgTestSelection.idol = name;
+        syncNsfwCgTestPoseDefault();
+        renderNsfwCgTestLab();
+      });
+      idolList.appendChild(btn);
+    });
+
+    sceneList.innerHTML = "";
+    NSFW_CG_TEST_SCENES.forEach((scene) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `nsfw-cg-test-chip${scene.id === nsfwCgTestSelection.sceneId ? " is-active" : ""}`;
+      btn.textContent = scene.label;
+      btn.disabled = pickingPose;
+      btn.addEventListener("click", () => {
+        if (pickingPose) return;
+        nsfwCgTestSelection.sceneId = scene.id;
+        renderNsfwCgTestLab();
+      });
+      sceneList.appendChild(btn);
+    });
+
+    const poses = listNsfwCgTestPoseEntries(nsfwCgTestSelection.idol);
+    poseList.innerHTML = "";
+    poses.forEach((pose) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `nsfw-cg-test-pose${pose.id === nsfwCgTestSelection.poseId ? " is-active" : ""}`;
+      btn.innerHTML = `<strong>${pose.label}</strong><span>${pose.id}</span>`;
+      btn.addEventListener("click", () => {
+        nsfwCgTestSelection.poseId = pose.id;
+        renderNsfwCgTestLab();
+      });
+      poseList.appendChild(btn);
+    });
+
+    const scene = getNsfwCgTestScene();
+    if (summary) {
+      summary.textContent = pickingPose
+        ? `更换姿势：${nsfwCgTestSelection.idol} · ${nsfwCgTestSelection.poseId || "未选"}（场景保持 ${scene.label}）`
+        : (nsfwCgTestSelection.idol && nsfwCgTestSelection.poseId
+          ? `当前：${nsfwCgTestSelection.idol} · ${nsfwCgTestSelection.poseId} · ${scene.label}`
+          : "请选择已接入 HCG 的角色与姿势。");
+    }
+    if (previewBtn) previewBtn.hidden = pickingPose;
+    if (inviteBtn) inviteBtn.hidden = pickingPose;
+    if (confirmPoseBtn) confirmPoseBtn.hidden = !pickingPose;
+    if (cancelBtn) cancelBtn.textContent = pickingPose ? "取消" : "返回";
+  }
+
+  function openNsfwCgTestLab() {
+    const idolsReady = listNsfwCgTestIdols();
+    if (!idolsReady.length) {
+      showToast("没有可测角色", "当前尚未接入任何角色的 HCG 白名单。", "warn");
+      return;
+    }
+    nsfwCgTestLabMode = "lab";
+    if (!nsfwCgTestSelection.idol || !idolsReady.includes(nsfwCgTestSelection.idol)) {
+      nsfwCgTestSelection.idol = idolsReady[0];
+    }
+    if (!NSFW_CG_TEST_SCENES.some((item) => item.id === nsfwCgTestSelection.sceneId)) {
+      nsfwCgTestSelection.sceneId = NSFW_CG_TEST_SCENES[0].id;
+    }
+    syncNsfwCgTestPoseDefault();
+    renderNsfwCgTestLab();
+    setElementHidden("nsfwCgTestOverlay", false);
+  }
+
+  function openNsfwCgTestPosePicker() {
+    if (!isNsfwCgTestActive()) return;
+    const ctx = state.pendingActionContext?.actionContext || {};
+    const targetIdol = canonicalIdolName(ctx.inviteIdol) || nsfwCgTestSelection.idol;
+    if (!targetIdol) {
+      showToast("无法换姿势", "当前测试缺少角色信息。", "warn");
+      return;
+    }
+    nsfwCgTestLabMode = "pose_picker";
+    nsfwCgTestSelection.idol = targetIdol;
+    nsfwCgTestSelection.sceneId = ctx.sceneId || nsfwCgTestSelection.sceneId;
+    nsfwCgTestSelection.poseId = String(ctx.lockedPoseId || nsfwCgTestSelection.poseId || "").trim();
+    syncNsfwCgTestPoseDefault();
+    closeVnChoicesOverlay();
+    renderNsfwCgTestLab();
+    setElementHidden("nsfwCgTestOverlay", false);
+  }
+
+  function closeNsfwCgTestLab() {
+    const wasPicker = nsfwCgTestLabMode === "pose_picker";
+    nsfwCgTestLabMode = "lab";
+    setElementHidden("nsfwCgTestOverlay", true);
+    if (
+      wasPicker
+      && isNsfwCgTestActive()
+      && isChoicePromptMode()
+      && state.pendingOptionTexts?.length === 4
+      && !pendingAiRequestId
+    ) {
+      showVnChoicesOverlay();
+    }
+  }
+
+  function confirmNsfwCgTestPoseChange() {
+    if (!isNsfwCgTestActive() || !state.pendingActionContext?.actionContext) {
+      showToast("当前不可用", "只有 CG 测试流程可以更换姿势。", "warn");
+      return;
+    }
+    const poseId = String(nsfwCgTestSelection.poseId || "").trim();
+    if (!poseId) {
+      showToast("还没选姿势", "请先选择一个可用姿势。", "warn");
+      return;
+    }
+    const ctx = state.pendingActionContext.actionContext;
+    const prevPose = String(ctx.lockedPoseId || "").trim();
+    if (poseId === prevPose) {
+      closeNsfwCgTestLab();
+      return;
+    }
+    state.pendingActionContext.actionContext = {
+      ...ctx,
+      lockedPoseId: poseId
+    };
+    nsfwCgTestLabMode = "lab";
+    setElementHidden("nsfwCgTestOverlay", true);
+    applyVnHcgVisual(true, poseId);
+    const poseEntry = typeof hatsuHcg.getPoseEntry === "function"
+      ? hatsuHcg.getPoseEntry(getNsfwIntimacyTargetIdol(), poseId)
+      : null;
+    const poseLabel = poseEntry?.label || poseId;
+    const producerAction = `（更换姿势为 ${poseId}${poseLabel !== poseId ? ` / ${poseLabel}` : ""}。场景不变，请按新锁定姿势继续，并输出对应 <pose id="${poseId}"/>）`;
+    requestNsfwIntimacyAiRound(
+      producerAction,
+      buildNsfwIntimacyContinuePrompt(producerAction),
+      `NSFW CG 测试：已更换姿势为 ${poseId}`
+    );
+  }
+
+  function buildNsfwCgTestActionContext(extra = {}) {
+    const scene = getNsfwCgTestScene();
+    const targetIdol = canonicalIdolName(nsfwCgTestSelection.idol);
+    const lockedPoseId = String(nsfwCgTestSelection.poseId || "").trim();
+    // 故意不设 apartmentInvite，避免写入公寓对话存档点 / 晚间日志 / 回公寓状态
+    return {
+      inviteIdol: targetIdol,
+      intimacyMode: "nsfw",
+      nsfwCgTest: true,
+      sceneId: scene.id,
+      scenePath: scene.path,
+      lockedPoseId,
+      ...extra
+    };
+  }
+
+  function previewNsfwCgTest() {
+    const targetIdol = canonicalIdolName(nsfwCgTestSelection.idol);
+    const poseId = String(nsfwCgTestSelection.poseId || "").trim();
+    if (!targetIdol || !poseId) {
+      showToast("还没选好", "请先选择角色和姿势。", "warn");
+      return;
+    }
+    closeNsfwCgTestLab();
+    resetVnHcgVisual({ clearSticky: true });
+    const scene = getNsfwCgTestScene();
+    const actionContext = buildNsfwCgTestActionContext({ previewOnly: true });
+    state.pendingActionContext = {
+      action: "intimacy",
+      attribute: null,
+      intimacyMode: "nsfw",
+      actionContext
+    };
+    state.intimacyRoute = "nsfw";
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    const story = [
+      "<nsfw_mode>on</nsfw_mode>",
+      `<pose id="${poseId}"/>`,
+      `<narration>【CG 测试】${targetIdol} · ${poseId} · ${scene.label}</narration>`,
+      `<dialogue char="${targetIdol}">“……这是姿势测试页，不是正式剧情。”</dialogue>`
+    ].join("\n");
+    state.lastStory = story;
+    state.lastDebug = `NSFW CG 测试预览：${targetIdol} / ${poseId}`;
+    saveState();
+    openEventOverlay("NSFW CG 测试", `${targetIdol} / ${poseId}`, story);
+  }
+
+  function startNsfwCgTestInvite() {
+    const targetIdol = canonicalIdolName(nsfwCgTestSelection.idol);
+    const lockedPoseId = String(nsfwCgTestSelection.poseId || "").trim();
+    if (!targetIdol || !idols[targetIdol]) {
+      showToast("无效偶像", "请选择可测试的偶像。", "warn");
+      return;
+    }
+    if (!lockedPoseId) {
+      showToast("还没选姿势", "请先选择锁定姿势，再开始测试邀约。", "warn");
+      return;
+    }
+    nsfwCgTestLabMode = "lab";
+    closeNsfwCgTestLab();
+    resetVnHcgVisual({ clearSticky: true });
+    const actionContext = buildNsfwCgTestActionContext();
+    state.pendingActionContext = {
+      action: "intimacy",
+      attribute: null,
+      intimacyMode: "nsfw",
+      actionContext
+    };
+    state.intimacyRoute = "nsfw";
+    state.eventMode = "choice_prompt";
+    state.choiceStep = 1;
+    state.pendingChoiceRewards = [0, 0, 0, 0];
+    state.pendingOptionTexts = [];
+    state.selectedChoiceText = "";
+    state.selectedChoiceRating = "";
+    const actionName = "NSFW CG 测试";
+    const requestId = createRequestId();
+    pendingAiRequestId = requestId;
+    const prompt = buildNsfwIntimacyOpeningPrompt(actionContext);
+    const scene = getNsfwCgTestScene();
+    const resultSummary = `CG 测试 · ${targetIdol} · ${lockedPoseId} · ${scene.label}`;
+    const story = `正在等待 ${targetIdol} 进入测试场景（锁定姿势 ${lockedPoseId}）...`;
+    state.lastStory = story;
+    state.lastPrompt = prompt;
+    state.lastDebug = `NSFW CG 测试：锁定 ${scene.label} / ${lockedPoseId}，等待 AI 生成。`;
+    saveState();
+    render();
+    setElementHidden("eventChoices", true);
+    const actionsEl = document.getElementById("eventActions");
+    if (actionsEl) actionsEl.style.display = "none";
+    applyVnHcgVisual(true, lockedPoseId);
+    openEventOverlay(actionName, buildAiWaitingResult(resultSummary), buildAiWaitingStory(story));
+    if (!requestHostPromptSend(prompt, requestId)) {
+      openAiPromptOverlay("当前页面未连接 SillyTavern。请编辑或复制提示词后手动发送。");
+    }
+    showToast("已开始测试邀约", `${targetIdol} · ${lockedPoseId} · ${scene.label}`, "info");
   }
 
   function startApartmentNsfwInvite(idolName) {
@@ -12984,7 +14985,7 @@ ${idolLine}
       showToast("尚未回公寓", "22:00 后回到制作人公寓才能邀约回家。", "warn");
       return;
     }
-    if (getFreeModeRelationshipScore(targetIdol) < INTIMACY_NSFW_UNLOCK_TRUST) {
+    if (getApartmentAffinityScore(targetIdol) < INTIMACY_NSFW_UNLOCK_TRUST) {
       showToast("好感不足", `与 ${targetIdol} 的好感度需达到 ${INTIMACY_NSFW_UNLOCK_TRUST}。`, "warn");
       return;
     }
@@ -13029,9 +15030,47 @@ ${idolLine}
     showToast("已发出邀约", `正在等待 ${targetIdol} 来到公寓...`, "info");
   }
 
+  function completeNiaEveningAfterSleep() {
+    if (!isNiaEveningActive() || typeof niaEveningCore.completeEvening !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const evening = niaEveningCore.completeEvening(nia.evening, { completedDayIndex: nia.evening.dayIndex });
+    if (evening.status !== "completed") return false;
+    let nextNia = { ...nia, evening, updatedAt: Date.now() };
+    const shouldEnterNextRound = nia.phase === "inter_round_outing"
+      && nia.interRoundOuting?.status === "completed"
+      && Number(nia.interRoundOuting?.fromRound) === Number(nia.round);
+    const roundTransition = shouldEnterNextRound && typeof niaRoundTransitionCore.enterNextRoundDraft === "function"
+      ? niaRoundTransitionCore.enterNextRoundDraft(nextNia)
+      : { transitioned: false, nia: nextNia };
+    if (roundTransition.transitioned) nextNia = { ...roundTransition.nia, updatedAt: Date.now() };
+    state.nia = nextNia;
+    clearApartmentDialogueCheckpoint();
+    state.pendingActionContext = null;
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    setElementHidden("eventOverlay", true);
+    setNiaPrototypeVisible(false);
+    saveState("nia.evening.completed");
+    render();
+    if (roundTransition.transitioned) {
+      openNiaPrototype();
+      showToast(`第${nextNia.round}轮企划`, "固定外出日已完成，请安排第 2 日至第 6 日。", "info");
+      return true;
+    }
+    const days = Array.isArray(nia.plan?.days) ? nia.plan.days : [];
+    const finishedPlan = niaTrainingCore.normalizeNiaTraining(nia.training).actionIndex >= days.length;
+    showToast("晚安", finishedPlan ? "本轮计划已完成，试镜即将开始。" : "休息结束，下一项 N.I.A 日程已经开放。", "info");
+    return true;
+  }
+
   function sleepFromProducerApartment() {
     if (!isProducerApartmentEvening()) return;
     triggerWipeTransition(() => {
+      if (isNiaEveningActive()) {
+        completeNiaEveningAfterSleep();
+        return;
+      }
       advanceFreeModeToNextDay({ stayAtApartment: true });
       render();
       showToast("晚安", `${formatFreeModeDayLabel()} ${formatFreeModeClock()}，该起床了。`, "info");
@@ -13071,9 +15110,9 @@ ${idolLine}
     const companion = getApartmentCompanionIdol();
     if (!companion) return;
     closeApartmentCompanionActionOverlay();
-    state.freeMode.apartmentPendingChatIdol = companion;
+    if (!isNiaEveningActive()) state.freeMode.apartmentPendingChatIdol = companion;
     const badge = document.getElementById("companionPhaseBadge");
-    if (badge) badge.textContent = `${formatFreeModeDayLabel()} · ${formatFreeModeClock()}`;
+    if (badge) badge.textContent = `${formatApartmentDayLabel()} · ${formatApartmentClock()}`;
     const textarea = document.getElementById("companionTopicTextarea");
     if (textarea) {
       textarea.value = "";
@@ -13085,7 +15124,7 @@ ${idolLine}
   function startApartmentCompanionIntimacyFlow() {
     const companion = getApartmentCompanionIdol();
     if (!companion) return;
-    if (getFreeModeRelationshipScore(companion) < INTIMACY_NSFW_UNLOCK_TRUST) {
+    if (getApartmentAffinityScore(companion) < INTIMACY_NSFW_UNLOCK_TRUST) {
       showToast("好感不足", `与 ${companion} 的好感度需达到 ${INTIMACY_NSFW_UNLOCK_TRUST}。`, "warn");
       return;
     }
@@ -13098,8 +15137,11 @@ ${idolLine}
     const producerAction = String(options.producerAction || "").trim().slice(0, 200);
     const targetIdol = canonicalIdolName(idolName);
     const profile = idols[targetIdol] || {};
-    const dayTimeLabel = `${formatFreeModeDayLabel()} · ${formatFreeModeClock()}`;
-    const sceneLine = state.freeMode.clockMinutes >= FREE_MODE_MAP_NIGHT_START_MINUTES
+    const dayTimeLabel = `${formatApartmentDayLabel()} · ${formatApartmentClock()}`;
+    const timelineLine = isNiaEveningActive()
+      ? "这是 N.I.A 五日计划当天日程结束后的晚间阶段；沿用 N.I.A 的日期与时间，不要写成沙盒或 First Live 后自由模式。"
+      : "这是 First Live 后的学园自由模式，不是育成日程轮次。";
+    const sceneLine = getApartmentClockMinutes() >= FREE_MODE_MAP_NIGHT_START_MINUTES
       ? "夜间公寓，室内灯光柔和，氛围比校园更私密。"
       : "白天公寓，室内明亮安静。";
     const sceneInstruction = continuation
@@ -13110,10 +15152,14 @@ ${summarizeMapExploreContext()}${producerAction ? `
 - 制作人本轮自定义输入：${producerAction}
 - 必须优先回应这次输入，再自然推进对话并给出下一组选项。` : ""}`
       : `请写制作人与 ${targetIdol} 一起回到公寓后，围绕指定话题聊天的开场，并设计 4 个不同的制作人回应选项。`;
+    const affinityScore = getApartmentAffinityScore(targetIdol);
+    const relationshipRule = isNiaEveningActive()
+      ? `- 好感度只针对当前担当 ${targetIdol}：根据上一轮制作人的选择输出 -5～+5 的整数增量；首次开场或没有实际互动时输出空对象。格式：<relationship_update>{"${targetIdol}":2}</relationship_update>。不得写其他偶像或 NPC。`
+      : `- 根据上一轮制作人的选择，为本轮实际互动对象输出 -5～+5 的整数好感增量；首次开场或没有实际互动时输出空对象。格式：<relationship_update>{"${targetIdol}":2}</relationship_update>。`;
     return `[初星育成系统：制作人公寓 · 同行聊天]
 
 同行偶像：${targetIdol}
-${getAffinityStageLine(targetIdol, getFreeModeRelationshipScore(targetIdol))}（当前好感度：${getFreeModeRelationshipScore(targetIdol)}/100）
+${getAffinityStageLine(targetIdol, affinityScore)}（当前好感度：${affinityScore}/100）
 担当偶像：${state.idol || "未登记"}
 绑定角色卡：${state.boundCharacter?.name || "未绑定，按角色写"}
 当前时间：${dayTimeLabel}
@@ -13126,13 +15172,16 @@ ${topic}
 ${buildProducerPromptSection()}
 
 ${sceneInstruction}
-- 这是 First Live 后的学园自由模式，不是育成日程轮次。
+- ${timelineLine}
 - 两人已经一起回到家，氛围私密但仍以日常聊天为主。
 - 角色基调：${profile.styles?.companion || profile.styles?.rest || ""}
 - 不要写选项被选中后的收尾，只写到等待制作人选择。
+${relationshipRule}
 
 ${galgameRenderContract("choice")}
-${buildChoiceHardRules({ phase1: true })}`;
+${buildChoiceHardRules({ phase1: true, includeRelationship: true })}
+
+${buildChoiceOnlyExample(true)}`;
   }
 
   function beginApartmentCompanionChat(idolName, topic, options = {}) {
@@ -13179,6 +15228,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
   function closeApartmentCompanionSession() {
     pendingAiRequestId = "";
+    clearApartmentDialogueCheckpoint();
     state.pendingActionContext = null;
     state.eventMode = "none";
     state.choiceStep = 0;
@@ -13187,6 +15237,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     state.pendingChoiceRewards = [];
     state.selectedChoiceText = "";
     state.selectedChoiceRating = "";
+    state.lastDisplayStory = "";
     closeVnChoicesOverlay();
     hideVnCustomChoicePanel();
     setElementHidden("eventChoices", true);
@@ -13219,12 +15270,25 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
   }
 
+  function advanceApartmentTime(minutes) {
+    if (isNiaEveningActive() && typeof niaEveningCore.advanceEveningClock === "function") {
+      const nia = normalizeNiaState(state.nia);
+      state.nia = {
+        ...nia,
+        evening: niaEveningCore.advanceEveningClock(nia.evening, minutes),
+        updatedAt: Date.now()
+      };
+      return { hitDayEnd: false };
+    }
+    return advanceFreeModeTime(minutes);
+  }
+
   function handleApartmentCompanionChoiceSelection(index) {
     const actionContext = state.pendingActionContext?.actionContext || {};
     const targetIdol = actionContext.companionIdol;
     const chosenOptionText = state.pendingOptionTexts[index] || "选择该选项";
     const chosenMinutes = 10;
-    advanceFreeModeTime(chosenMinutes);
+    advanceApartmentTime(chosenMinutes);
     const chosenLine = `<narration>▶ 制作人的选择：${chosenOptionText}</narration>`;
     state.lastStory = state.lastStory ? `${state.lastStory}\n\n${chosenLine}` : chosenLine;
     state.selectedChoiceText = "";
@@ -13252,7 +15316,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const actionContext = state.pendingActionContext?.actionContext || {};
     const targetIdol = actionContext.companionIdol;
     const chosenMinutes = 10;
-    advanceFreeModeTime(chosenMinutes);
+    advanceApartmentTime(chosenMinutes);
     const chosenLine = `<narration>▶ 制作人的自定义输入：${producerAction}</narration>`;
     state.lastStory = state.lastStory ? `${state.lastStory}\n\n${chosenLine}` : chosenLine;
     state.selectedChoiceText = "";
@@ -13284,7 +15348,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (worldMapLayoutState.editorActive) return true;
     if (isEveningGoHomeActive()) return false;
     ensureFreeModeTimeDefaults();
-    return state.freeMode.clockMinutes < getFreeModeTravelEndMinutes();
+    const clockMinutes = isNiaInterRoundOutingActive() ? getNiaInterRoundOuting().clockMinutes : state.freeMode.clockMinutes;
+    return clockMinutes < getFreeModeTravelEndMinutes();
   }
 
   function rollFreeModePresenceLegacy(force = false) {
@@ -13367,13 +15432,18 @@ ${buildChoiceHardRules({ phase1: true })}`;
     current.textContent = `${formatFreeModeDayLabel()} · ${formatFreeModeClock()}`;
     if (hint) {
       const endLabel = state.freeMode.eveningStayExtended ? "23:00" : "22:00";
-      hint.textContent = travelAllowed
+      hint.textContent = isNiaInterRoundOutingActive() && !travelAllowed
+        ? "固定外出日已经到达 22:00，请结束今天的外出。"
+        : travelAllowed
         ? `输入分钟数可将时间推进至 ${endLabel}。`
         : isEveningGoHomeActive()
           ? "请先完成今晚安排的选择。"
           : "今日活动已结束，可点击下方进入下一天。";
     }
-    if (dayBtn) dayBtn.hidden = travelAllowed;
+    if (dayBtn) {
+      dayBtn.hidden = travelAllowed;
+      dayBtn.textContent = isNiaInterRoundOutingActive() ? "结束今天的外出" : "进入下一天";
+    }
     if (advanceBtn) advanceBtn.disabled = !travelAllowed;
     if (input) input.disabled = !travelAllowed;
     document.querySelectorAll(".free-mode-time-quick-btn").forEach((button) => {
@@ -13439,6 +15509,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
   function handleFreeModeAdvanceDay() {
     if (!isFreeModeActive()) return;
+    if (isNiaInterRoundOutingActive()) {
+      finishNiaInterRoundOutingDay();
+      return;
+    }
     if (isMapLocationExploreActive()) {
       showToast("请先返回地图", "地点探索中无法进入下一天。", "warn");
       return;
@@ -13448,6 +15522,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
   function advanceFreeModeTime(minutes = FREE_MODE_MAP_CHOICE_MINUTES) {
     ensureFreeModeTimeDefaults();
+    if (isNiaInterRoundOutingActive() && typeof niaRoundTransitionCore.advanceInterRoundClock === "function") {
+      const nia = normalizeNiaState(state.nia);
+      const advanced = niaRoundTransitionCore.advanceInterRoundClock(nia.interRoundOuting, minutes);
+      state.nia = { ...nia, interRoundOuting: advanced.runtime, updatedAt: Date.now() };
+      state.freeMode.clockMinutes = advanced.runtime.clockMinutes;
+      rollFreeModePresence(true);
+      return { hitDayEnd: advanced.hitDayEnd };
+    }
     const endCap = getFreeModeTravelEndMinutes();
     const next = state.freeMode.clockMinutes + minutes;
     if (next >= endCap) {
@@ -13871,6 +15953,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (!isMapLocationExploreActive()) return;
     if (isSandboxScoutWrapUpPending()) return;
     if (!isFreeModeTravelAllowed()) {
+      if (isNiaInterRoundOutingActive()) {
+        showToast("外出时间已到", "请结束今天的外出，进入 N.I.A 晚间阶段。", "info");
+        return;
+      }
       if (maybeTriggerEveningGoHomePrompt()) return;
       showToast("今日已不能外出", "时间已到，请先决定今晚的安排。", "warn");
       return;
@@ -14493,8 +16579,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
           : "22:00 后不可安排，点击右上角时间管理进入下一天";
       } else {
         locationBadge.textContent = isFreeModeTravelAllowed()
-          ? "点击地图上的地点开始探索"
-          : "22:00 后不可外出，点击右上角时间管理进入下一天";
+          ? (isNiaInterRoundOutingActive() ? `第${getNiaInterRoundOuting().toRound}轮第 1 日 · 与担当放松游玩，可随时结束今天的外出` : "点击地图上的地点开始探索")
+          : (isNiaInterRoundOutingActive() ? "外出时间已到，请结束今天的外出" : "22:00 后不可外出，点击右上角时间管理进入下一天");
       }
     }
     const hybridExitBtn = document.getElementById("hybridCampusExitBtn");
@@ -14504,7 +16590,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
     const headKicker = document.querySelector("#freeModeStage .free-mode-head-copy .ui-kicker");
     if (headKicker) {
-      headKicker.textContent = isSandboxLaunch() ? "Sandbox" : isHybridCampusMode() ? "Hybrid Campus" : "Free Explore";
+      headKicker.textContent = isNiaInterRoundOutingActive() ? "N.I.A Outing" : isSandboxLaunch() ? "Sandbox" : isHybridCampusMode() ? "Hybrid Campus" : "Free Explore";
     }
     const sideQuestBtn = document.getElementById("freeModeSideQuestBtn");
     const sideQuestBadge = document.getElementById("freeModeSideQuestBadge");
@@ -14527,7 +16613,11 @@ ${buildChoiceHardRules({ phase1: true })}`;
     updateFreeModeBagButton();
     const apartmentBtn = document.getElementById("freeModeApartmentBtn");
     if (apartmentBtn) {
-      apartmentBtn.hidden = !isFreeModeActive() || isHybridFacilityActive() || worldMapLayoutState.editorActive;
+      apartmentBtn.hidden = !isFreeModeActive() || isHybridFacilityActive() || worldMapLayoutState.editorActive || isNiaInterRoundOutingActive();
+    }
+    const niaOutingEndBtn = document.getElementById("niaInterRoundOutingEndBtn");
+    if (niaOutingEndBtn) {
+      niaOutingEndBtn.hidden = !isNiaInterRoundOutingActive();
     }
     const giftShopOverlay = document.getElementById("giftShopOverlay");
     if (giftShopOverlay && !giftShopOverlay.hidden) {
@@ -14892,8 +16982,13 @@ ${buildChoiceHardRules({ phase1: true })}`;
   function renderOffCampusTransitMap(activeDestination = "") {
     const map = document.getElementById("offCampusTransitMap");
     if (!map) return;
+    const niaOuting = isNiaInterRoundOutingActive();
+    const allowedDestinations = new Set(niaOuting ? Array.from(niaRoundTransitionCore.DESTINATIONS || []) : []);
+    const visibleStations = niaOuting
+      ? OFF_CAMPUS_TRANSIT_STATIONS.filter((station) => station.status === "hub" || allowedDestinations.has(station.name))
+      : OFF_CAMPUS_TRANSIT_STATIONS;
     const selected = offCampusStationByDestination(activeDestination);
-    const stationById = Object.fromEntries(OFF_CAMPUS_TRANSIT_STATIONS.map((station) => [station.id, station]));
+    const stationById = Object.fromEntries(visibleStations.map((station) => [station.id, station]));
     const linePath = (ids) => ids
       .map((id) => stationById[id])
       .filter(Boolean)
@@ -14918,7 +17013,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
             <polyline class="off-campus-line off-campus-line-media" points="${linePath(["local_radio", "tv_station", "photo_studio", "music_festival"])}" />
             <polyline class="off-campus-line off-campus-line-home" points="${linePath(["shopping_mall", "saki_home", "china_home"])}" />
           </svg>
-          ${OFF_CAMPUS_TRANSIT_STATIONS.map((station) => `
+          ${visibleStations.map((station) => `
             <button
               type="button"
               class="off-campus-station off-campus-station-${escapePhoneText(station.line)}${station.status === "locked" ? " is-locked" : ""}${station.status === "hub" ? " is-hub" : ""}${station.id === selectedId ? " is-selected" : ""}"
@@ -15005,6 +17100,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
   function closeFreeModeOutingScene() {
     setElementHidden("freeModeOutingSceneOverlay", true);
+    const endButton = document.getElementById("niaInterRoundOutingSceneEndBtn");
+    if (endButton) endButton.hidden = true;
     closeFreeModeOutingFacilityGuide();
     closeFreeModeOutingIdolActionMenu();
     closeFreeModeOutingSceneDialogue();
@@ -15024,6 +17121,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
       image.src = facility.image || DEFAULT_OUTING_SCENE;
       image.alt = facility.sceneName || facility.name;
     }
+    const endButton = document.getElementById("niaInterRoundOutingSceneEndBtn");
+    if (endButton) endButton.hidden = !isNiaInterRoundOutingActive();
     renderFreeModeOutingSceneIdols();
     renderFreeModeOutingFacilityGuide();
   }
@@ -15311,12 +17410,16 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
   function openFreeModeOutingOverlay() {
     if (!isFreeModeActive()) return;
+    const niaOuting = isNiaInterRoundOutingActive();
     document.getElementById("freeModeOutingCustomInput").value = "";
     renderOffCampusTransitMap();
     const list = document.getElementById("freeModeOutingDestinationList");
     if (list) {
       list.innerHTML = "";
-      FREE_MODE_OUTING_DESTINATIONS.forEach((destination, index) => {
+      const destinations = niaOuting
+        ? FREE_MODE_OUTING_DESTINATIONS.filter((destination) => (niaRoundTransitionCore.DESTINATIONS || []).includes(destination.name))
+        : FREE_MODE_OUTING_DESTINATIONS;
+      destinations.forEach((destination, index) => {
         const station = offCampusStationByDestination(destination.name);
         const button = document.createElement("button");
         button.type = "button";
@@ -15333,6 +17436,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
         list.appendChild(button);
       });
     }
+    const customField = document.querySelector("#freeModeOutingOverlay .outing-custom-field");
+    const customButton = document.getElementById("freeModeOutingCustomConfirmBtn");
+    if (customField) customField.hidden = niaOuting;
+    if (customButton) customButton.hidden = niaOuting;
     setElementHidden("freeModeOutingOverlay", false);
   }
 
@@ -15345,6 +17452,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (!location) {
       showToast("还没有地点", "请选择预设地点，或输入自定义外出地点。", "warn");
       return;
+    }
+    if (isNiaInterRoundOutingActive()) {
+      closeFreeModeOutingOverlay();
+      return startNiaInterRoundOutingAtDestination(location);
     }
     const venue = getFreeModeOutingVenueByDestination(location);
     if (isChinaHomeScoutActive()) {
@@ -15422,6 +17533,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const inApartment = isProducerApartmentActive();
     const inCampusMap = isFreeModeActive() && !inHybridFacility && !inApartment;
     document.body.classList.toggle("is-free-mode-active", isFreeModeActive());
+    document.body.classList.toggle("is-nia-training", isNiaTrainingActive());
     document.body.classList.toggle("is-hybrid-facility-active", inHybridFacility);
     document.getElementById("launchStage")?.classList.toggle("is-hidden", !shouldShowLaunchStage());
     document.getElementById("selectionStage")?.classList.toggle("is-hidden", !shouldShowSelectionStage());
@@ -15476,7 +17588,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
         }
 
         const ext = extensions[extIndex];
-        const imgPath = `./assets/select-bg/${idolCode}${ext}`;
+        const imgPath = new URL(
+          `assets/select-bg/${idolCode}${ext}`,
+          window.HATSU_ASSET_BASE || document.baseURI
+        ).href;
         const img = new Image();
         img.onload = () => {
           try {
@@ -15511,22 +17626,22 @@ ${buildChoiceHardRules({ phase1: true })}`;
                 const newBgEl = document.createElement("div");
                 newBgEl.className = "select-visual-bg";
                 newBgEl.style.backgroundImage = newBgUrl;
-                
+
                 // Insert it immediately after the latest active one so it overlays on top
                 selectVisual.insertBefore(newBgEl, latestBg.nextSibling);
-                
+
                 // Force reflow
                 newBgEl.offsetHeight;
-                
+
                 // Fade in new image
                 newBgEl.classList.add("has-image");
                 selectVisual.classList.add("has-hover-bg");
-                
+
                 // Fade out old image
                 latestBg.classList.remove("has-image");
                 latestBg.id = ""; // Remove ID from old active
                 newBgEl.id = "selectVisualBg"; // Set ID on new active
-                
+
                 // Remove old element after transition
                 setTimeout(() => {
                   if (latestBg && latestBg.parentNode) {
@@ -15565,6 +17680,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const bootActions = document.getElementById("selectBootActions");
 
     if (!name) {
+      resetScenarioPreview();
       const copy = getLaunchSelectionCopy();
       if (kicker) kicker.textContent = copy.kicker;
       if (title) title.textContent = copy.title;
@@ -15590,12 +17706,15 @@ ${buildChoiceHardRules({ phase1: true })}`;
       applySelectStageBackground(null);
 
       const selectPanel = document.getElementById("selectPanel");
+      const scenarioPanel = document.getElementById("scenarioPanel");
       const producerPanel = document.getElementById("producerPanel");
       if (selectPanel) selectPanel.classList.remove("is-hidden");
+      if (scenarioPanel) scenarioPanel.classList.add("is-hidden");
       if (producerPanel) producerPanel.classList.add("is-hidden");
       return;
     }
 
+    resetScenarioPreview();
     if (bootActions) bootActions.hidden = true;
 
     const profile = idols[name];
@@ -15676,7 +17795,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
           event.currentTarget.classList.add("is-missing");
         });
       }
-      
+
       button.addEventListener("click", () => {
         if (selectedIdol === name) return;
         selectedIdol = name;
@@ -15767,6 +17886,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (targetVo) targetVo.textContent = state.threshold.Vo;
     if (targetDa) targetDa.textContent = state.threshold.Da;
     if (targetVi) targetVi.textContent = state.threshold.Vi;
+    renderNiaTrainingHud();
     document.getElementById("currentIdolLabel").textContent = "当前担当";
     document.getElementById("idolName").textContent = state.idol;
     const phaseBadge = document.getElementById("phaseBadge");
@@ -15783,19 +17903,67 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (badge) badge.textContent = String(pendingAffinityCount());
   }
 
+  function renderNiaTrainingHud() {
+    const active = isNiaTrainingActive();
+    document.querySelectorAll(".nia-only").forEach((element) => {
+      element.hidden = !active;
+    });
+    if (!active) return;
+    const training = niaTrainingCore.normalizeNiaTraining(state.nia?.training);
+    const progress = niaTrainingCore.getFanProgress(training.fans, training.fanTarget);
+    const targetFans = document.getElementById("targetFans");
+    const fanValue = document.getElementById("niaFanValue");
+    const fanFill = document.getElementById("niaFanFill");
+    const fanTrack = document.getElementById("niaFanTrack");
+    const fanRank = document.getElementById("niaFanRank");
+    const rank = rankFor(progress);
+    if (targetFans) targetFans.textContent = training.fanTarget.toLocaleString("zh-CN");
+    if (fanValue) fanValue.textContent = training.fans.toLocaleString("zh-CN");
+    if (fanFill) fanFill.style.setProperty("--nia-fan-scale", String(progress / 100));
+    if (fanTrack) {
+      fanTrack.setAttribute("aria-valuemax", String(training.fanTarget));
+      fanTrack.setAttribute("aria-valuenow", String(training.fans));
+    }
+    if (fanRank) {
+      const rankIndex = Math.max(0, ratingSpriteRanks.indexOf(rank));
+      const [rankShiftX, rankShiftY] = ratingSpriteOffsets[rank] || [0, 0];
+      fanRank.style.setProperty("--rank-image", `url('${new URL(ratingSpriteImage, window.HATSU_ASSET_BASE || document.baseURI).href}')`);
+      fanRank.style.setProperty("--rank-x", `${(rankIndex % 4) * (100 / 3)}%`);
+      fanRank.style.setProperty("--rank-y", `${Math.floor(rankIndex / 4) * (100 / 3)}%`);
+      fanRank.style.setProperty("--rank-shift-x", `${rankShiftX}%`);
+      fanRank.style.setProperty("--rank-shift-y", `${rankShiftY}%`);
+      fanRank.setAttribute("aria-label", `粉丝评级 ${rank}`);
+    }
+  }
+
   function renderStatMeters() {
     const container = document.getElementById("statMeters");
     container.innerHTML = "";
+    const ratingSpriteUrl = new URL(ratingSpriteImage, window.HATSU_ASSET_BASE || document.baseURI).href;
     ["Vo", "Da", "Vi"].forEach((key) => {
       const pct = clamp((state[key] / (state.cap[key] || 1)) * 100, 0, 100);
+      const meterProgress = pct * 0.75;
+      const rank = rankFor(pct);
+      const rankIndex = Math.max(0, ratingSpriteRanks.indexOf(rank));
+      const [rankShiftX, rankShiftY] = ratingSpriteOffsets[rank] || [0, 0];
+      const rankX = (rankIndex % 4) * (100 / 3);
+      const rankY = Math.floor(rankIndex / 4) * (100 / 3);
+      const miniImageUrl = new URL(statMiniImages[key], window.HATSU_ASSET_BASE || document.baseURI).href;
       const card = document.createElement("article");
       card.className = "meter-card";
       card.id = `meter-${key}`;
       card.style.setProperty("--meter-color", statColors[key]);
-      card.style.setProperty("--meter-pct", String(pct));
+      card.style.setProperty("--meter-progress", String(meterProgress));
       card.innerHTML = `
-        <div class="meter-arc" data-rank="${rankFor(pct)}"></div>
-        <div class="meter-value">${icon(statIcons[key])}<b>${state[key]}</b><small>/${state.cap[key]}</small></div>
+        <div class="meter-arc" aria-label="评级 ${rank}">
+          <svg class="meter-ring" viewBox="0 0 112 112" aria-hidden="true">
+            <circle class="meter-ring-outline" cx="56" cy="56" r="43" pathLength="100"></circle>
+            <circle class="meter-ring-track" cx="56" cy="56" r="43" pathLength="100"></circle>
+            <circle class="meter-ring-progress" cx="56" cy="56" r="43" pathLength="100"></circle>
+          </svg>
+          <div class="meter-rank" style="--rank-image:url('${ratingSpriteUrl}');--rank-x:${rankX}%;--rank-y:${rankY}%;--rank-shift-x:${rankShiftX}%;--rank-shift-y:${rankShiftY}%" aria-hidden="true"></div>
+        </div>
+        <div class="meter-value"><i class="meter-mini-icon" aria-hidden="true"><img src="${miniImageUrl}" alt="" draggable="false"></i><b>${state[key]}</b><small>/${state.cap[key]}</small></div>
         <div class="meter-growth">${state.growth[key]}%</div>
       `;
       container.appendChild(card);
@@ -15810,7 +17978,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     return "B";
   }
 
-  function createActionButton(label, action, attribute, color, costText) {
+  function createActionButton(label, action, attribute, color, costText, customIcon = "") {
     const button = document.createElement("button");
     button.className = "action-button";
     button.id = `action-${action}${attribute ? `-${attribute}` : ""}`;
@@ -15818,15 +17986,119 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (attribute) button.dataset.attribute = attribute;
     button.type = "button";
     button.style.setProperty("--action-color", color);
-    const spBadge = action === "training" && state.sp?.[attribute] ? `<i class="sp-badge">SP</i>` : "";
+    const spImageUrl = new URL(trainingSpImage, window.HATSU_ASSET_BASE || document.baseURI).href;
+    const spBadge = action === "training" && state.sp?.[attribute]
+      ? `<i class="sp-badge" aria-hidden="true"><img class="sp-badge-image" src="${spImageUrl}" alt="" draggable="false"></i>`
+      : "";
     const costBadge = costText ? `<i class="cost-badge">${costText}</i>` : "";
+    const trainingImage = action === "training" ? trainingActionImages[attribute] : "";
+    if (trainingImage) {
+      const imageUrl = new URL(trainingImage, window.HATSU_ASSET_BASE || document.baseURI).href;
+      button.classList.add("training-action-button");
+      button.setAttribute("aria-label", `${label}，体力消耗 12`);
+      button.innerHTML = `${spBadge}<span class="training-action-visual"><img class="training-action-image" src="${imageUrl}" alt="" draggable="false"><span class="training-action-cost">-12</span><span class="training-action-label">${label}</span></span>`;
+      return button;
+    }
+    const lessonImage = action === "lesson" ? lessonActionImages[attribute] : "";
+    if (lessonImage) {
+      const imageUrl = new URL(lessonImage, window.HATSU_ASSET_BASE || document.baseURI).href;
+      button.classList.add("lesson-action-button");
+      button.setAttribute("aria-label", `${label}，${costText || "上课"}`);
+      button.innerHTML = `${costBadge}<span class="lesson-action-visual"><img class="lesson-action-image" src="${imageUrl}" alt="" draggable="false"><span class="lesson-action-label">${label}</span></span>`;
+      return button;
+    }
+    if (customIcon) {
+      const imageUrl = new URL(customIcon, window.HATSU_ASSET_BASE || document.baseURI).href;
+      button.classList.add("nia-plan-action-button");
+      button.setAttribute("aria-label", `${label}，${costText || "计划行动"}`);
+      button.innerHTML = `${costBadge}<span class="nia-plan-action-visual"><img class="nia-plan-action-image" src="${imageUrl}" alt="" draggable="false"><span class="nia-plan-action-label">${label}</span></span>`;
+      return button;
+    }
     button.innerHTML = `${spBadge}${costBadge}${icon(actionIcons[action] || "book")}<span>${label}</span>`;
     return button;
+  }
+
+  function appendNiaCompanionTrainingSideActions(container) {
+    container.appendChild(createActionButton("闲聊", "freechat", null, "#8c73ff", "行动0"));
+    container.appendChild(createActionButton("互动", "interaction", null, "#ff783f", "行动0"));
+  }
+
+  function renderNiaCompanionTrainingActions(container, planDay) {
+    state.nia.training = niaTrainingCore.ensureCompanionTrainingDay(state.nia.training);
+    const phase = niaTrainingCore.getCompanionTrainingPhase(state.nia.training);
+    const phaseLabels = { morning: "上午", afternoon: "下午", campus: "傍晚" };
+
+    if (phase === "campus") {
+      container.appendChild(createActionButton("校内自由活动", "nia_campus_activity", null, "#20bca6", "傍晚"));
+    } else {
+      ["Vo", "Da", "Vi"].forEach((attribute) => {
+        container.appendChild(createActionButton(`${attribute}上课`, "lesson", attribute, statColors[attribute], "上课"));
+      });
+      ["Vo", "Da", "Vi"].forEach((attribute) => {
+        container.appendChild(createActionButton(`${attribute}训练`, "training", attribute, statColors[attribute], "-12体力"));
+      });
+      container.appendChild(createActionButton("休息", "rest", null, "#20dfad", "恢复体力"));
+    }
+    appendNiaCompanionTrainingSideActions(container);
+    document.getElementById("actionModeLabel").textContent = `N.I.A 第 ${getNiaPlanDisplayDay(state.nia.training.actionIndex)} 日 · ${phaseLabels[phase]} · ${planDay.title || "陪同训练"}`;
   }
 
   function renderActionButtons() {
     const container = document.getElementById("actionButtons");
     container.innerHTML = "";
+    if (isNiaTrainingActive()) {
+      if (isNiaEveningActive()) {
+        const evening = normalizeNiaState(state.nia).evening;
+        container.appendChild(createActionButton("回公寓", "nia_evening_go_home", null, "#7064d8", "22:00"));
+        document.getElementById("actionModeLabel").textContent = `N.I.A 第 ${evening.dayIndex + 1} 日已结束 · 22:00`;
+        renderActionHighlights();
+        return;
+      }
+      const planDay = niaTrainingCore.getCurrentNiaPlanAction(state.nia);
+      if (planDay) {
+        if (niaTrainingCore.isCompanionTrainingPlanDay(planDay)) {
+          renderNiaCompanionTrainingActions(container, planDay);
+          renderActionHighlights();
+          return;
+        }
+        const mapped = niaTrainingCore.mapNiaPlanAction(planDay);
+        container.appendChild(createActionButton(mapped.label, mapped.action, mapped.attribute, mapped.color, "计划", mapped.icon));
+        document.getElementById("actionModeLabel").textContent = `N.I.A 第 ${getNiaPlanDisplayDay(state.nia.training.actionIndex)} 日 · ${planDay.title || mapped.label}`;
+      } else {
+        const audition = niaAuditionCore.normalizeAuditionRuntime?.(state.nia.audition) || state.nia.audition || {};
+        const auditionBelongsToCurrentRound = Number(audition.roundNumber || audition.context?.round || 1) === Number(state.nia.round || 1);
+        const roundNames = ["零", "一", "二", "三"];
+        const currentRoundNumber = Math.max(1, Number(state.nia.round) || 1);
+        const currentRoundLabel = currentRoundNumber >= 3 ? "FINALE" : `第${roundNames[currentRoundNumber] || currentRoundNumber}轮`;
+        const interRoundOuting = getNiaInterRoundOuting();
+        const outingRoundLabel = `第${roundNames[interRoundOuting.toRound] || interRoundOuting.toRound}轮`;
+        if (["ready", "selecting"].includes(interRoundOuting.status)) {
+          container.appendChild(createActionButton(`开始${outingRoundLabel} · 外出放松`, "nia_inter_round_outing", null, "#20bca6", "第 1 日", "UI/Map.png"));
+          document.getElementById("actionModeLabel").textContent = `N.I.A ${outingRoundLabel}第 1 日 · 选择外出地点`;
+        } else if (["exploring", "retryable_failed"].includes(interRoundOuting.status)) {
+          container.appendChild(createActionButton(interRoundOuting.status === "retryable_failed" ? "重试外出收尾" : `继续${outingRoundLabel}外出`, "nia_inter_round_outing", null, "#20bca6", "第 1 日", "UI/Map.png"));
+          document.getElementById("actionModeLabel").textContent = `N.I.A ${outingRoundLabel}第 1 日 · ${interRoundOuting.destination || "外出放松"}`;
+        } else if (auditionBelongsToCurrentRound && audition.progressionApplied && audition.postAudition?.status === "completed") {
+          const complete = document.createElement("div");
+          complete.className = "nia-plan-complete";
+          complete.textContent = currentRoundNumber >= 3
+            ? "FINALE 已完成 · 第 1 名"
+            : `${currentRoundLabel}试镜已通过 · 第 1 名`;
+          container.appendChild(complete);
+          document.getElementById("actionModeLabel").textContent = `N.I.A ${currentRoundLabel}完成`;
+        } else if (auditionBelongsToCurrentRound && audition.progressionApplied) {
+          container.appendChild(createActionButton("继续赛后复盘", "nia_audition_recap", null, "#ff783f", `${currentRoundLabel}收尾`, "UI/Business.png"));
+          document.getElementById("actionModeLabel").textContent = `N.I.A ${currentRoundLabel} · 赛后复盘`;
+        } else {
+          const auditionActionLabel = currentRoundNumber >= 3 ? "开始 FINALE" : `开始${currentRoundLabel}试镜`;
+          const auditionGoal = currentRoundNumber >= 3 ? "争夺冠军" : "第 1 名晋级";
+          container.appendChild(createActionButton(auditionActionLabel, "nia_audition", null, "#ff783f", auditionGoal, "UI/Business.png"));
+          document.getElementById("actionModeLabel").textContent = `N.I.A 第 ${getNiaPlanDisplayDay(state.nia.training.actionIndex)} 日 · ${currentRoundLabel}`;
+        }
+      }
+      renderActionHighlights();
+      return;
+    }
     const pendingAffinityThreshold = pendingAffinityActionThreshold();
     if (pendingAffinityThreshold) {
       const threshold = pendingAffinityThreshold;
@@ -15943,7 +18215,15 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const actionZone = document.getElementById("actionZone");
     if (actionZone) actionZone.classList.toggle("is-summary-round", isSummaryRound());
     document.querySelectorAll(".action-button").forEach((button) => {
-      if (["day_summary", "next_day"].includes(button.dataset.action)) {
+      if (isNiaTrainingActive()) {
+        if (isCurrentNiaCompanionTrainingDay() && ["lesson", "training"].includes(button.dataset.action)) {
+          button.disabled = !hasEnoughStaminaForAction(button.dataset.action);
+        } else if (isCurrentNiaCompanionTrainingDay() && button.dataset.action === "rest") {
+          button.disabled = Number(state.stamina || 0) >= 100;
+        } else {
+          button.disabled = false;
+        }
+      } else if (["day_summary", "next_day"].includes(button.dataset.action)) {
         button.disabled = !isSummaryRound();
       } else if (["freechat", "interaction"].includes(button.dataset.action)) {
         button.disabled = false;
@@ -16330,6 +18610,10 @@ ${buildChoiceHardRules({ phase1: true })}`;
     const deliveryActive = Boolean(phoneChatDeliveryTimer);
     if (liveMatch || deliveryActive) return false;
 
+    const interruptedNode = state.activeStoryNode?.type === "phonechat" ? { ...state.activeStoryNode } : null;
+    if (interruptedNode?.mode === "nia_schedule_share") {
+      markNiaScheduleShareFailed(pending, "日程回应生成被中断，请重新获取回复。");
+    }
     state.phoneChat.isAwaitingReply = false;
     state.phoneChat.pendingRequestId = "";
     state.phoneChat.retryAvailable = Boolean(pending);
@@ -16377,11 +18661,14 @@ ${buildChoiceHardRules({ phase1: true })}`;
       releasePreparedLease("host_unavailable");
       return false;
     }
-    const prompt = promptText || state.lastPrompt || document.getElementById("promptText").value || "";
+    const rawPrompt = promptText || state.lastPrompt || document.getElementById("promptText").value || "";
+    ensureNiaInheritedAffinity();
+    const prompt = withNiaAffinityContext(rawPrompt);
     if (!prompt.trim()) {
       releasePreparedLease("empty_prompt");
       return false;
     }
+    if (prompt !== rawPrompt) state.lastPrompt = prompt;
     const source = hostPromptSendSource === "phonechat"
       ? "phonechat"
       : hostPromptSendSource === "broadcast"
@@ -16556,14 +18843,27 @@ ${buildChoiceHardRules({ phase1: true })}`;
       startOpeningStory("ST角色卡自动绑定");
       return;
     }
+    // A host save can carry a paused-menu marker from the previous shell.
+    // N.I.A training state is authoritative, so restore its route before
+    // opening any generic launch/phone surface.
+    if (state.produceScenario === "nia" || state.nia?.mode === "nia") {
+      state.produceScenario = "nia";
+      state.launchMode = "nia";
+      if (hasResumableGameplay()) state.launchMenuPaused = false;
+    }
     if (resolution.source === "empty") {
       localStorage.setItem(activeStorageKey, JSON.stringify(state));
     } else {
-      saveState();
+      saveState(state.produceScenario === "nia" ? "nia.host_state_recovered" : undefined);
     }
     render();
     requestAnimationFrame(() => maybeShowHarnessRecoveryPrompt());
+    if (typeof resumeNiaModeIfNeeded === "function") resumeNiaModeIfNeeded();
     resumeOpeningIfNeeded();
+    if (typeof resumeApartmentDialogueIfNeeded === "function"
+      && (typeof isNiaEveningActive !== "function" || !isNiaEveningActive())) {
+      resumeApartmentDialogueIfNeeded();
+    }
     const syncTitle = resolution.source === "remote"
       ? "已载入共享存档"
       : resolution.shouldMigrate
@@ -16586,6 +18886,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
   }
 
   function resumeOpeningIfNeeded() {
+    if (state.launchMode === "nia" || state.produceScenario === "nia") return;
     if (!state.idol || state.affinity.openingComplete) return;
     markAffinityUnlocked(0);
     if (!state.activeStoryNode) state.activeStoryNode = { type: "affinity", threshold: 0, ready: false };
@@ -17018,7 +19319,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
   }
 
   // ===== 小手机 · 初星广播部 =====
-  const BROADCAST_HOST_NAME = "真城优";
+  const BROADCAST_HOST_NAME = "真诚优";
   const BROADCAST_HOST_ROMAN = "Mashiro Yu";
   const BROADCAST_HOST_AVATAR = "./assets/avatars/mashiro-yu.png";
   let broadcastScriptLoading = false;
@@ -17625,6 +19926,8 @@ ${buildChoiceHardRules({ phase1: true })}`;
       refreshBtn.disabled = snsRefreshing;
     }
 
+    renderSnsBusinessCard();
+
     if (!items.length) {
       feedEl.innerHTML = "";
       if (emptyEl) {
@@ -17638,6 +19941,125 @@ ${buildChoiceHardRules({ phase1: true })}`;
 
     if (emptyEl) emptyEl.hidden = true;
     feedEl.innerHTML = items.map(buildSnsPostHtml).join("");
+  }
+
+  function snsBusinessEl(id) { return document.getElementById(id); }
+
+  function renderSnsBusinessCard() {
+    const card = snsBusinessEl("phoneSnsBusinessCard");
+    if (!card) return;
+    const runtime = normalizeNiaState(state.nia).snsBusiness;
+    const active = runtime?.businessId && runtime.status !== "idle";
+    card.hidden = !active;
+    if (!active) return;
+    const panels = {
+      composing: "phoneSnsBusinessComposer",
+      generating_post: "phoneSnsBusinessComposer",
+      retryable_failed: runtime.retryStage === "result" ? "phoneSnsBusinessResult" : "phoneSnsBusinessComposer",
+      awaiting_interaction: "phoneSnsBusinessPublished",
+      generating_result: "phoneSnsBusinessPublished",
+      settled: "phoneSnsBusinessResult"
+    };
+    const activePanel = panels[runtime.status] || "phoneSnsBusinessComposer";
+    card.querySelectorAll(".sns-business-panel").forEach((panel) => { panel.hidden = panel.id !== activePanel; });
+    const progress = snsBusinessEl("phoneSnsBusinessProgress");
+    if (progress) progress.textContent = activePanel === "phoneSnsBusinessComposer" ? "1 / 3" : activePanel === "phoneSnsBusinessPublished" ? "2 / 3" : "3 / 3";
+    const status = snsBusinessEl("phoneSnsBusinessComposerStatus");
+    if (status) status.textContent = runtime.lastError || (runtime.status === "generating_post" ? "正在准备帖子…" : "");
+    const mode = runtime.draft?.mode === "manual" ? "manual" : "ai_expand";
+    const modeInput = snsBusinessEl(mode === "manual" ? "phoneSnsPostModeManual" : "phoneSnsPostModeAi");
+    if (modeInput) modeInput.checked = true;
+    const topic = snsBusinessEl("phoneSnsPostTopicInput"); if (topic && document.activeElement !== topic) topic.value = runtime.draft?.topic || "";
+    const body = snsBusinessEl("phoneSnsPostBodyInput"); if (body && document.activeElement !== body) body.value = runtime.draft?.manualText || "";
+    const topicField = snsBusinessEl("phoneSnsTopicField"); const bodyField = snsBusinessEl("phoneSnsBodyField");
+    if (topicField) topicField.hidden = mode !== "ai_expand";
+    if (bodyField) bodyField.hidden = mode !== "manual";
+    const imageId = ["practice", "meal", "school"].includes(runtime.draft?.imageId) ? runtime.draft.imageId : "practice";
+    const imageClass = `sns-image-${imageId}`;
+    document.querySelectorAll("[data-sns-preset-image]").forEach((item) => {
+      const selected = item.dataset.snsPresetImage === imageId;
+      item.classList.toggle("is-selected", selected);
+      item.setAttribute("aria-pressed", String(selected));
+    });
+    const post = runtime.post || {};
+    const postEl = snsBusinessEl("phoneSnsBusinessPublishedPost");
+    if (postEl && post.postText) postEl.innerHTML = `<p class="sns-post-body">${escapePhoneText(post.postText)}</p><div class="sns-business-post-image ${imageClass}" role="img" aria-label="本次动态的配图"></div>`;
+    const comments = snsBusinessEl("phoneSnsBusinessComments");
+    if (comments) comments.innerHTML = (post.comments || []).map((item, index) => `<article class="sns-business-comment${index === 0 ? " is-featured" : ""}${item.id === niaSnsSelectedCommentId ? " is-selected" : ""}" data-sns-comment-id="${escapePhoneText(item.id)}"><div class="sns-business-comment-head"><strong>${escapePhoneText(item.author || "匿名观众")}</strong><button type="button" class="sns-business-comment-reply" data-sns-comment-reply="${escapePhoneText(item.id)}">回复</button></div><p>${escapePhoneText(item.text)}</p></article>`).join("");
+    const interaction = snsBusinessEl("phoneSnsBusinessInteraction"); if (interaction) interaction.hidden = runtime.status !== "awaiting_interaction";
+    const interactionPrompt = snsBusinessEl("phoneSnsBusinessInteractionPrompt");
+    const selectedComment = post.comments?.find((item) => item.id === niaSnsSelectedCommentId);
+    if (interactionPrompt) interactionPrompt.textContent = selectedComment ? `正在回复 ${selectedComment.author || "匿名观众"}` : "请选择一条评论后再回复、点赞或忽略。";
+    const replyField = snsBusinessEl("phoneSnsBusinessReplyField"); if (replyField) replyField.hidden = !selectedComment;
+    const result = runtime.result || {};
+    const imageMatch = snsBusinessEl("phoneSnsBusinessImageMatch"); if (imageMatch) imageMatch.textContent = result.imageMatch || "待评价";
+    const tier = snsBusinessEl("phoneSnsBusinessBonusTier"); if (tier) tier.textContent = result.bonusTier || "待评价";
+    const gain = snsBusinessEl("phoneSnsBusinessFanGain"); if (gain) gain.textContent = result.bonusFans == null ? "--" : `+${Number(result.bonusFans).toLocaleString()}`;
+    const summary = snsBusinessEl("phoneSnsBusinessResultSummary"); if (summary) summary.textContent = result.resultSummary || "";
+    const reason = snsBusinessEl("phoneSnsBusinessResultReason"); if (reason) reason.textContent = result.bonusReason || "";
+    const resultImage = snsBusinessEl("phoneSnsBusinessResultImage");
+    if (resultImage) {
+      resultImage.classList.remove("sns-image-practice", "sns-image-meal", "sns-image-school");
+      resultImage.classList.add(imageClass);
+    }
+    const confirm = snsBusinessEl("phoneSnsBusinessResultConfirmBtn");
+    if (confirm) confirm.textContent = runtime.status === "retryable_failed" && runtime.retryStage === "result" ? "重新生成结果" : "收下这次营业成果";
+  }
+
+  function updateSnsBusinessDraft() {
+    const nia = normalizeNiaState(state.nia);
+    const mode = document.querySelector('input[name="snsPostCompositionMode"]:checked')?.value === "manual" ? "manual" : "ai_expand";
+    const selected = document.querySelector("[data-sns-preset-image].is-selected")?.dataset.snsPresetImage || nia.snsBusiness?.draft?.imageId || "practice";
+    const topic = snsBusinessEl("phoneSnsPostTopicInput")?.value || "";
+    const manualText = snsBusinessEl("phoneSnsPostBodyInput")?.value || "";
+    const draft = { ...nia.snsBusiness.draft, mode, imageId: selected, topic, manualText };
+    const snsBusiness = { ...nia.snsBusiness, draft, updatedAt: Date.now() };
+    state.nia = { ...nia, snsBusiness, updatedAt: Date.now() };
+    if (niaSnsBusinessSession?.businessId === snsBusiness.businessId) {
+      niaSnsBusinessSession.runtime = { ...niaSnsBusinessSession.runtime, draft: clone(draft), updatedAt: snsBusiness.updatedAt };
+    }
+    saveState("nia.sns.draft");
+    renderSnsBusinessCard();
+  }
+
+  function bindSnsBusinessEvents() {
+    document.querySelectorAll('input[name="snsPostCompositionMode"]').forEach((input) => input.addEventListener("change", updateSnsBusinessDraft));
+    snsBusinessEl("phoneSnsPresetImageList")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-sns-preset-image]"); if (!button) return;
+      document.querySelectorAll("[data-sns-preset-image]").forEach((item) => { item.classList.toggle("is-selected", item === button); item.setAttribute("aria-pressed", String(item === button)); });
+      updateSnsBusinessDraft();
+    });
+    ["phoneSnsPostTopicInput", "phoneSnsPostBodyInput"].forEach((id) => snsBusinessEl(id)?.addEventListener("input", updateSnsBusinessDraft));
+    snsBusinessEl("phoneSnsBusinessComments")?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-sns-comment-reply]");
+      if (!button) return;
+      niaSnsSelectedCommentId = button.dataset.snsCommentReply || "";
+      renderSnsBusinessCard();
+      snsBusinessEl("phoneSnsBusinessReplyInput")?.focus();
+    });
+    snsBusinessEl("phoneSnsBusinessCancelBtn")?.addEventListener("click", () => { snsBusinessEl("phoneSnsBusinessCard").hidden = true; });
+    snsBusinessEl("phoneSnsBusinessPublishBtn")?.addEventListener("click", () => { updateSnsBusinessDraft(); requestNiaSnsPostGeneration(); });
+    const submitInteraction = (action) => {
+      const session = niaSnsBusinessSession; const runtime = session?.runtime || normalizeNiaState(state.nia).snsBusiness;
+      const commentId = niaSnsSelectedCommentId;
+      if (!commentId) { renderNiaSnsBusiness(runtime, "请先选择一条评论，再进行回复、点赞或忽略。"); return; }
+      const replyText = snsBusinessEl("phoneSnsBusinessReplyInput")?.value || "";
+      const applied = niaSnsBusinessCore.submitInteraction(runtime, { commentId, action, replyText });
+      if (!applied.ok) { renderNiaSnsBusiness(runtime, action === "reply" ? "请先写下回复内容。" : "这条评论暂时无法处理。"); return; }
+      if (session) session.runtime = applied.runtime;
+      state.nia = { ...normalizeNiaState(state.nia), snsBusiness: applied.runtime, updatedAt: Date.now() };
+      niaSnsSelectedCommentId = "";
+      saveState("nia.sns.interaction"); renderNiaSnsBusiness(applied.runtime);
+      requestNiaSnsResultGeneration();
+    };
+    snsBusinessEl("phoneSnsBusinessReplyBtn")?.addEventListener("click", () => submitInteraction("reply"));
+    snsBusinessEl("phoneSnsBusinessLikeBtn")?.addEventListener("click", () => submitInteraction("like"));
+    snsBusinessEl("phoneSnsBusinessIgnoreBtn")?.addEventListener("click", () => submitInteraction("none"));
+    snsBusinessEl("phoneSnsBusinessResultConfirmBtn")?.addEventListener("click", () => {
+      const runtime = normalizeNiaState(state.nia).snsBusiness;
+      if (runtime.status === "retryable_failed" && runtime.retryStage === "result") requestNiaSnsResultGeneration();
+      else confirmNiaSnsBusinessResult();
+    });
   }
 
   function refreshSnsFeed() {
@@ -17657,6 +20079,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     }
     ensureStateShape();
     scanStorytellerNotificationAtCheckpoint("open_sns");
+    setElementHidden("phoneOverlay", false);
     setElementHidden("phoneHomeView", true);
     setElementHidden("phoneLineApp", true);
     setElementHidden("phoneMusicApp", true);
@@ -17668,6 +20091,7 @@ ${buildChoiceHardRules({ phase1: true })}`;
     if (!snsInited) {
       snsInited = true;
       bindPhoneSnsEvents();
+      bindSnsBusinessEvents();
     }
     renderSnsApp();
   }
@@ -19181,6 +21605,9 @@ ${buildChoiceOnlyExample()}`;
   function getPhoneThreadPreview(threadId) {
     const messages = getPhoneThreadMessages(threadId);
     const last = messages[messages.length - 1];
+    if (last?.kind === "nia_schedule_attachment") {
+      return `[日程表] ${String(last.attachment?.title || last.text || "N.I.A 活动日程")}`;
+    }
     if (last) return String(last.text || "");
     return getPhoneInitiativeCandidateForThread(threadId) ? "有一条新消息" : "暂无消息";
   }
@@ -19253,6 +21680,7 @@ ${buildChoiceOnlyExample()}`;
       <div class="line-date-chip">今天</div>
       ${messages.map((message) => {
         if (message.sender === "producer") {
+          if (message.kind === "nia_schedule_attachment") return renderNiaScheduleAttachmentMarkup(message);
           return `
             <div class="line-msg line-msg-out">
               <span class="line-msg-read">${message.read ? "已读" : ""}</span>
@@ -19296,6 +21724,42 @@ ${buildChoiceOnlyExample()}`;
       if (changed) saveState();
     }
     updatePhoneChatRetryUi();
+    updateNiaScheduleShareUi(threadId);
+  }
+
+  function renderNiaScheduleAttachmentMarkup(message) {
+    const attachment = message?.attachment || {};
+    const days = Array.isArray(attachment.days) ? attachment.days.slice(0, 5) : [];
+    const dayMarkup = days.map((day) => `
+      <div class="line-schedule-day">
+        <b>DAY ${escapePhoneText(day.day)}</b>
+        <span><em>${escapePhoneText(day.type)}</em><strong>${escapePhoneText(day.title)}</strong><small>${escapePhoneText(day.purpose)}</small></span>
+      </div>`).join("");
+    return `
+      <div class="line-msg line-msg-out line-msg-schedule">
+        <span class="line-msg-read">${message.read ? "已读" : ""}</span>
+        <article class="line-schedule-card" aria-label="${escapePhoneText(attachment.title || "N.I.A 日程表")}">
+          <header class="line-schedule-head">
+            <span class="line-schedule-icon"><svg aria-hidden="true"><use href="#icon-calendar"></use></svg></span>
+            <span><strong>${escapePhoneText(attachment.title || "N.I.A 活动日程")}</strong><small>${escapePhoneText(attachment.statusLabel || "日程企划 · 已确认")}</small></span>
+          </header>
+          <div class="line-schedule-days">${dayMarkup}</div>
+        </article>
+        <span class="line-msg-time">${escapePhoneText(message.time)}</span>
+      </div>`;
+  }
+
+  function updateNiaScheduleShareUi(threadId = state.phoneChat?.activeThreadId) {
+    const actions = document.getElementById("phoneNiaScheduleActions");
+    const retry = document.getElementById("phoneNiaScheduleRetryBtn");
+    const start = document.getElementById("phoneNiaScheduleStartBtn");
+    if (!actions || !retry || !start) return false;
+    const share = normalizeNiaState(state.nia).scheduleShare;
+    const active = Boolean(share.planId && share.threadId === threadId && !state.nia?.training?.active);
+    retry.hidden = !(active && share.status === "retryable_failed");
+    start.hidden = !(active && share.status === "completed");
+    actions.hidden = retry.hidden && start.hidden;
+    return active;
   }
 
   function isPhoneChatTyping() {
@@ -19310,6 +21774,11 @@ ${buildChoiceOnlyExample()}`;
     if (state.phoneChat?.activeView !== "chat") return false;
     const thread = getPhoneThreadDefinition(state.phoneChat?.activeThreadId);
     if (!thread?.writable) return false;
+    const scheduleShare = normalizeNiaState(state.nia).scheduleShare;
+    if (scheduleShare?.threadId === state.phoneChat?.activeThreadId
+      && ["sending", "awaiting_reply", "retryable_failed", "completed"].includes(scheduleShare.status)) {
+      return false;
+    }
     return Boolean(state.phoneChat?.retryAvailable && !isPhoneChatTyping());
   }
 
@@ -19589,18 +22058,14 @@ ${buildChoiceOnlyExample()}`;
 
     const parsed = extractPhoneChatReply(source);
     if (!parsed.complete) {
-      if (aiReplyRetryCount < 2) {
-        aiReplyRetryCount += 1;
-        state.phoneChat.isAwaitingReply = true;
-        setPhoneChatTyping(true);
-        sendAiReplyAck(requestId, false, true);
-        return;
-      }
       aiReplyRetryCount = 0;
       pendingAiRequestId = "";
       state.phoneChat.isAwaitingReply = false;
       state.phoneChat.pendingRequestId = "";
       state.phoneChat.retryAvailable = true;
+      if (state.activeStoryNode?.mode === "nia_schedule_share") {
+        markNiaScheduleShareFailed(requestId, "未找到有效的私聊回复。");
+      }
       if (state.activeStoryNode?.type === "phonechat") state.activeStoryNode.ready = true;
       setPhoneChatTyping(false);
       setPhoneChatComposerEnabled(true);
@@ -19621,6 +22086,7 @@ ${buildChoiceOnlyExample()}`;
     const threadId = completedNode?.threadId || "idol";
     startPhoneChatLineDelivery(threadId, parsed.lines, () => {
       if (completedNode?.mode === "initiative") resolvePhoneInitiativeDelivery(completedNode);
+      if (completedNode?.mode === "nia_schedule_share") completeNiaScheduleShareReply(completedNode, requestId);
     });
     sendAiReplyAck(requestId, true, false);
     saveState();
@@ -19732,7 +22198,8 @@ ${buildChoiceOnlyExample()}`;
 
     if (title) title.textContent = thread.name;
     if (subtitle) subtitle.textContent = thread.subtitle || "";
-    if (form) form.hidden = !thread.writable;
+    const scheduleShareActive = updateNiaScheduleShareUi(threadId);
+    if (form) form.hidden = !thread.writable || scheduleShareActive;
     if (readonlyNote) readonlyNote.hidden = Boolean(thread.writable);
     if (input) {
       input.value = "";
@@ -19773,6 +22240,105 @@ ${buildChoiceOnlyExample()}`;
       read: sender === "producer"
     });
     return true;
+  }
+
+  function appendNiaScheduleAttachment(threadId, attachment) {
+    ensureStateShape();
+    if (!Array.isArray(state.phoneChat.messages[threadId])) state.phoneChat.messages[threadId] = [];
+    const existing = state.phoneChat.messages[threadId].find((message) => (
+      message?.kind === "nia_schedule_attachment"
+      && message?.attachment?.planId === attachment.planId
+    ));
+    if (existing) {
+      existing.text = attachment.title;
+      existing.attachment = clone(attachment);
+      return String(existing.id || "");
+    }
+    const id = phoneChatMessageId();
+    state.phoneChat.messages[threadId].push({
+      id,
+      sender: "producer",
+      kind: "nia_schedule_attachment",
+      text: attachment.title,
+      attachment: clone(attachment),
+      time: formatPhoneClock(),
+      read: true
+    });
+    return id;
+  }
+
+  function markNiaScheduleShareFailed(requestId, error) {
+    const nia = normalizeNiaState(state.nia);
+    const share = nia.scheduleShare;
+    if (typeof niaScheduleShareCore.markScheduleShareFailed !== "function") return false;
+    const next = niaScheduleShareCore.markScheduleShareFailed(share, {
+      planId: share.planId,
+      threadId: share.threadId,
+      requestId,
+      error
+    });
+    if (next.status === share.status && next.error === share.error) return false;
+    state.nia = { ...nia, scheduleShare: next, updatedAt: Date.now() };
+    return true;
+  }
+
+  function completeNiaScheduleShareReply(node, requestId) {
+    const nia = normalizeNiaState(state.nia);
+    const share = nia.scheduleShare;
+    const messages = getPhoneThreadMessages(node?.threadId || share.threadId);
+    const reply = [...messages].reverse().find((message) => message?.sender === "idol");
+    if (!reply?.id || typeof niaScheduleShareCore.completeScheduleShare !== "function") return false;
+    const next = niaScheduleShareCore.completeScheduleShare(share, {
+      planId: String(node?.planId || share.planId),
+      threadId: String(node?.threadId || share.threadId),
+      requestId,
+      replyMessageId: String(reply.id)
+    });
+    if (next.status !== "completed") return false;
+    state.nia = { ...nia, scheduleShare: next, updatedAt: Date.now() };
+    state.activeStoryNode = null;
+    saveState("nia.schedule_share_completed");
+    renderPhoneChatMessages(next.threadId);
+    renderPhoneChatList();
+    postNiaStateSync();
+    return true;
+  }
+
+  function requestNiaScheduleShareReply() {
+    const nia = normalizeNiaState(state.nia);
+    if (!nia.plan || nia.planStatus !== "committed") return false;
+    const authoritativePlan = { ...nia.plan, round: nia.round };
+    const attachment = niaScheduleShareCore.buildScheduleAttachment(authoritativePlan);
+    const share = niaScheduleShareCore.normalizeScheduleShare(nia.scheduleShare, attachment.planId);
+    if (!share.attachmentMessageId || share.status === "completed") return false;
+    const requestId = createRequestId();
+    const prompt = niaScheduleShareCore.buildScheduleReactionPrompt(authoritativePlan, {
+      idolName: state.idol,
+      outputContract: buildPhoneChatOutputContract(state.idol)
+    });
+    const next = niaScheduleShareCore.beginScheduleShare(share, {
+      planId: attachment.planId,
+      threadId: share.threadId || "idol",
+      attachmentMessageId: share.attachmentMessageId,
+      requestId
+    });
+    state.nia = { ...nia, scheduleShare: next, updatedAt: Date.now() };
+    const sent = sendPhoneChatToHost(`N.I.A 第${nia.round}轮活动日程`, next.threadId, {
+      prompt,
+      requestId,
+      storyNode: { mode: "nia_schedule_share", planId: attachment.planId }
+    });
+    if (!sent) {
+      markNiaScheduleShareFailed(requestId, "日程回应请求发送失败，请重新获取回复。");
+      saveState("nia.schedule_share_send_failed");
+    }
+    return sent;
+  }
+
+  function retryNiaScheduleShareReply() {
+    const nia = normalizeNiaState(state.nia);
+    if (nia.scheduleShare.status !== "retryable_failed") return false;
+    return requestNiaScheduleShareReply();
   }
 
   function submitPhoneChatMessage(event) {
@@ -19832,6 +22398,8 @@ ${buildChoiceOnlyExample()}`;
     showPhoneListView();
   }
 
+  let returnToNiaAfterPhone = false;
+
   function openPhoneOverlay() {
     if (!state.idol) {
       showToast("尚未选择担当", "请先选择担当偶像后再打开手机。", "warn");
@@ -19846,6 +22414,10 @@ ${buildChoiceOnlyExample()}`;
   function closePhoneOverlay() {
     showPhoneHomeView();
     setElementHidden("phoneOverlay", true);
+    if (returnToNiaAfterPhone) {
+      returnToNiaAfterPhone = false;
+      setNiaPrototypeVisible(true);
+    }
   }
 
   function setInteractionMode(mode) {
@@ -19903,17 +22475,36 @@ ${buildChoiceOnlyExample()}`;
   }
 
   function openOutingOverlay() {
+    const campusMode = getCurrentNiaCompanionTrainingPhase() === "campus";
     document.getElementById("outingPhaseBadge").textContent = getPhase();
     document.getElementById("outingCustomInput").value = "";
+    const overlay = document.getElementById("outingOverlay");
+    overlay?.classList.toggle("is-nia-campus-mode", campusMode);
+    const title = document.getElementById("outingOverlayTitle");
+    const note = document.getElementById("outingOverlayNote");
+    const customField = document.getElementById("outingCustomField");
+    const customConfirm = document.getElementById("outingCustomConfirmBtn");
+    if (title) title.textContent = campusMode ? "选择校内自由活动地点" : "选择外出地点";
+    if (note) note.textContent = campusMode
+      ? "选择一处校内地点，与担当偶像度过训练后的傍晚。"
+      : "选择预设地点，或填写自定义目的地。";
+    if (customField) customField.hidden = campusMode;
+    if (customConfirm) customConfirm.hidden = campusMode;
     const list = document.getElementById("outingDestinationList");
     list.innerHTML = "";
-    outingDestinations.forEach((destination, index) => {
+    const destinations = campusMode
+      ? WORLD_MAP_LOCATIONS.filter((location) => location.id !== "school_entrance")
+      : outingDestinations;
+    destinations.forEach((destination, index) => {
       const button = document.createElement("button");
       button.type = "button";
       button.id = `outing-destination-${index + 1}`;
       button.className = "outing-destination-button";
       button.innerHTML = `<strong>${destination.name}</strong><span>${destination.description}</span>`;
-      button.addEventListener("click", () => confirmOutingDestination(destination.name));
+      button.addEventListener("click", () => {
+        if (campusMode) confirmNiaCampusActivityLocation(destination.id);
+        else confirmOutingDestination(destination.name);
+      });
       list.appendChild(button);
     });
     setElementHidden("outingOverlay", false);
@@ -19940,9 +22531,11 @@ ${buildChoiceOnlyExample()}`;
       showToast("还没有内容", "输入这次想与担当交流的话题或互动后再开始。", "warn");
       return;
     }
-    const apartmentIdol = String(state.freeMode?.apartmentPendingChatIdol || "").trim();
+    const apartmentIdol = isProducerApartmentActive()
+      ? getApartmentCompanionIdol()
+      : String(state.freeMode?.apartmentPendingChatIdol || "").trim();
     if (apartmentIdol) {
-      state.freeMode.apartmentPendingChatIdol = "";
+      if (!isNiaEveningActive()) state.freeMode.apartmentPendingChatIdol = "";
       closeCompanionOverlay();
       beginApartmentCompanionChat(apartmentIdol, companionTopic);
       return;
@@ -20045,6 +22638,139 @@ ${buildChoiceOnlyExample()}`;
     }
     closeOutingOverlay();
     settleAction("outing", null, { destination: location });
+  }
+
+  function buildNiaCampusActivityPrompt(location) {
+    const nia = normalizeNiaState(state.nia);
+    const training = niaTrainingCore.ensureCompanionTrainingDay(nia.training);
+    const companionDay = training.companionDay || {};
+    const planDay = niaTrainingCore.getCurrentNiaPlanAction(nia) || {};
+    const plan = nia.plan || {};
+    return `[N.I.A 育成系统：陪同训练日 · 校内自由活动]
+
+担当偶像：${state.idol}
+绑定角色卡：${state.boundCharacter?.name || "未绑定，按担当偶像写"}
+本轮企划目标：${plan.goal?.playerGoal || "围绕已确认企划推进"}
+本轮公开形象：${plan.publicImage || "按已确认企划塑造"}
+今日训练目的：${planDay.purpose || planDay.title || "帮助偶像解决当前困难"}
+
+傍晚地点：${location.name}
+地点说明：${location.description}
+
+上午发生的事情：
+${companionDay.morningSummary || "上午完成了一次能力培养。"}
+
+下午发生的事情：
+${companionDay.afternoonSummary || "下午在上午结果上继续训练并取得进展。"}
+
+${buildProducerPromptSection()}
+${composeWorldSummaryBlock("produce")}
+
+叙事要求：
+- 制作人与担当偶像确实来到「${location.name}」，利用地点内可见的设施、声音、人物或氛围推动互动。
+- 直接承接上午与下午的状态，让两人自然复盘、放松，或发现偶像新的角色侧面。
+- 本次回复一次写完抵达、互动推进与当天收尾；这是训练后的短暂校内活动，不是新一轮训练。
+- 不要输出选项，不要生成粉丝数，不要再次结算能力、体力、压力或信赖。
+- 不要进入连续地图探索，不要在结尾制造必须额外生成才能解决的新现场问题。
+- 可以为五日企划的下一天留下自然的情绪或方法承接，但当前事件必须完整结束。
+
+${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到当天收束一次写完，不要待续。")}`;
+  }
+
+  function failNiaCampusActivity(message, reason = "generation_failed") {
+    const nia = normalizeNiaState(state.nia);
+    const active = nia.activeRequest;
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    if (active) releasePrimaryModelChannel(active.requestId, active.channelLeaseId, reason);
+    state.nia = { ...nia, activeRequest: null, lastError: String(message || "校内活动生成失败。"), updatedAt: Date.now() };
+    state.activeStoryNode = null;
+    state.pendingActionContext = null;
+    state.eventMode = "none";
+    saveState("nia.campus_activity_failed");
+    setElementHidden("eventOverlay", true);
+    render();
+    showToast("校内活动未完成", message || "可以重新选择地点尝试。", "warn");
+  }
+
+  function confirmNiaCampusActivityLocation(locationId) {
+    const location = getWorldMapLocation(String(locationId || ""));
+    if (!location || location.id === "school_entrance" || getCurrentNiaCompanionTrainingPhase() !== "campus") {
+      showToast("无法前往", "请选择可用的校内地点。", "warn");
+      return false;
+    }
+    closeOutingOverlay();
+    return startNiaCampusActivity(location.id);
+  }
+
+  function startNiaCampusActivity(locationId) {
+    if (!isCurrentNiaCompanionTrainingDay() || getCurrentNiaCompanionTrainingPhase() !== "campus") return false;
+    const location = getWorldMapLocation(String(locationId || ""));
+    if (!location || location.id === "school_entrance") return false;
+    const prompt = buildNiaCampusActivityPrompt(location);
+    const requestId = createRequestId();
+    const turnId = createHarnessId("nia-campus-turn");
+    const dispatch = acquirePrimaryEntryDispatch(requestId, "nia_campus_activity", { turnId });
+    if (!dispatch.ok) return false;
+    const operationId = requestId;
+    const activeRequest = dispatch.owner ? {
+      requestId,
+      channelLeaseId: dispatch.owner.channelLeaseId,
+      turnId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch,
+      operationId
+    } : null;
+    const nia = normalizeNiaState(state.nia);
+    state.nia = {
+      ...nia,
+      training: {
+        ...niaTrainingCore.ensureCompanionTrainingDay(nia.training),
+        companionDay: {
+          ...niaTrainingCore.ensureCompanionTrainingDay(nia.training).companionDay,
+          campusLocationId: location.id
+        }
+      },
+      activeRequest,
+      lastError: "",
+      updatedAt: Date.now()
+    };
+    state.pendingActionContext = {
+      action: "nia_campus_activity",
+      actionContext: { phase: "generating", locationId: location.id, operationId }
+    };
+    state.activeStoryNode = { type: "niaCampusActivity", ready: false };
+    state.eventMode = "none";
+    state.harness.activeTurn = {
+      kind: "nia_campus_activity",
+      action: "nia_campus_activity",
+      ownerKind: "nia_campus_activity",
+      turnId,
+      requestId,
+      requestIds: [requestId],
+      channelLeaseId: dispatch.owner?.channelLeaseId || "",
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch,
+      status: "generating",
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+      ...captureHarnessGenerationPrompt(prompt)
+    };
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = prompt;
+    state.lastStory = `正在生成 ${location.name} 的校内自由活动……`;
+    saveState("nia.campus_activity_dispatch");
+    render();
+    openEventOverlay("N.I.A · 校内自由活动", `傍晚 · ${location.name}`, buildAiWaitingStory("正在等待担当偶像的傍晚剧情。"));
+    const sent = requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: dispatch.owner?.channelLeaseId || "",
+      ownerKind: "nia_campus_activity",
+      turnId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) failNiaCampusActivity("当前页面未连接 SillyTavern，可以重新选择地点尝试。", "dispatch_failed");
+    return sent;
   }
 
   function submitCustomOutingDestination() {
@@ -20162,11 +22888,13 @@ ${buildChoiceOnlyExample()}`;
         confirm.textContent = "正在生成中...";
       } else {
         const node = state.activeStoryNode;
-        confirm.textContent = 
-          node?.type === "affinity" && node.threshold === 0 
-            ? "确认开始育成" 
+        confirm.textContent =
+          node?.type === "niaOpening"
+            ? "进入企划日"
+            : node?.type === "affinity" && node.threshold === 0
+            ? "确认开始育成"
             : ["firstLivePre", "sandboxFirstLivePre"].includes(node?.type)
-              ? "Live 开始" 
+              ? "Live 开始"
               : "确定";
       }
     }
@@ -20198,6 +22926,18 @@ ${buildChoiceOnlyExample()}`;
   }
 
   function triggerRegeneration() {
+    if (state.pendingActionContext?.action === "nia_fan_milestone") {
+      requestNiaFanMilestoneStory();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_audition") {
+      retryNiaAuditionSegment();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_business") {
+      triggerNiaBusinessRegeneration();
+      return;
+    }
     const choicePrompt = isChoicePromptMode();
     const choiceResolution = isChoiceResolutionMode();
     const requestId = isChoicePromptMode() ? createRequestId() : (state.lastRequestId || createRequestId());
@@ -20209,15 +22949,15 @@ ${buildChoiceOnlyExample()}`;
     pendingAiRequestId = requestId;
     state.lastRequestId = requestId;
     saveState();
-    
+
     setEventActionsEnabled(false, true);
-    
+
     const choicesEl = document.getElementById("eventChoices");
     if (choicesEl) {
       choicesEl.innerHTML = "";
       setElementHidden("eventChoices", true);
     }
-    
+
     const loadText = isChoiceResolutionMode()
       ? "正在重新生成偶像的反应..."
       : "正在重新生成剧情...";
@@ -20232,7 +22972,7 @@ ${buildChoiceOnlyExample()}`;
         storyEl.textContent = loadText;
       }
     }
-    
+
     // 同步 VN 播放器显示为重新生成中的加载状态
     openEventOverlay(state.lastEventTitle, "正在重新生成...", loadText);
 
@@ -20245,7 +22985,7 @@ ${buildChoiceOnlyExample()}`;
       showToast("提示词已准备", "重新生成选项需要发送完整提示词。", "warn");
       return;
     }
-    
+
     const regenerationOptions = dispatch?.owner
       ? { channelLeaseId: dispatch.owner.channelLeaseId, ownerKind: "regeneration" }
       : { ownerKind: "legacy_main" };
@@ -20258,6 +22998,3836 @@ ${buildChoiceOnlyExample()}`;
     }
   }
 
+  function postNiaBusinessMessage(payload) {
+    const frame = document.getElementById("hatsu-nia-prototype-frame");
+    frame?.contentWindow?.postMessage({
+      source: "hatsuboshi-produce-nia-host",
+      ...payload
+    }, "*");
+  }
+
+  function niaPlanRequiresRadioPreparation(nia = normalizeNiaState(state.nia)) {
+    const days = Array.isArray(nia?.plan?.days) ? nia.plan.days : [];
+    return days.some((day) => {
+      const businessType = String(day?.businessType || day?.business_type || "").toLowerCase();
+      const description = [day?.title, day?.purpose, day?.output].map((value) => String(value || "")).join(" ");
+      return businessType === "school_radio"
+        || businessType.includes("radio")
+        || /初星放送部|广播部|校园广播|放送部/.test(description);
+    });
+  }
+
+  function niaPlanRequiresOnlineLivePreparation(nia = normalizeNiaState(state.nia)) {
+    const days = Array.isArray(nia?.plan?.days) ? nia.plan.days : [];
+    return days.some((day) => {
+      const businessType = String(day?.businessType || day?.business_type || "").toLowerCase();
+      const description = [day?.title, day?.purpose, day?.output].map((value) => String(value || "")).join(" ");
+      return businessType === "online_live"
+        || /线上(?:互动|预热)?直播|网络直播|直播企划/.test(description);
+    });
+  }
+
+  function getNiaStateProjection() {
+    const nia = normalizeNiaState(state.nia);
+    const producerWork = clone(nia.producerWork);
+    producerWork.requirements = {
+      radioPlanRequired: niaPlanRequiresRadioPreparation(nia)
+        && !producerWork.tasks?.some((task) => task.id === "radio-department-plan" && task.status === "completed"),
+      onlineLivePlanRequired: niaPlanRequiresOnlineLivePreparation(nia)
+        && !producerWork.tasks?.some((task) => task.id === "online-live-plan" && task.status === "completed")
+    };
+    return {
+      round: nia.round,
+      phase: nia.phase,
+      firstRoundBriefingSeen: nia.firstRoundBriefingSeen,
+      draft: clone(nia.draft),
+      plan: nia.plan ? clone(nia.plan) : null,
+      planStatus: nia.planStatus,
+      idol: state.idol || "",
+      route: (() => {
+        const route = getCurrentNiaRoute();
+        return route ? {
+          routeId: route.routeId,
+          idolName: route.idolName,
+          avatar: route.assets?.avatar || "",
+          stageName: route.rounds?.find((entry) => Number(entry.round) === Number(nia.round))?.stageName || ""
+        } : null;
+      })(),
+      fans: nia.training?.fans || 0,
+      availableRadioGuests: Object.keys(idols).filter((name) => name !== state.idol),
+      fixedOuting: nia.interRoundOuting?.status === "completed" ? {
+        day: 1,
+        destination: nia.interRoundOuting.destination,
+        summary: nia.interRoundOuting.summary
+      } : null,
+      currentDay: niaTrainingCore.getCurrentNiaPlanAction?.(nia) || null,
+      producerWork,
+      lastError: nia.lastError
+    };
+  }
+
+  function postNiaStateSync() {
+    const frame = document.getElementById("hatsu-nia-prototype-frame");
+    frame?.contentWindow?.postMessage({
+      source: "hatsuboshi-produce-nia-host",
+      type: "niaStateSync",
+      state: getNiaStateProjection()
+    }, "*");
+  }
+
+  let niaPlanApiModulePromise = null;
+  function loadNiaPlanApiModule() {
+    if (!niaPlanApiModulePromise) {
+      const url = new URL("nia-prototype-api.js", window.HATSU_ASSET_BASE || document.baseURI).href;
+      niaPlanApiModulePromise = import(url);
+    }
+    return niaPlanApiModulePromise;
+  }
+
+  let niaProducerWorkApiModulePromise = null;
+  function loadNiaProducerWorkApiModule() {
+    if (!niaProducerWorkApiModulePromise) {
+      const url = new URL("nia-producer-work-api.js?v=20260809-2", window.HATSU_ASSET_BASE || document.baseURI).href;
+      niaProducerWorkApiModulePromise = import(url).catch((error) => {
+        niaProducerWorkApiModulePromise = null;
+        throw error;
+      });
+    }
+    return niaProducerWorkApiModulePromise;
+  }
+
+  function failNiaPlanRequest(message, reason = "generation_failed") {
+    const nia = normalizeNiaState(state.nia);
+    const active = nia.activeRequest;
+    if (active && isPrimaryModelLeaseCurrent(active.requestId, active.channelLeaseId)) {
+      releasePrimaryModelChannel(active.requestId, active.channelLeaseId, reason);
+    }
+    if (pendingAiRequestId === active?.requestId) pendingAiRequestId = "";
+    state.pendingAiRequestId = pendingAiRequestId;
+    state.nia = {
+      ...nia,
+      phase: "draft",
+      planStatus: "retryable_failed",
+      activeRequest: null,
+      lastError: String(message || "企划生成未完成，可以重新提交。"),
+      updatedAt: Date.now()
+    };
+    if (state.harness?.activeTurn?.kind === "nia_plan" && state.harness.activeTurn.requestId === active?.requestId) {
+      state.harness.activeTurn = {
+        ...state.harness.activeTurn,
+        status: "recovery_required",
+        failureReason: String(reason || "generation_failed"),
+        updatedAt: Date.now()
+      };
+    }
+    if (state.pendingActionContext?.action === "nia_plan_review") {
+      state.pendingActionContext = null;
+      state.eventMode = "none";
+      setElementHidden("eventOverlay", true);
+      setNiaPrototypeVisible(true);
+    }
+    saveState("nia.plan_failed");
+    postNiaStateSync();
+  }
+
+  async function submitNiaPlanFromView(payload) {
+    state.nia = normalizeNiaState(state.nia);
+    const operationId = String(payload?.operationId || "").slice(0, 160);
+    const sourceDraft = payload?.draft && typeof payload.draft === "object" ? payload.draft : {};
+    const draft = {
+      goal: String(sourceDraft.goal || "").trim().slice(0, 2000),
+      image: String(sourceDraft.image || "").trim().slice(0, 2000),
+      businessMethods: Array.isArray(sourceDraft.businessMethods)
+        ? sourceDraft.businessMethods.map((value) => String(value || "").trim()).filter(Boolean).slice(0, 2)
+        : [],
+      approach: String(sourceDraft.approach || "").trim().slice(0, 2000),
+      miniLiveVenueId: Object.prototype.hasOwnProperty.call(niaMiniLiveCore.VENUES || {}, sourceDraft.miniLiveVenueId)
+        ? sourceDraft.miniLiveVenueId
+        : "shopping_street"
+    };
+    if (!operationId || !draft.goal || !draft.image || !draft.approach || draft.businessMethods.length !== 2) {
+      state.nia.lastError = "请选择两种营业方式并填写完整的企划草案。";
+      postNiaStateSync();
+      return false;
+    }
+    if (state.nia.processedOperationIds.includes(operationId) || state.nia.planStatus === "generating") {
+      postNiaStateSync();
+      return false;
+    }
+    if (!isSillyTavernHost() || !activeHostSaveScope) {
+      state.nia = { ...state.nia, draft, planStatus: "retryable_failed", lastError: "当前未连接 SillyTavern 宿主。" };
+      saveState("nia.plan_host_unavailable");
+      postNiaStateSync();
+      return false;
+    }
+    const requestId = createRequestId();
+    const turnId = createHarnessId("nia-plan-turn");
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "nia_plan",
+      turnId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      state.nia = { ...state.nia, draft, planStatus: "retryable_failed", lastError: "主模型正在处理其他请求，请稍后重试。" };
+      postNiaStateSync();
+      return false;
+    }
+    const api = await loadNiaPlanApiModule();
+    const prompt = api.buildNiaPlanPrompt(draft, {
+      idol: state.idol,
+      round: state.nia.round,
+      fanRequirement: 10000,
+      fans: state.nia.training?.fans || 0,
+      previousImage: state.nia.plan?.publicImage || state.nia.auditionContext?.publicImage || "无",
+      fixedOutingSummary: state.nia.interRoundOuting?.summary || "",
+      fixedOutingDestination: state.nia.interRoundOuting?.destination || "",
+      firstRoundAuditionSummary: state.nia.audition?.continuitySummary || state.nia.auditionContext?.continuitySummary || ""
+    });
+    const promptCapture = captureHarnessGenerationPrompt(prompt);
+    const activeRequest = {
+      requestId,
+      channelLeaseId: acquired.owner.channelLeaseId,
+      turnId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch,
+      operationId
+    };
+    state.nia = {
+      ...state.nia,
+      draft,
+      planStatus: "generating",
+      activeRequest,
+      processedOperationIds: [...state.nia.processedOperationIds, operationId].slice(-12),
+      lastError: "",
+      updatedAt: Date.now()
+    };
+    state.harness.activeTurn = {
+      kind: "nia_plan",
+      action: "nia_plan",
+      ownerKind: "nia_plan",
+      turnId,
+      requestId,
+      requestIds: [requestId],
+      channelLeaseId: acquired.owner.channelLeaseId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch,
+      status: "generating",
+      startedAt: Date.now(),
+      updatedAt: Date.now(),
+      ...promptCapture
+    };
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = prompt;
+    saveState("nia.plan_dispatch");
+    postNiaStateSync();
+    setNiaPrototypeVisible(false);
+    state.pendingActionContext = {
+      action: "nia_plan_review",
+      actionContext: { phase: "generating", round: state.nia.round }
+    };
+    state.eventMode = "none";
+    openEventOverlay("N.I.A · 企划指导", "亚纱里老师正在完善方案", "亚纱里老师正在阅读企划草案，请稍候……");
+    const sent = requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "nia_plan",
+      turnId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) failNiaPlanRequest("企划请求未能发送，请重新尝试。", "dispatch_failed");
+    return sent;
+  }
+
+  function isCurrentNiaOpeningReply(requestId) {
+    const nia = normalizeNiaState(state.nia);
+    const owner = getPrimaryModelChannelOwner();
+    return Boolean(
+      owner?.ownerKind === "nia_opening"
+      && nia.openingStatus === "generating"
+      && nia.openingRequest?.requestId === String(requestId || "")
+      && nia.openingRequest.channelLeaseId === owner.channelLeaseId
+      && nia.openingRequest.turnId === owner.turnId
+      && nia.openingRequest.saveScope === String(activeHostSaveScope || "")
+      && nia.openingRequest.sessionEpoch === String(runtimeSessionEpoch || "")
+    );
+  }
+
+  function isCurrentNiaCampusActivityReply(requestId) {
+    const nia = normalizeNiaState(state.nia);
+    const owner = getPrimaryModelChannelOwner();
+    return Boolean(
+      owner?.ownerKind === "nia_campus_activity"
+      && nia.activeRequest?.requestId === String(requestId || "")
+      && nia.activeRequest.channelLeaseId === owner.channelLeaseId
+      && nia.activeRequest.turnId === owner.turnId
+      && nia.activeRequest.saveScope === String(activeHostSaveScope || "")
+      && nia.activeRequest.sessionEpoch === String(runtimeSessionEpoch || "")
+    );
+  }
+
+  function handleNiaCampusActivityAiReply(text, rawText, renderedText, requestId, isFinal) {
+    if (!isCurrentNiaCampusActivityReply(requestId)) return false;
+    const source = selectAiReplySource(text, rawText, renderedText);
+    const reply = cleanReplyText(stripAiThinkingBlocks(source));
+    recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+    if (!isFinal) {
+      const storyEl = document.getElementById("eventStory");
+      if (storyEl && reply) storyEl.innerHTML = formatStoryText(reply);
+      sendAiReplyAck(requestId, true, false, false);
+      return true;
+    }
+    if (!reply || reply.replace(/\s+/g, "").length < 12 || isJunkReply(reply)) {
+      failNiaCampusActivity("主 API 没有返回完整的校内活动剧情，可以重新尝试。", "invalid_reply");
+      sendAiReplyAck(requestId, false, false);
+      return false;
+    }
+    const nia = normalizeNiaState(state.nia);
+    const active = nia.activeRequest;
+    if (state.harness?.activeTurn?.kind === "nia_campus_activity" && state.harness.activeTurn.turnId === active?.turnId) {
+      state.harness.activeTurn = { ...state.harness.activeTurn, status: "completed", completedAt: Date.now(), updatedAt: Date.now() };
+    }
+    state.nia = { ...nia, activeRequest: null, lastError: "", updatedAt: Date.now() };
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    if (active) releasePrimaryModelChannel(active.requestId, active.channelLeaseId, "completed");
+    state.pendingActionContext = {
+      action: "nia_campus_activity",
+      actionContext: {
+        phase: "result_ready",
+        locationId: nia.training.companionDay?.campusLocationId || "",
+        operationId: active?.operationId || requestId
+      }
+    };
+    state.activeStoryNode = { type: "niaCampusActivity", ready: true };
+    state.lastStory = reply;
+    saveState("nia.campus_activity_result_ready");
+    sendAiReplyAck(requestId, true, false, true, { preSettled: true });
+    openEventOverlay("N.I.A · 校内自由活动", "傍晚活动已经完成", reply);
+    return true;
+  }
+
+  function completeNiaCampusActivityAfterPlayback() {
+    const context = state.pendingActionContext?.actionContext || {};
+    if (state.activeStoryNode?.type !== "niaCampusActivity" || !context.operationId || !context.locationId) {
+      return false;
+    }
+    const nia = normalizeNiaState(state.nia);
+    const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+    const completedDayIndex = training.actionIndex;
+    const result = niaTrainingCore.completeCompanionTrainingCampusActivity(
+      nia.training,
+      { operationId: context.operationId, locationId: context.locationId }
+    );
+    if (!result.completed) return false;
+    state.nia = { ...nia, training: result.training, updatedAt: Date.now() };
+    activateNiaEveningAfterDayCompletion(completedDayIndex);
+    state.activeStoryNode = null;
+    state.pendingActionContext = null;
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    state.selectedChoiceText = "";
+    state.selectedChoiceRating = "";
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    setElementHidden("eventOverlay", true);
+    setNiaPrototypeVisible(false);
+    saveState("nia.campus_activity_day_complete");
+    postNiaStateSync();
+    render();
+    resumeNiaEveningIfNeeded();
+    return true;
+  }
+
+  function isCurrentNiaInterRoundOutingReply(requestId) {
+    const nia = normalizeNiaState(state.nia);
+    const owner = getPrimaryModelChannelOwner();
+    return Boolean(
+      owner?.ownerKind === "nia_inter_round_outing"
+      && nia.interRoundOuting?.status === "completing"
+      && nia.interRoundOuting.completionRequestId === String(requestId || "")
+      && nia.activeRequest?.requestId === String(requestId || "")
+    );
+  }
+
+  function handleNiaInterRoundOutingAiReply(text, rawText, renderedText, requestId, isFinal) {
+    if (!isCurrentNiaInterRoundOutingReply(requestId)) return false;
+    const candidates = collectAiReplyCandidates(text, rawText, renderedText);
+    const source = selectAiReplySource(text, rawText, renderedText);
+    const reply = extractReplyText(candidates) || cleanReplyText(stripAiThinkingBlocks(source));
+    if (!isFinal) {
+      const storyEl = document.getElementById("eventStory");
+      if (storyEl && reply) storyEl.innerHTML = formatStoryText(reply);
+      setEventActionsEnabled(false, true);
+      sendAiReplyAck(requestId, true, false, false);
+      return true;
+    }
+    if (!reply || reply.replace(/\s+/g, "").length < 12 || isJunkReply(reply)) {
+      failNiaInterRoundOuting("主 API 没有返回有效的外出收尾正文，可以重新生成。", "invalid_reply");
+      sendAiReplyAck(requestId, false, false);
+      return false;
+    }
+    const nia = normalizeNiaState(state.nia);
+    const active = nia.activeRequest;
+    if (active) releasePrimaryModelChannel(active.requestId, active.channelLeaseId, "completed");
+    state.nia = { ...nia, activeRequest: null, lastError: "", updatedAt: Date.now() };
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    state.pendingActionContext = { action: "nia_inter_round_outing", actionContext: { phase: "result_ready", requestId } };
+    state.activeStoryNode = { type: "niaInterRoundOuting", ready: true, requestId };
+    state.lastStory = reply;
+    saveState("nia.inter_round_outing_result_ready");
+    sendAiReplyAck(requestId, true, false, true, { preSettled: true });
+    openEventOverlay(`N.I.A · 第${nia.interRoundOuting.toRound}轮外出`, "今天的外出已经告一段落", reply);
+    return true;
+  }
+
+  function completeNiaInterRoundOutingAfterPlayback() {
+    const context = state.pendingActionContext?.actionContext || {};
+    if (state.activeStoryNode?.type !== "niaInterRoundOuting" || !context.requestId) return false;
+    const nia = normalizeNiaState(state.nia);
+    const outing = nia.interRoundOuting;
+    const completed = niaRoundTransitionCore.completeInterRoundOuting(nia.interRoundOuting, {
+      requestId: context.requestId,
+      summary: state.lastStory
+    });
+    if (!completed.completed) return false;
+    const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+    const nextTraining = { ...training, fans: training.fans };
+    state.trust = clamp(Number(state.trust || 0) + 8, 0, 100);
+    const freeModeSnapshot = outing.freeModeSnapshot ? clone(outing.freeModeSnapshot) : null;
+    state.nia = {
+      ...nia,
+      phase: "inter_round_outing",
+      interRoundOuting: { ...completed.runtime, freeModeSnapshot: null },
+      training: nextTraining,
+      activeRequest: null,
+      lastError: "",
+      updatedAt: Date.now()
+    };
+    state.activeStoryNode = null;
+    state.pendingActionContext = null;
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    setElementHidden("eventOverlay", true);
+    state.freeMode = freeModeSnapshot || { ...(state.freeMode || {}), active: false, activeLocationId: null, activeOutingDestination: null, outingScene: null };
+    activateNiaInterRoundEvening();
+    saveState("nia.inter_round_outing_completed");
+    render();
+    resumeNiaEveningIfNeeded();
+    return true;
+  }
+
+  function handleNiaOpeningAiReply(text, rawText, renderedText, requestId, isFinal) {
+    if (!isCurrentNiaOpeningReply(requestId)) return false;
+    const replyCandidates = collectAiReplyCandidates(text, rawText, renderedText);
+    const source = selectAiReplySource(text, rawText, renderedText);
+    const reply = extractReplyText(replyCandidates) || cleanReplyText(stripAiThinkingBlocks(source));
+    recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+    if (!isFinal) {
+      const storyEl = document.getElementById("eventStory");
+      if (storyEl && reply) storyEl.innerHTML = formatStoryText(reply);
+      setEventActionsEnabled(false, true);
+      sendAiReplyAck(requestId, true, false, false);
+      return true;
+    }
+    if (!reply || reply.replace(/\s+/g, "").length < 12 || isJunkReply(reply)) {
+      failNiaOpeningRequest("主 API 没有返回有效的 N.I.A 开场正文，可以重新尝试。", "invalid_reply");
+      sendAiReplyAck(requestId, false, false);
+      return false;
+    }
+    const nia = normalizeNiaState(state.nia);
+    const active = nia.openingRequest;
+    state.nia = {
+      ...nia,
+      openingStatus: "ready",
+      openingStory: reply,
+      openingRequest: null,
+      lastError: "",
+      updatedAt: Date.now()
+    };
+    state.activeStoryNode = { type: "niaOpening", ready: true };
+    if (state.harness?.activeTurn?.kind === "nia_opening" && state.harness.activeTurn.turnId === active?.turnId) {
+      state.harness.activeTurn = {
+        ...state.harness.activeTurn,
+        status: "completed",
+        completedAt: Date.now(),
+        updatedAt: Date.now()
+      };
+    }
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    if (active) releasePrimaryModelChannel(active.requestId, active.channelLeaseId, "completed");
+    saveState("nia.opening_ready");
+    sendAiReplyAck(requestId, true, false, true, { preSettled: true });
+    openNiaOpeningVn(reply);
+    return true;
+  }
+
+  function isCurrentNiaPlanReply(requestId) {
+    const nia = normalizeNiaState(state.nia);
+    const owner = getPrimaryModelChannelOwner();
+    return Boolean(
+      owner?.ownerKind === "nia_plan"
+      && nia.planStatus === "generating"
+      && nia.activeRequest?.requestId === String(requestId || "")
+      && nia.activeRequest.channelLeaseId === owner.channelLeaseId
+      && nia.activeRequest.turnId === owner.turnId
+      && nia.activeRequest.saveScope === String(activeHostSaveScope || "")
+      && nia.activeRequest.sessionEpoch === String(runtimeSessionEpoch || "")
+    );
+  }
+
+  async function handleNiaPlanAiReply(text, rawText, renderedText, requestId, isFinal) {
+    if (!isFinal || !isCurrentNiaPlanReply(requestId)) return false;
+    const nia = normalizeNiaState(state.nia);
+    const active = nia.activeRequest;
+    const api = await loadNiaPlanApiModule();
+    const parsed = api.parseNiaPlanPayload({ text, rawText, renderedText });
+    if (!parsed.ok) {
+      failNiaPlanRequest("主 API 返回的企划格式不完整，可以重新提交。", "invalid_plan_contract");
+      sendAiReplyAck(requestId, false, false);
+      return false;
+    }
+    const plan = api.normalizeApiPlan(parsed.data, nia.draft, { round: nia.round });
+    state.nia = {
+      ...nia,
+      phase: "draft",
+      plan: null,
+      pendingReviewPlan: plan,
+      planStatus: "reviewing",
+      activeRequest: null,
+      lastError: "",
+      updatedAt: Date.now()
+    };
+    if (state.harness?.activeTurn?.kind === "nia_plan" && state.harness.activeTurn.turnId === active.turnId) {
+      state.harness.activeTurn = { ...state.harness.activeTurn, status: "completed", completedAt: Date.now(), updatedAt: Date.now() };
+    }
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    releasePrimaryModelChannel(active.requestId, active.channelLeaseId, "completed");
+    saveState("nia.plan_review_ready");
+    sendAiReplyAck(requestId, true, false, true, { preSettled: true });
+    openNiaPlanReviewVn(plan);
+    return true;
+  }
+
+  function buildNiaPlanReviewSlides(plan) {
+    const parts = plan?.asariReviewParts && typeof plan.asariReviewParts === "object"
+      ? plan.asariReviewParts
+      : {};
+    const fallback = String(plan?.asariReview || "").trim();
+    const currentRound = normalizeNiaState(state.nia).round;
+    const advancedRound = currentRound >= 2;
+    return [
+      { type: "narration", speaker: "", text: advancedRound
+        ? `亚纱里老师接过第${currentRound}轮企划草案，结合第一日外出记录，逐页确认本轮目标、公开形象和后五日安排。`
+        : "亚纱里老师接过企划草案，逐页确认了目标、公开形象和五日安排。" },
+      {
+        type: "dialogue",
+        speaker: "亚纱里老师",
+        text: String(parts.accepted || fallback || "企划想让观众看见的方向很明确，这一点很好。")
+      },
+      {
+        type: "dialogue",
+        speaker: "亚纱里老师",
+        text: String(parts.gap || (advancedRound ? "不过，从固定外出留下的状态到后五日行动之间还需要更清楚的因果承接。" : "不过，从目标到五天行动之间还需要更清楚的因果承接。"))
+      },
+      {
+        type: "dialogue",
+        speaker: "亚纱里老师",
+        text: String(parts.advice || "我已经把每天应当留下的成果和下一步用途整理好了。就按照这份完善后的企划推进吧。")
+      }
+    ];
+  }
+
+  function openNiaPlanReviewVn(plan = normalizeNiaState(state.nia).pendingReviewPlan) {
+    if (!plan || normalizeNiaState(state.nia).planStatus !== "reviewing") return false;
+    if (!document.getElementById("hatsu-nia-prototype-frame")) openNiaPrototype();
+    setNiaPrototypeVisible(false);
+    state.pendingActionContext = {
+      action: "nia_plan_review",
+      actionContext: { phase: "reviewing", round: normalizeNiaState(state.nia).round }
+    };
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    const slides = buildNiaPlanReviewSlides(plan);
+    state.lastStory = slides.map((slide) => slide.text).join("\n");
+    state.lastEventTitle = "N.I.A · 企划指导";
+    state.lastEventResult = "亚纱里老师的评价";
+    state.lastEventStory = state.lastStory;
+    saveState("nia.plan_review_playback");
+    if (!document.getElementById("eventOverlay") || !document.getElementById("vnContainer") || !document.getElementById("vnDialogueBox")) {
+      return completeNiaPlanReview();
+    }
+    setElementHidden("eventOverlay", false);
+    const titleEl = document.getElementById("eventTitle");
+    if (titleEl) titleEl.textContent = state.lastEventTitle;
+    const resultEl = document.getElementById("eventResult");
+    if (resultEl) resultEl.textContent = state.lastEventResult;
+    const storyEl = document.getElementById("eventStory");
+    if (storyEl) storyEl.textContent = state.lastEventStory;
+    const backdropEl = document.getElementById("vnBackdrop");
+    if (backdropEl) {
+      backdropEl.style.backgroundImage = "linear-gradient(180deg, rgba(18, 18, 24, 0.08) 0%, transparent 42%, rgba(18, 18, 24, 0.22) 100%), url('./assets/scenes/Producer_Class.png')";
+    }
+    initVisualNovelPlayer(slides);
+    return true;
+  }
+
+  function startNiaTrainingFromCommittedPlan() {
+    const nia = normalizeNiaState(state.nia);
+    if (!nia.plan || nia.planStatus !== "committed") return false;
+    state.affinity.openingComplete = true;
+    state.nia = {
+      ...nia,
+      training: {
+        ...niaTrainingCore.normalizeNiaTraining(nia.training),
+        active: true,
+        actionIndex: 0
+      },
+      updatedAt: Date.now()
+    };
+    state.launchMenuPaused = false;
+    setNiaPrototypeVisible(false);
+    return true;
+  }
+
+  function startNiaTrainingFromTablet() {
+    const nia = normalizeNiaState(state.nia);
+    if (!nia.plan || nia.planStatus !== "committed" || nia.phase !== "plan_ready" || nia.training?.active) {
+      postNiaStateSync();
+      return false;
+    }
+    return beginNiaScheduleShareFromTablet();
+  }
+
+  function beginNiaScheduleShareFromTablet() {
+    const nia = normalizeNiaState(state.nia);
+    if (!nia.plan || nia.planStatus !== "committed" || typeof niaScheduleShareCore.buildScheduleAttachment !== "function") return false;
+    const attachment = niaScheduleShareCore.buildScheduleAttachment({ ...nia.plan, round: nia.round });
+    const current = niaScheduleShareCore.normalizeScheduleShare(nia.scheduleShare, attachment.planId);
+    const threadId = current.threadId || "idol";
+    const attachmentMessageId = appendNiaScheduleAttachment(threadId, attachment);
+    const scheduleShare = {
+      ...current,
+      planId: attachment.planId,
+      threadId,
+      attachmentMessageId
+    };
+    state.nia = { ...nia, scheduleShare, updatedAt: Date.now() };
+    saveState("nia.schedule_share_attachment_sent");
+    setNiaPrototypeVisible(false);
+    returnToNiaAfterPhone = true;
+    openPhoneOverlay();
+    openPhoneThread(threadId);
+    if (["awaiting_reply", "completed"].includes(scheduleShare.status)) return true;
+    return requestNiaScheduleShareReply();
+  }
+
+  function startNiaFirstDayAfterScheduleShare() {
+    const nia = normalizeNiaState(state.nia);
+    if (nia.scheduleShare.status !== "completed" || nia.training?.active) return false;
+    if (!startNiaTrainingFromCommittedPlan()) return false;
+    saveState("nia.training_started_after_schedule_share");
+    postNiaStateSync();
+    returnToNiaAfterPhone = false;
+    closePhoneOverlay();
+    render();
+    return true;
+  }
+
+  function completeNiaPlanReview() {
+    const nia = normalizeNiaState(state.nia);
+    if (nia.planStatus !== "reviewing" || !nia.pendingReviewPlan) return false;
+    state.nia = {
+      ...nia,
+      phase: "plan_ready",
+      plan: nia.pendingReviewPlan,
+      pendingReviewPlan: null,
+      planStatus: "committed",
+      activeRequest: null,
+      lastError: "",
+      updatedAt: Date.now()
+    };
+    state.pendingActionContext = null;
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    state.selectedChoiceText = "";
+    state.selectedChoiceRating = "";
+    stopVnAuto();
+    if (vnTypewriterTimer) {
+      clearInterval(vnTypewriterTimer);
+      vnTypewriterTimer = 0;
+    }
+    setElementHidden("eventOverlay", true);
+    setNiaPrototypeVisible(true);
+    saveState("nia.plan_committed_after_review");
+    postNiaStateSync();
+    render();
+    return true;
+  }
+
+  function resumeNiaPlanReviewIfNeeded() {
+    const nia = normalizeNiaState(state.nia);
+    if (nia.planStatus !== "reviewing") return false;
+    if (!nia.pendingReviewPlan) {
+      state.nia = {
+        ...nia,
+        phase: "draft",
+        planStatus: "retryable_failed",
+        pendingReviewPlan: null,
+        lastError: "待评价企划数据损坏，请重新提交企划。",
+        updatedAt: Date.now()
+      };
+      saveState("nia.plan_review_invalid");
+      return false;
+    }
+    return openNiaPlanReviewVn(nia.pendingReviewPlan);
+  }
+
+  function resumeNiaCampusActivityIfNeeded() {
+    if (!isNiaTrainingActive()) return false;
+    const nia = normalizeNiaState(state.nia);
+    const context = state.pendingActionContext?.actionContext || {};
+    if (state.activeStoryNode?.type === "niaCampusActivity"
+      && context.phase === "result_ready"
+      && state.lastStory) {
+      openEventOverlay("N.I.A · 校内自由活动", "傍晚活动已经完成", state.lastStory);
+      return true;
+    }
+    const active = nia.activeRequest;
+    if (!active || state.pendingActionContext?.action !== "nia_campus_activity") return false;
+    const owner = getPrimaryModelChannelOwner();
+    const requestStillActive = Boolean(
+      owner?.ownerKind === "nia_campus_activity"
+      && owner.requestId === active.requestId
+      && owner.channelLeaseId === active.channelLeaseId
+      && owner.turnId === active.turnId
+    );
+    if (!requestStillActive) {
+      failNiaCampusActivity("页面重载中断了校内活动请求，可以重新选择地点。", "orphaned_request");
+      return true;
+    }
+    pendingAiRequestId = active.requestId;
+    state.pendingAiRequestId = active.requestId;
+    state.activeStoryNode = { type: "niaCampusActivity", ready: false };
+    openEventOverlay("N.I.A · 校内自由活动", "正在等待主 API 回复", buildAiWaitingStory("正在恢复傍晚校内活动。"));
+    return true;
+  }
+
+  function resumeNiaProducerWorkIfNeeded() {
+    if (!isNiaTrainingActive() || typeof niaProducerWorkCore.normalizeProducerWork !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const planDay = niaTrainingCore.getCurrentNiaPlanAction(nia);
+    let work = niaProducerWorkCore.normalizeProducerWork(nia.producerWork);
+    if (String(planDay?.type || "") !== "制作人工作" || work.status === "idle") return false;
+    if (work.status === "planning" && typeof niaProducerWorkCore.reconcileBusinessRequirements === "function") {
+      work = niaProducerWorkCore.reconcileBusinessRequirements(work, {
+        requireRadioPlan: niaPlanRequiresRadioPreparation(nia),
+        requireOnlineLivePlan: niaPlanRequiresOnlineLivePreparation(nia)
+      });
+      state.nia = { ...nia, producerWork: work, updatedAt: Date.now() };
+      saveState("nia.producer_work_requirements_reconciled");
+    }
+    if (work.status === "generating") {
+      const active = work.activeRequest;
+      const owner = getPrimaryModelChannelOwner();
+      const requestStillActive = Boolean(
+        active
+        && owner?.ownerKind === "nia_producer_work"
+        && owner.requestId === active.requestId
+        && owner.channelLeaseId === active.channelLeaseId
+      );
+      if (!requestStillActive) {
+        failNiaProducerWork("页面重载中断了当前工作请求，玩家方案已经保留，可以重新生成。", "orphaned_request");
+        return true;
+      }
+      pendingAiRequestId = active.requestId;
+      state.pendingAiRequestId = active.requestId;
+      state.pendingActionContext = { action: "nia_producer_work", actionContext: { phase: "generating", periodId: active.periodId } };
+      setNiaPrototypeVisible(false);
+      openEventOverlay("N.I.A · 制作人工作", "正在等待主 API 回复", "制作人的方案已经提交，正在等待本时段的工作结果……");
+      return true;
+    }
+    if (work.status === "complete" && !work.trainingSettled && work.lastStory) {
+      state.pendingActionContext = { action: "nia_producer_work", actionContext: { phase: "result_ready" } };
+      state.activeStoryNode = { type: "niaProducerWorkResult", ready: true };
+      openEventOverlay("N.I.A · 制作人工作", "本日工作已经结束", work.lastStory);
+      return true;
+    }
+    openNiaPrototype();
+    return true;
+  }
+
+  function isNiaFanMilestoneBlocking() {
+    if (state.produceScenario !== "nia" || !isNiaRouteAvailable(state.idol)) return false;
+    if (typeof niaFanMilestoneCore.normalizeFanMilestone !== "function") return false;
+    const runtime = niaFanMilestoneCore.normalizeFanMilestone(normalizeNiaState(state.nia).fanMilestoneEvent);
+    return ["pending", "generating", "playing", "retryable_failed"].includes(runtime.status);
+  }
+
+  function getNiaFanMilestoneUi(runtime) {
+    const normalized = niaFanMilestoneCore.normalizeFanMilestone(runtime);
+    const route = getCurrentNiaRoute();
+    const definition = route?.episodes?.find((entry) => entry.eventId === normalized.eventId)
+      || niaFanMilestoneCore.getFanMilestoneDefinition?.(normalized.eventId, route)
+      || {};
+    if (definition.title || definition.subtitle) {
+      return {
+        title: definition.title || `N.I.A · ${normalized.threshold} 粉丝纪念`,
+        subtitle: definition.subtitle || `${route?.idolName || state.idol}的 N.I.A 第 ${definition.episode || 12} 话剧情`
+      };
+    }
+    return {
+      title: definition.trigger === "round2_day5_complete"
+        ? "N.I.A · 第二轮强敌登场"
+        : definition.trigger === "round2_audition_eve"
+          ? "N.I.A · 第二轮选拔前夜"
+          : definition.trigger === "round2_audition_complete"
+            ? "N.I.A · QUARTET 胜利之后"
+            : definition.trigger === "round3_first_business_complete"
+              ? "N.I.A · FINALE 约定"
+              : definition.trigger === "round3_schedule_complete"
+                ? "N.I.A · FINALE 前夜"
+                : definition.eventId === "nia-saki-finale-sisters-aftermath"
+                  ? "N.I.A · 姐妹的下一场胜负"
+                  : definition.eventId === "nia-saki-finale-partner-epilogue"
+                    ? "N.I.A · 命中注定的搭档"
+          : `N.I.A · ${normalized.threshold} 粉丝纪念`,
+      subtitle: `${state.idol || "担当偶像"}的 N.I.A 第 ${definition.episode || (normalized.threshold >= 10000 ? 13 : 12)} 话剧情`
+    };
+  }
+
+  function getNiaFanMilestoneContext(nia = normalizeNiaState(state.nia)) {
+    const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+    const audition = niaAuditionCore.normalizeAuditionRuntime?.(nia.audition) || nia.audition || {};
+    const auditionRound = Number(audition.roundNumber || audition.context?.round || 1);
+    const planDays = Array.isArray(nia.plan?.days) ? nia.plan.days : [];
+    const firstBusinessIndex = planDays.findIndex((day) => String(day?.type || "") === "营业");
+    return {
+      scenario: state.produceScenario,
+      idolName: state.idol,
+      routeId: getCurrentNiaRoute()?.routeId || "",
+      fans: training.fans,
+      round: nia.round,
+      actionIndex: training.actionIndex,
+      planLength: planDays.length,
+      thirdRoundFirstBusinessCompleted: Number(nia.round) === 3
+        && firstBusinessIndex >= 0
+        && training.actionIndex > firstBusinessIndex,
+      thirdRoundScheduleCompleted: Number(nia.round) === 3
+        && planDays.length > 0
+        && training.actionIndex >= planDays.length,
+      secondRoundAuditionCompleted: auditionRound === 2
+        && Boolean(audition.progressionApplied)
+        && audition.postAudition?.status === "completed",
+      thirdRoundFinaleCompleted: auditionRound === 3
+        && Boolean(audition.progressionApplied)
+        && audition.postAudition?.status === "completed"
+    };
+  }
+
+  function failNiaFanMilestone(message, reason = "generation_failed") {
+    if (typeof niaFanMilestoneCore.normalizeFanMilestone !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const runtime = niaFanMilestoneCore.normalizeFanMilestone(nia.fanMilestoneEvent);
+    const ui = getNiaFanMilestoneUi(runtime);
+    const active = runtime.activeRequest;
+    if (active?.requestId && active?.channelLeaseId) {
+      releasePrimaryModelChannel(active.requestId, active.channelLeaseId, reason);
+    }
+    state.nia = {
+      ...nia,
+      fanMilestoneEvent: {
+        ...runtime,
+        status: "retryable_failed",
+        activeRequest: null,
+        lastError: String(message || "5000 粉丝剧情生成失败").slice(0, 500),
+        updatedAt: Date.now()
+      },
+      updatedAt: Date.now()
+    };
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    state.pendingActionContext = { action: "nia_fan_milestone", actionContext: { eventId: runtime.eventId, phase: "retry" } };
+    state.activeStoryNode = { type: "niaFanMilestone", ready: false };
+    state.eventMode = "none";
+    setNiaPrototypeVisible(false);
+    saveState("nia.fan_milestone_failed");
+    openEventOverlay(ui.title, "生成失败，只能重试当前剧情", `${message || "剧情生成失败。"}\n\n粉丝、行动和既有结算不会重复。`);
+    return true;
+  }
+
+  function requestNiaFanMilestoneStory() {
+    const api = globalThis.HatsuNiaFanMilestoneApi;
+    if (typeof niaFanMilestoneCore.beginFanMilestoneGeneration !== "function" || !api?.buildNiaFanMilestonePrompt) {
+      return failNiaFanMilestone("5000 粉丝剧情模块尚未加载，请刷新 SillyTavern 页面后重试。", "module_unavailable");
+    }
+    const nia = normalizeNiaState(state.nia);
+    const started = niaFanMilestoneCore.beginFanMilestoneGeneration(nia.fanMilestoneEvent, { requestId: "pending" });
+    if (!started.ok) return false;
+    const ui = getNiaFanMilestoneUi(started.runtime);
+    const requestId = createRequestId();
+    const turnId = started.runtime.eventId;
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "nia_fan_milestone",
+      turnId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      state.nia = { ...nia, fanMilestoneEvent: started.runtime, updatedAt: Date.now() };
+      return failNiaFanMilestone("主 API 正在处理其他请求，请稍后重试。", "channel_occupied");
+    }
+    const runtime = {
+      ...started.runtime,
+      activeRequest: {
+        requestId,
+        channelLeaseId: acquired.owner.channelLeaseId,
+        turnId,
+        saveScope: activeHostSaveScope,
+        sessionEpoch: runtimeSessionEpoch
+      }
+    };
+    const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+    const audition = niaAuditionCore.normalizeAuditionRuntime?.(nia.audition) || nia.audition || {};
+    const prompt = api.buildNiaFanMilestonePrompt({
+      eventId: runtime.eventId,
+      idolName: state.idol,
+      fans: training.fans,
+      producer: clone(state.producer || {}),
+      round: nia.round,
+      auditionResult: clone(audition.result || {}),
+      auditionRecapSummary: String(audition.postAudition?.recapSummary || ""),
+      latestBusinessResult: clone(
+        nia.tvBusiness?.result
+        || nia.snsBusiness?.result
+        || nia.radioBusiness?.result
+        || nia.liveBusiness?.result
+        || {}
+      )
+    }, runtime);
+    state.nia = { ...nia, fanMilestoneEvent: runtime, updatedAt: Date.now() };
+    state.pendingActionContext = { action: "nia_fan_milestone", actionContext: { eventId: runtime.eventId, phase: "generating" } };
+    state.activeStoryNode = { type: "niaFanMilestone", ready: false };
+    state.eventMode = "none";
+    state.pendingOptionTexts = [];
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = prompt;
+    setNiaPrototypeVisible(false);
+    saveState("nia.fan_milestone_generating");
+    openEventOverlay(ui.title, ui.subtitle, buildAiWaitingStory(`${state.idol || "担当偶像"}正在重新审视不断增加的粉丝和前方的对手。`));
+    const sent = requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "nia_fan_milestone",
+      turnId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) return failNiaFanMilestone("当前页面未连接 SillyTavern，无法生成剧情。", "host_unavailable");
+    return true;
+  }
+
+  function isCurrentNiaFanMilestoneReply(requestId) {
+    if (typeof niaFanMilestoneCore.normalizeFanMilestone !== "function") return false;
+    const runtime = niaFanMilestoneCore.normalizeFanMilestone(normalizeNiaState(state.nia).fanMilestoneEvent);
+    const owner = getPrimaryModelChannelOwner();
+    return Boolean(
+      runtime.status === "generating"
+      && runtime.activeRequest?.requestId === String(requestId || "")
+      && owner?.ownerKind === "nia_fan_milestone"
+      && owner.requestId === runtime.activeRequest.requestId
+      && owner.channelLeaseId === runtime.activeRequest.channelLeaseId
+    );
+  }
+
+  function handleNiaFanMilestoneAiReply(source, requestId, isFinal) {
+    if (!isCurrentNiaFanMilestoneReply(requestId)) return false;
+    if (!isFinal) {
+      sendAiReplyAck(requestId, true, false, false);
+      return true;
+    }
+    const nia = normalizeNiaState(state.nia);
+    const runtime = niaFanMilestoneCore.normalizeFanMilestone(nia.fanMilestoneEvent);
+    const ui = getNiaFanMilestoneUi(runtime);
+    const active = runtime.activeRequest;
+    const parsed = globalThis.HatsuNiaFanMilestoneApi?.parseNiaFanMilestonePayload?.(
+      { rawText: source, text: source },
+      { eventId: runtime.eventId }
+    );
+    if (!parsed?.ok) {
+      sendAiReplyAck(requestId, false, false);
+      return failNiaFanMilestone("主 API 回复不是有效的 5000 粉丝好感剧情格式，可以重新生成。", parsed?.reason || "invalid_payload");
+    }
+    const applied = niaFanMilestoneCore.applyFanMilestoneStory(runtime, parsed.data);
+    if (!applied.ok) {
+      sendAiReplyAck(requestId, false, false);
+      return failNiaFanMilestone("剧情回复与当前事件不一致，可以重新生成。", applied.reason);
+    }
+    sendAiReplyAck(requestId, true, false);
+    if (active?.requestId && active?.channelLeaseId) {
+      releasePrimaryModelChannel(active.requestId, active.channelLeaseId, "completed");
+    }
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    state.nia = { ...nia, fanMilestoneEvent: applied.runtime, updatedAt: Date.now() };
+    state.pendingActionContext = { action: "nia_fan_milestone", actionContext: { eventId: applied.runtime.eventId, phase: "playing" } };
+    state.activeStoryNode = { type: "niaFanMilestone", ready: true };
+    state.eventMode = "none";
+    state.pendingOptionTexts = [];
+    state.lastStory = applied.runtime.story;
+    saveState("nia.fan_milestone_playing");
+    openEventOverlay(ui.title, ui.subtitle, applied.runtime.story);
+    return true;
+  }
+
+  function completeNiaFanMilestoneAfterPlayback() {
+    if (typeof niaFanMilestoneCore.completeFanMilestone !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const completed = niaFanMilestoneCore.completeFanMilestone(nia.fanMilestoneEvent);
+    if (!completed.ok) return false;
+    const completedEventId = completed.runtime.eventId;
+    const nextRuntime = niaFanMilestoneCore.reconcileFanMilestone(completed.runtime, getNiaFanMilestoneContext(nia));
+    let nextNia = { ...nia, fanMilestoneEvent: nextRuntime, updatedAt: Date.now() };
+    const completedDefinition = getCurrentNiaRoute()?.episodes?.find((entry) => entry.eventId === completedEventId);
+    const completedRoundTwoAudition = completedDefinition?.trigger?.type === "audition_complete"
+      && Number(completedDefinition.trigger.round) === 2;
+    if (completedRoundTwoAudition
+      && Number(nia.round) === 2
+      && typeof niaRoundTransitionCore.prepareInterRoundOuting === "function") {
+      nextNia = {
+        ...nextNia,
+        phase: "inter_round_outing",
+        interRoundOuting: niaRoundTransitionCore.prepareInterRoundOuting(
+          nia.interRoundOuting,
+          Date.now(),
+          { fromRound: 2, toRound: 3 }
+        )
+      };
+    }
+    state.nia = nextNia;
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    state.pendingActionContext = null;
+    state.activeStoryNode = null;
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    setElementHidden("eventOverlay", true);
+    setNiaPrototypeVisible(!completedRoundTwoAudition);
+    saveState("nia.fan_milestone_completed");
+    render();
+    resumeNiaModeIfNeeded();
+    return true;
+  }
+
+  function activateNiaEveningAfterDayCompletion(completedDayIndex) {
+    if (typeof niaEveningCore.activateEvening !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const days = Array.isArray(nia.plan?.days) ? nia.plan.days : [];
+    const dayIndex = Math.floor(Number(completedDayIndex));
+    if (dayIndex < 0 || dayIndex >= days.length) return false;
+    const calendarDayIndex = getNiaPlanDisplayDay(dayIndex, nia.round) - 1;
+    const evening = niaEveningCore.activateEvening(nia.evening, { completedDayIndex: calendarDayIndex });
+    const newEvening = nia.evening?.dayIndex !== calendarDayIndex || nia.evening?.status === "idle";
+    let nextNia = { ...nia, evening, eveningJournal: newEvening ? null : nia.eveningJournal, updatedAt: Date.now() };
+    if (typeof niaFanMilestoneCore.reconcileFanMilestone === "function") {
+      nextNia = {
+        ...nextNia,
+        fanMilestoneEvent: niaFanMilestoneCore.reconcileFanMilestone(
+          nextNia.fanMilestoneEvent,
+          getNiaFanMilestoneContext(nextNia)
+        )
+      };
+    }
+    state.nia = nextNia;
+    saveState("nia.evening.active");
+    return evening.status === "active";
+  }
+
+  function activateNiaInterRoundEvening() {
+    if (typeof niaEveningCore.activateEvening !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    if (nia.interRoundOuting?.status !== "completed") return false;
+    const evening = niaEveningCore.activateEvening(nia.evening, { completedDayIndex: 0 });
+    state.nia = { ...nia, evening, eveningJournal: null, updatedAt: Date.now() };
+    saveState("nia.inter_round_outing_evening_active");
+    return evening.status === "active";
+  }
+
+  function reconcileNiaFanMilestoneAfterSettlement(options = {}) {
+    if (typeof niaFanMilestoneCore.reconcileFanMilestone !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const runtime = niaFanMilestoneCore.reconcileFanMilestone(nia.fanMilestoneEvent, getNiaFanMilestoneContext(nia));
+    state.nia = { ...nia, fanMilestoneEvent: runtime, updatedAt: Date.now() };
+    if (runtime.status !== "pending") return isNiaFanMilestoneBlocking();
+    saveState("nia.fan_milestone_pending");
+    if (options.defer) return false;
+    return requestNiaFanMilestoneStory();
+  }
+
+  function shouldDeferPendingFanMilestoneForAuditionRecap() {
+    if (typeof niaFanMilestoneCore.reconcileFanMilestone !== "function" || typeof niaAuditionCore.normalizeAuditionRuntime !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const milestone = niaFanMilestoneCore.reconcileFanMilestone(nia.fanMilestoneEvent, getNiaFanMilestoneContext(nia));
+    if (milestone.status !== "pending") return false;
+    const audition = niaAuditionCore.normalizeAuditionRuntime(nia.audition);
+    return Boolean(
+      audition.auditionId
+      && audition.progressionApplied
+      && audition.postAudition?.status !== "completed"
+    );
+  }
+
+  function resumeNiaFanMilestoneIfNeeded() {
+    if (state.produceScenario !== "nia" || !state.idol || typeof niaFanMilestoneCore.normalizeFanMilestone !== "function") return false;
+    let nia = normalizeNiaState(state.nia);
+    let runtime = niaFanMilestoneCore.reconcileFanMilestone(nia.fanMilestoneEvent, getNiaFanMilestoneContext(nia));
+    runtime = niaFanMilestoneCore.recoverInterruptedFanMilestone(runtime);
+    if (["idle", "completed"].includes(runtime.status)) return false;
+    state.nia = { ...nia, fanMilestoneEvent: runtime, updatedAt: Date.now() };
+    setNiaPrototypeVisible(false);
+    if (runtime.status === "pending") {
+      saveState("nia.fan_milestone_pending_recovered");
+      return requestNiaFanMilestoneStory();
+    }
+    if (runtime.status === "playing") {
+      const ui = getNiaFanMilestoneUi(runtime);
+      state.pendingActionContext = { action: "nia_fan_milestone", actionContext: { eventId: runtime.eventId, phase: "playing" } };
+      state.activeStoryNode = { type: "niaFanMilestone", ready: true };
+      state.eventMode = "none";
+      state.lastStory = runtime.story;
+      saveState("nia.fan_milestone_playback_recovered");
+      openEventOverlay(ui.title, ui.subtitle, runtime.story);
+      return true;
+    }
+    if (runtime.status === "retryable_failed") {
+      const ui = getNiaFanMilestoneUi(runtime);
+      state.pendingActionContext = { action: "nia_fan_milestone", actionContext: { eventId: runtime.eventId, phase: "retry" } };
+      state.activeStoryNode = { type: "niaFanMilestone", ready: false };
+      state.eventMode = "none";
+      saveState("nia.fan_milestone_retry_recovered");
+      openEventOverlay(ui.title, "剧情生成中断，只能重试", `${runtime.lastError || "页面刷新中断了剧情生成。"}\n\n粉丝和既有结算不会重复。`);
+      return true;
+    }
+    return false;
+  }
+
+  function resumeBlockingNiaFanMilestone() {
+    if (!isNiaFanMilestoneBlocking()) return false;
+    resumeNiaFanMilestoneIfNeeded();
+    return true;
+  }
+
+  function resumeNiaEveningIfNeeded() {
+    if (isNiaFanMilestoneBlocking()) {
+      resumeNiaFanMilestoneIfNeeded();
+      return true;
+    }
+    if (!isNiaEveningActive()) return false;
+    const evening = normalizeNiaState(state.nia).evening;
+    closePhoneOverlay();
+    setNiaPrototypeVisible(false);
+    if (evening.atApartment) {
+      closeApartmentGoHomeOverlay();
+      renderProducerApartmentStage();
+      resumeApartmentDialogueIfNeeded();
+      return true;
+    }
+    closeApartmentGoHomeOverlay();
+    render();
+    if (normalizeApartmentDialogueCheckpoint(state.apartmentDialogue)) {
+      resumeApartmentDialogueIfNeeded();
+    }
+    return true;
+  }
+
+  function resumeBlockingNiaEvening() {
+    if (!isNiaEveningActive()) return false;
+    resumeNiaEveningIfNeeded();
+    return true;
+  }
+
+  function migrateCompletedRoundTwoSaveToThirdRound() {
+    if (typeof niaRoundTransitionCore.prepareInterRoundOuting !== "function"
+      || typeof niaFanMilestoneCore.normalizeFanMilestone !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const audition = niaAuditionCore.normalizeAuditionRuntime?.(nia.audition) || nia.audition || {};
+    const milestone = niaFanMilestoneCore.normalizeFanMilestone(nia.fanMilestoneEvent);
+    const outing = nia.interRoundOuting || {};
+    const roundTwoFullyCompleted = Number(nia.round) === 2
+      && Number(audition.roundNumber || audition.context?.round || 0) === 2
+      && Boolean(audition.progressionApplied)
+      && audition.postAudition?.status === "completed"
+      && Number(getCurrentNiaRoute()?.episodes?.find((entry) => entry.eventId === milestone.eventId)?.episode) === 16
+      && milestone.status === "completed";
+    const alreadyPrepared = Number(outing.fromRound) === 2
+      && Number(outing.toRound) === 3
+      && outing.status !== "idle";
+    if (!roundTwoFullyCompleted || alreadyPrepared) return false;
+    state.nia = {
+      ...nia,
+      phase: "inter_round_outing",
+      interRoundOuting: niaRoundTransitionCore.prepareInterRoundOuting(
+        outing,
+        Date.now(),
+        { fromRound: 2, toRound: 3 }
+      ),
+      updatedAt: Date.now()
+    };
+    saveState("nia.round3_legacy_save_migrated");
+    return true;
+  }
+
+  function resumeNiaModeIfNeeded() {
+    if ((state.produceScenario !== "nia" && state.nia?.mode !== "nia") || !state.idol) return false;
+    if (!isNiaRouteAvailable(state.idol)) return rejectUnavailableNiaRoute();
+    // launchMenuPaused is a shell/UI flag. It must not override an otherwise
+    // valid N.I.A save after a host reload or a phone overlay round-trip.
+    if (state.launchMenuPaused && hasResumableGameplay()) {
+      state.launchMenuPaused = false;
+      saveState("nia.launch_pause_cleared");
+    }
+    if (state.launchMenuPaused) return false;
+    state.produceScenario = "nia";
+    if (state.launchMode !== "nia") {
+      state.launchMode = "nia";
+      saveState("nia.route_recovered");
+    }
+    migrateCompletedRoundTwoSaveToThirdRound();
+    if (resumeNiaFinaleLiveIfNeeded()) return true;
+    const deferPendingMilestone = shouldDeferPendingFanMilestoneForAuditionRecap();
+    if (!deferPendingMilestone && resumeNiaFanMilestoneIfNeeded()) return true;
+    if (resumeNiaAuditionIfNeeded()) return true;
+    if (resumeNiaFanMilestoneIfNeeded()) return true;
+    if (resumeNiaRadioBusinessIfNeeded()) return true;
+    if (resumeNiaTvBusinessIfNeeded()) return true;
+    if (resumeNiaSnsBusinessIfNeeded()) return true;
+    if (resumeNiaMiniLiveIfNeeded()) return true;
+    if (resumeNiaLiveBusinessIfNeeded()) return true;
+    if (resumeNiaScheduleShareIfNeeded()) return true;
+    if (resumeNiaInterRoundOutingIfNeeded()) return true;
+    if (resumeNiaEveningIfNeeded()) return true;
+    if (isNiaTrainingActive()) {
+      if (resumeNiaCampusActivityIfNeeded()) return true;
+      return resumeNiaProducerWorkIfNeeded();
+    }
+    let nia = normalizeNiaState(state.nia);
+    state.nia = nia;
+    if (nia.openingStatus === "ready") {
+      return openNiaOpeningVn(nia.openingStory);
+    }
+    if (nia.openingStatus === "generating") {
+      const active = nia.openingRequest;
+      const owner = getPrimaryModelChannelOwner();
+      const requestStillActive = Boolean(
+        active
+        && owner?.ownerKind === "nia_opening"
+        && owner.requestId === active.requestId
+        && owner.channelLeaseId === active.channelLeaseId
+      );
+      if (requestStillActive) {
+        pendingAiRequestId = active.requestId;
+        state.pendingAiRequestId = active.requestId;
+        state.activeStoryNode = { type: "niaOpening", ready: false };
+        openEventOverlay("N.I.A · 新的战斗", "正在生成开场剧情", buildAiWaitingStory(`${state.idol || "担当偶像"}与制作人的 N.I.A 故事即将开始。`));
+        return true;
+      }
+      nia = {
+        ...nia,
+        openingStatus: "retryable_failed",
+        openingRequest: null,
+        lastError: "页面重载中断了上一次 N.I.A 开场请求，正在重新生成。",
+        updatedAt: Date.now()
+      };
+      state.nia = nia;
+      saveState("nia.opening_orphaned_request");
+    }
+    if (nia.openingStatus === "idle" || nia.openingStatus === "retryable_failed") {
+      return startNiaOpeningStory("恢复 N.I.A 开场");
+    }
+    if (nia.openingStatus === "completed") {
+      if (resumeNiaPlanReviewIfNeeded()) return true;
+      openNiaPrototype();
+      return true;
+    }
+    return false;
+  }
+
+  function resumeNiaInterRoundOutingIfNeeded() {
+    const nia = normalizeNiaState(state.nia);
+    const outing = nia.interRoundOuting;
+    if (outing?.status === "ready") {
+      setNiaPrototypeVisible(false);
+      render();
+      return true;
+    }
+    if (!["selecting", "exploring", "completing", "retryable_failed"].includes(outing?.status)) return false;
+    ensureFreeModeTimeDefaults();
+    state.freeMode.active = true;
+    state.freeMode.clockMinutes = outing.clockMinutes;
+    if (outing.status === "completing") {
+      const active = nia.activeRequest;
+      const owner = getPrimaryModelChannelOwner();
+      if (active?.requestId && owner?.ownerKind === "nia_inter_round_outing" && owner.requestId === active.requestId) {
+        pendingAiRequestId = active.requestId;
+        state.pendingAiRequestId = active.requestId;
+        state.pendingActionContext = { action: "nia_inter_round_outing", actionContext: { phase: "generating", requestId: active.requestId } };
+        openEventOverlay(`N.I.A · 第${outing.toRound}轮外出`, "正在生成外出收尾……", buildAiWaitingStory("正在整理今天的外出回忆……"));
+        return true;
+      }
+      failNiaInterRoundOuting("页面刷新中断了外出收尾生成，请重新生成。", "orphaned_request");
+      return true;
+    }
+    setNiaPrototypeVisible(false);
+    if (outing.status === "selecting") {
+      openFreeModeOutingOverlay();
+      return true;
+    }
+    if (outing.venueId) {
+      openFreeModeOutingScene(outing.venueId, "with_idol");
+      return true;
+    }
+    state.freeMode.activeLocationId = null;
+    state.freeMode.activeOutingDestination = outing.destination || null;
+    render();
+    renderFreeModeStage();
+    return true;
+  }
+
+  function resumeNiaScheduleShareIfNeeded() {
+    let nia = normalizeNiaState(state.nia);
+    let share = nia.scheduleShare;
+    if (share?.planId && (!nia.plan || nia.planStatus !== "committed")) {
+      share = typeof niaScheduleShareCore.createScheduleShareState === "function"
+        ? niaScheduleShareCore.createScheduleShareState()
+        : { status: "idle", planId: "", threadId: "", attachmentMessageId: "", replyMessageId: "", requestId: "", error: "" };
+      nia = { ...nia, scheduleShare: share, updatedAt: Date.now() };
+      state.nia = nia;
+      saveState("nia.schedule_share_without_plan_cleared");
+    }
+    // Schedule sharing predates the round transition and does not carry a
+    // separate round field. Compare its stable plan id with the currently
+    // committed plan so an old first-round phone screen cannot hijack a
+    // second-round save after reload.
+    if (share?.planId && nia.plan && typeof niaScheduleShareCore.buildScheduleAttachment === "function") {
+      const authoritativePlan = { ...nia.plan, round: nia.round };
+      const currentAttachment = niaScheduleShareCore.buildScheduleAttachment(authoritativePlan);
+      const currentPlanId = currentAttachment.planId;
+      if (currentPlanId && currentPlanId !== share.planId) {
+        share = typeof niaScheduleShareCore.createScheduleShareState === "function"
+          ? niaScheduleShareCore.createScheduleShareState()
+          : { status: "idle", planId: "", threadId: "", attachmentMessageId: "", replyMessageId: "", requestId: "", error: "" };
+        nia = { ...nia, scheduleShare: share, updatedAt: Date.now() };
+        state.nia = nia;
+        saveState("nia.schedule_share_stale_round_cleared");
+      } else if (currentPlanId && share.threadId) {
+        appendNiaScheduleAttachment(share.threadId, currentAttachment);
+      }
+    }
+    if (!share?.planId || !share.threadId || share.status === "idle" || nia.training?.active) return false;
+    if (share.status === "awaiting_reply") {
+      const requestId = String(share.requestId || state.phoneChat?.pendingRequestId || "");
+      const live = requestId && pendingAiRequestId === requestId && state.phoneChat?.isAwaitingReply;
+      if (!live && typeof niaScheduleShareCore.markScheduleShareFailed === "function") {
+        share = niaScheduleShareCore.markScheduleShareFailed(share, {
+          planId: share.planId,
+          threadId: share.threadId,
+          requestId: share.requestId,
+          error: "日程回应生成被中断，请重新获取回复。"
+        });
+        nia = { ...nia, scheduleShare: share, updatedAt: Date.now() };
+        state.nia = nia;
+        state.phoneChat.isAwaitingReply = false;
+        state.phoneChat.pendingRequestId = "";
+        state.phoneChat.retryAvailable = false;
+        state.activeStoryNode = null;
+        saveState("nia.schedule_share_recovered");
+      }
+    }
+    setNiaPrototypeVisible(false);
+    returnToNiaAfterPhone = true;
+    state.phoneChat.activeView = "chat";
+    state.phoneChat.activeThreadId = share.threadId;
+    openPhoneOverlay();
+    openPhoneThread(share.threadId);
+    return true;
+  }
+
+  function getNiaPrototypeMountTarget() {
+    return document.getElementById("hatsu-fullscreen-overlay") || document.body;
+  }
+
+  function openNiaPrototype() {
+    state.launchMode = "nia";
+    state.gameMode = "classic";
+    state.nia = normalizeNiaState(state.nia);
+    saveState("nia.mode_open");
+    const mountTarget = getNiaPrototypeMountTarget();
+    let frame = document.getElementById("hatsu-nia-prototype-frame");
+    let closeButton = document.getElementById("hatsu-nia-prototype-close");
+    if (!frame) {
+      frame = document.createElement("iframe");
+      frame.id = "hatsu-nia-prototype-frame";
+      frame.title = "N.I.A 模式";
+      frame.src = new URL("nia-prototype.html?v=20260811-1", window.HATSU_ASSET_BASE || document.baseURI).href;
+      frame.style.cssText = "position:fixed;inset:0;width:100%;height:100%;border:0;background:#f3f6fb;z-index:2147483000;";
+      mountTarget.appendChild(frame);
+      frame.addEventListener("load", postNiaStateSync);
+    }
+    if (!closeButton) {
+      closeButton = document.createElement("button");
+      closeButton.id = "hatsu-nia-prototype-close";
+      closeButton.type = "button";
+      closeButton.textContent = "返回模式选择";
+      closeButton.title = "关闭 N.I.A 模式";
+      closeButton.style.cssText = "position:fixed;top:14px;right:18px;z-index:2147483001;padding:8px 12px;border:1px solid rgba(31,41,55,.2);border-radius:6px;background:#fff;color:#1f2937;font:600 13px system-ui,sans-serif;box-shadow:0 3px 12px rgba(0,0,0,.15);cursor:pointer;";
+      closeButton.addEventListener("click", () => setNiaPrototypeVisible(false));
+      mountTarget.appendChild(closeButton);
+    }
+    if (frame.parentElement !== mountTarget) mountTarget.appendChild(frame);
+    if (closeButton.parentElement !== mountTarget) mountTarget.appendChild(closeButton);
+    frame.hidden = false;
+    closeButton.hidden = false;
+    postNiaStateSync();
+  }
+
+  function setNiaPrototypeVisible(visible) {
+    const frame = document.getElementById("hatsu-nia-prototype-frame");
+    const closeButton = document.getElementById("hatsu-nia-prototype-close");
+    if (frame) frame.hidden = !visible;
+    if (closeButton) closeButton.hidden = !visible;
+  }
+
+  function startCurrentNiaProducerWorkAction() {
+    if (resumeBlockingNiaFanMilestone()) return false;
+    if (resumeBlockingNiaEvening()) return false;
+    if (!isNiaTrainingActive() || typeof niaProducerWorkCore.createSakiRoundOneWorkday !== "function") return false;
+    const nia = normalizeNiaState(state.nia);
+    const planDay = niaTrainingCore.getCurrentNiaPlanAction(nia);
+    if (!planDay || String(planDay.type) !== "制作人工作") return false;
+    const actionIndex = niaTrainingCore.normalizeNiaTraining(nia.training).actionIndex;
+    let work = niaProducerWorkCore.normalizeProducerWork(nia.producerWork);
+    if (work.status === "idle" || work.dayIndex !== actionIndex) {
+      work = niaProducerWorkCore.createSakiRoundOneWorkday({
+        ...planDay,
+        idol: state.idol,
+        day: actionIndex + 1,
+        requiresRadioPlan: niaPlanRequiresRadioPreparation(nia),
+        requiresOnlineLivePlan: niaPlanRequiresOnlineLivePreparation(nia)
+      });
+    } else if (work.status === "planning" && typeof niaProducerWorkCore.reconcileBusinessRequirements === "function") {
+      work = niaProducerWorkCore.reconcileBusinessRequirements(work, {
+        idolName: state.idol,
+        requireRadioPlan: niaPlanRequiresRadioPreparation(nia),
+        requireOnlineLivePlan: niaPlanRequiresOnlineLivePreparation(nia)
+      });
+    }
+    state.nia = { ...nia, producerWork: work, updatedAt: Date.now() };
+    saveState("nia.producer_work_open");
+    openNiaPrototype();
+    postNiaStateSync();
+    return true;
+  }
+
+  function updateNiaProducerWorkSchedule(data) {
+    const nia = normalizeNiaState(state.nia);
+    let work = niaProducerWorkCore.normalizeProducerWork(nia.producerWork);
+    if (!["planning", "active", "retryable_failed"].includes(work.status)) return false;
+    let result;
+    if (data.type === "niaProducerWorkAssign") {
+      result = niaProducerWorkCore.assignTaskToPeriod(work, String(data.taskId || ""), String(data.periodId || ""), String(data.phaseId || ""));
+    } else if (data.type === "niaProducerWorkClear") {
+      result = niaProducerWorkCore.clearFutureAssignment(work, String(data.periodId || ""));
+    } else {
+      const validation = typeof niaProducerWorkCore.validateWorkSchedule === "function"
+        ? niaProducerWorkCore.validateWorkSchedule(work, {
+            requireRadioPlan: niaPlanRequiresRadioPreparation(nia),
+            requireOnlineLivePlan: niaPlanRequiresOnlineLivePreparation(nia)
+          })
+        : { ok: work.periods.every((period) => period.taskId && period.phaseId), reason: "incomplete_schedule" };
+      if (!validation.ok) {
+        work.lastError = validation.reason === "radio_plan_required"
+          ? "本轮日程包含《初星放送部》，必须在今天安排“广播部企划”。"
+          : validation.reason === "online_live_plan_required"
+            ? "本轮日程包含网络直播，必须在今天安排“网络直播企划”。"
+            : "请先为上午、下午和傍晚都安排一项行动。";
+        state.nia = { ...nia, producerWork: work };
+        postNiaStateSync();
+        return false;
+      }
+      work.status = "active";
+      work.lastError = "";
+      work.updatedAt = Date.now();
+      result = { ok: true, runtime: work };
+    }
+    if (!result?.ok) {
+      work.lastError = result?.reason === "preparation_must_precede_appointment"
+        ? "接洽准备必须安排在正式会面之前。"
+        : "这个时段当前不能这样安排。";
+      state.nia = { ...nia, producerWork: work };
+      postNiaStateSync();
+      return false;
+    }
+    state.nia = { ...nia, producerWork: result.runtime, updatedAt: Date.now() };
+    saveState("nia.producer_work_schedule");
+    postNiaStateSync();
+    return true;
+  }
+
+  function failNiaProducerWork(message, reason = "generation_failed", options = {}) {
+    const nia = normalizeNiaState(state.nia);
+    const work = niaProducerWorkCore.normalizeProducerWork(nia.producerWork);
+    const active = work.activeRequest;
+    if (active && isPrimaryModelLeaseCurrent(active.requestId, active.channelLeaseId)) {
+      releasePrimaryModelChannel(active.requestId, active.channelLeaseId, reason);
+    }
+    if (pendingAiRequestId === active?.requestId) pendingAiRequestId = "";
+    state.pendingAiRequestId = pendingAiRequestId;
+    const current = work.periods[work.periodIndex];
+    if (current && current.status === "generating") current.status = "ready";
+    work.status = "retryable_failed";
+    work.activeRequest = null;
+    work.lastError = String(message || "工作生成失败，可以保留当前方案重试。").slice(0, 500);
+    work.updatedAt = Date.now();
+    state.nia = { ...nia, producerWork: work, updatedAt: Date.now() };
+    state.pendingActionContext = null;
+    state.activeStoryNode = null;
+    state.eventMode = "none";
+    setElementHidden("eventOverlay", true);
+    if (options.showPrototype !== false) setNiaPrototypeVisible(true);
+    saveState("nia.producer_work_failed");
+    postNiaStateSync();
+    render();
+  }
+
+  async function executeNiaProducerWorkPeriod(data) {
+    const nia = normalizeNiaState(state.nia);
+    let work = niaProducerWorkCore.normalizeProducerWork(nia.producerWork);
+    if (!["active", "retryable_failed"].includes(work.status) || work.activeRequest) return false;
+    const current = niaProducerWorkCore.getCurrentPeriod(work);
+    const assigned = current ? niaProducerWorkCore.getAssignedTask(work, current.id) : null;
+    const operationId = String(data?.operationId || "").slice(0, 160);
+    const preset = String(data?.decision?.preset || "").trim().slice(0, 220);
+    const freeText = String(data?.decision?.freeText || "").trim().slice(0, 1200);
+    const radioPlanning = assigned?.task?.id === "radio-department-plan";
+    const requestedRadioPlan = data?.decision?.radioPlan && typeof data.decision.radioPlan === "object"
+      ? data.decision.radioPlan
+      : {};
+    if (!current || !assigned || !operationId || (!preset && !freeText)) {
+      work.lastError = "请选择一种行动，或填写制作人的处理方案。";
+      state.nia = { ...nia, producerWork: work };
+      postNiaStateSync();
+      return false;
+    }
+    if (work.processedOperationIds.includes(operationId)) return false;
+    let radioPlan = null;
+    if (radioPlanning) {
+      radioPlan = niaProducerWorkCore.normalizeRadioPlan({
+        business_id: work.radioPlan?.business_id || createHarnessId("nia-radio-business"),
+        programTitle: "初星放送部",
+        episodeTitle: String(requestedRadioPlan.episodeTitle || "").trim().slice(0, 200),
+        goal: String(requestedRadioPlan.goal || "").trim().slice(0, 600),
+        host: "真诚优",
+        guest: state.idol,
+        interviewFocus: String(requestedRadioPlan.interviewFocus || "").trim().slice(0, 600),
+        additionalGuestMode: requestedRadioPlan.additionalGuestMode === "specified" ? "specified" : "random",
+        additionalGuest: String(requestedRadioPlan.additionalGuest || "").trim().slice(0, 120)
+      });
+      if (!radioPlan.episodeTitle || !radioPlan.goal || !radioPlan.interviewFocus) {
+        work.lastError = "请先填写完整的广播标题、企划目标和访谈重点。";
+        state.nia = { ...nia, producerWork: work };
+        postNiaStateSync();
+        return false;
+      }
+      work.radioPlan = radioPlan;
+      state.nia = { ...nia, producerWork: work, updatedAt: Date.now() };
+      saveState("nia.radio_plan_frozen");
+    }
+    if (!isSillyTavernHost() || !activeHostSaveScope) {
+      failNiaProducerWork("当前未连接 SillyTavern 宿主，无法调用主 API。", "host_unavailable");
+      return false;
+    }
+    const requestId = createRequestId();
+    const turnId = createHarnessId("nia-producer-work-turn");
+    const receiptId = createHarnessId("nia-producer-work-receipt");
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "nia_producer_work",
+      turnId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      rejectPrimaryModelDispatch(acquired.blockingOwner, { requestId, ownerKind: "nia_producer_work" });
+      work.lastError = "主模型正在处理其他请求，请稍后重试。";
+      state.nia = { ...nia, producerWork: work };
+      postNiaStateSync();
+      return false;
+    }
+    const decision = { preset, freeText, ...(radioPlan ? { radioPlan } : {}) };
+    let api;
+    try {
+      api = await loadNiaProducerWorkApiModule();
+      if (typeof api?.buildNiaProducerWorkPrompt !== "function") throw new Error("producer_work_api_unavailable");
+    } catch {
+      releasePrimaryModelChannel(requestId, acquired.owner.channelLeaseId, "module_unavailable");
+      work.status = "retryable_failed";
+      work.pendingDecision = { taskId: assigned.task.id, phaseId: assigned.phase.id, periodId: current.id, ...decision };
+      work.lastError = "制作人工作模块加载失败，方案已经保留，请刷新后重试。";
+      work.updatedAt = Date.now();
+      state.nia = { ...nia, producerWork: work, updatedAt: Date.now() };
+      saveState("nia.producer_work_module_failed");
+      postNiaStateSync();
+      return false;
+    }
+    const context = {
+      receiptId,
+      taskId: assigned.task.id,
+      phaseId: assigned.phase.id,
+      periodId: current.id,
+      periodIndex: work.periodIndex,
+      isFinalPeriod: work.periodIndex === 2,
+      idol: state.idol,
+      round: nia.round,
+      plan: nia.plan,
+      planDay: niaTrainingCore.getCurrentNiaPlanAction(nia),
+      authoritativeSchedule: buildNiaAuthoritativeScheduleContext(nia),
+      documents: work.documents,
+      materials: work.materials,
+      contacts: work.contacts,
+      terms: work.terms,
+      careerLog: work.careerLog,
+      risks: work.risks,
+      radioPlan
+    };
+    const prompt = api.buildNiaProducerWorkPrompt(context, assigned.task, { ...current, phase: assigned.phase }, decision);
+    work.status = "generating";
+    work.periods[work.periodIndex].status = "generating";
+    work.pendingDecision = { taskId: assigned.task.id, phaseId: assigned.phase.id, periodId: current.id, ...decision };
+    work.activeRequest = {
+      requestId,
+      channelLeaseId: acquired.owner.channelLeaseId,
+      turnId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch,
+      operationId,
+      receiptId,
+      taskId: assigned.task.id,
+      phaseId: assigned.phase.id,
+      periodId: current.id
+    };
+    work.processedOperationIds = [...work.processedOperationIds, operationId].slice(-20);
+    work.lastError = "";
+    work.updatedAt = Date.now();
+    state.nia = { ...nia, producerWork: work, updatedAt: Date.now() };
+    state.pendingActionContext = { action: "nia_producer_work", actionContext: { phase: "generating", periodId: current.id } };
+    state.eventMode = "none";
+    state.harness.activeTurn = {
+      kind: "nia_producer_work",
+      action: "nia_producer_work",
+      ownerKind: "nia_producer_work",
+      turnId,
+      requestId,
+      requestIds: [requestId],
+      channelLeaseId: acquired.owner.channelLeaseId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch,
+      status: "generating",
+      startedAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = prompt;
+    saveState("nia.producer_work_dispatch");
+    postNiaStateSync();
+    setNiaPrototypeVisible(false);
+    openEventOverlay(`N.I.A · ${current.label}工作`, "正在等待主 API 回复", "制作人的方案已经确定，正在生成执行过程与工作结果……");
+    const sent = requestHostPromptSend(prompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "nia_producer_work",
+      turnId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) {
+      failNiaProducerWork("工作请求未能发送，请从当前时段重新尝试。", "dispatch_failed");
+      return false;
+    }
+    return true;
+  }
+
+  function isCurrentNiaProducerWorkReply(requestId) {
+    const work = niaProducerWorkCore.normalizeProducerWork(normalizeNiaState(state.nia).producerWork);
+    const owner = getPrimaryModelChannelOwner();
+    return Boolean(
+      work.status === "generating"
+      && work.activeRequest?.requestId === String(requestId || "")
+      && owner?.ownerKind === "nia_producer_work"
+      && owner.channelLeaseId === work.activeRequest.channelLeaseId
+      && owner.turnId === work.activeRequest.turnId
+      && work.activeRequest.saveScope === String(activeHostSaveScope || "")
+      && work.activeRequest.sessionEpoch === String(runtimeSessionEpoch || "")
+    );
+  }
+
+  function formatNiaProducerWorkFailureReason(reason) {
+    const labels = {
+      receipt_id_mismatch: "回执编号与当前请求不一致",
+      task_id_mismatch: "回复对应的待办与当前待办不一致",
+      period_id_mismatch: "回复对应的工作时段已变化",
+      phase_id_mismatch: "回复对应的任务阶段已变化",
+      incomplete_radio_plan: "广播企划字段不完整",
+      missing_story_or_summary: "缺少工作正文或结果摘要",
+      missing_reunion_story: "当天最后时段缺少与担当偶像合流的收尾",
+      invalid_json: "结果块中的 JSON 无法解析",
+      missing_nia_work_result: "没有找到完整的 NIA_WORK_RESULT 结果块",
+      missing_assignment: "当前时段的工作安排已变化"
+    };
+    return labels[reason] || `无法识别的工作回执（${reason || "unknown"}）`;
+  }
+
+  async function handleNiaProducerWorkAiReply(text, rawText, renderedText, requestId, isFinal) {
+    if (!isCurrentNiaProducerWorkReply(requestId)) return false;
+    if (!isFinal) {
+      sendAiReplyAck(requestId, true, false, false);
+      return true;
+    }
+    const nia = normalizeNiaState(state.nia);
+    const work = niaProducerWorkCore.normalizeProducerWork(nia.producerWork);
+    const active = work.activeRequest;
+    const current = niaProducerWorkCore.getCurrentPeriod(work);
+    const assigned = current ? niaProducerWorkCore.getAssignedTask(work, current.id) : null;
+    const context = {
+      receiptId: active?.receiptId,
+      taskId: active?.taskId,
+      phaseId: active?.phaseId,
+      periodId: active?.periodId,
+      isFinalPeriod: work.periodIndex === 2,
+      idol: state.idol,
+      radioPlan: work.radioPlan
+    };
+    let api;
+    try {
+      api = await loadNiaProducerWorkApiModule();
+      if (typeof api?.parseNiaProducerWorkPayload !== "function") throw new Error("producer_work_api_unavailable");
+    } catch {
+      sendAiReplyAck(requestId, false, false);
+      failNiaProducerWork("制作人工作模块加载失败，当前时段没有结算，可以保留方案重试。", "module_unavailable");
+      return false;
+    }
+    const parsed = api.parseNiaProducerWorkPayload({ text, rawText, renderedText }, context);
+    if (!parsed.ok || !assigned) {
+      sendAiReplyAck(requestId, false, false);
+      const failureDetail = assigned
+        ? formatNiaProducerWorkFailureReason(parsed.reason)
+        : formatNiaProducerWorkFailureReason("missing_assignment");
+      const failureMessage = `主 API 回复无法结算：${failureDetail}。当前时段没有结算，可以保留方案重试。`;
+      const fallbackStory = cleanReplyText(selectAiReplySource(text, rawText, renderedText));
+      if (fallbackStory && assigned && active) {
+        failNiaProducerWork(failureMessage, parsed.reason || "missing_assignment", { showPrototype: false });
+        state.pendingActionContext = {
+          action: "nia_producer_work",
+          actionContext: { phase: "error_result", periodId: current?.id || active.periodId }
+        };
+        state.activeStoryNode = { type: "niaProducerWorkError", ready: true };
+        state.lastStory = fallbackStory;
+        saveState("nia.producer_work_error_story");
+        setNiaPrototypeVisible(false);
+        openEventOverlay("N.I.A · 制作人工作", "主 API 回复无法结算", fallbackStory);
+      } else {
+        failNiaProducerWork(failureMessage, parsed.reason || "missing_assignment");
+      }
+      return false;
+    }
+    const receipt = parsed.data;
+    const displayStory = [receipt.story, receipt.reunionStory].filter(Boolean).join("\n");
+    const applied = niaProducerWorkCore.applyWorkReceipt(work, { ...receipt, story: displayStory });
+    if (!applied.ok) {
+      sendAiReplyAck(requestId, false, false);
+      failNiaProducerWork("工作回执与当前时段不一致，未进行结算。", applied.reason);
+      return false;
+    }
+    const nextWork = applied.runtime;
+    if (assigned.task.category === "online") {
+      const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+      state.nia = {
+        ...nia,
+        training: { ...training, fans: training.fans + niaProducerWorkCore.getOnlineFanDelta(receipt.reaction) },
+        producerWork: nextWork,
+        updatedAt: Date.now()
+      };
+    } else {
+      state.nia = { ...nia, producerWork: nextWork, updatedAt: Date.now() };
+    }
+    if (state.harness?.activeTurn?.kind === "nia_producer_work" && state.harness.activeTurn.turnId === active.turnId) {
+      state.harness.activeTurn = { ...state.harness.activeTurn, status: "completed", completedAt: Date.now(), updatedAt: Date.now() };
+    }
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    releasePrimaryModelChannel(active.requestId, active.channelLeaseId, "completed");
+    state.pendingActionContext = { action: "nia_producer_work", actionContext: { phase: "result_ready", periodId: current.id } };
+    state.activeStoryNode = { type: "niaProducerWorkResult", ready: true };
+    state.lastStory = displayStory;
+    saveState("nia.producer_work_result_ready");
+    postNiaStateSync();
+    setNiaPrototypeVisible(false);
+    sendAiReplyAck(requestId, true, false, true, { preSettled: true });
+    openEventOverlay(`N.I.A · ${current.label}工作`, receipt.summary, displayStory);
+    return true;
+  }
+
+  function settleNiaProducerWorkTraining(work) {
+    if (work.trainingSettled) return work;
+    const companion = work.tasks.find((task) => task.category === "training" && task.status === "completed");
+    const attribute = ["Vo", "Da", "Vi"].sort((left, right) => Number(state[left] || 0) - Number(state[right] || 0))[0];
+    state[attribute] = Math.min(Number(state.cap?.[attribute] || 999), Number(state[attribute] || 0) + (companion ? 8 : 4));
+    if (companion) state.trust = Math.min(100, Number(state.trust || 0) + 1);
+    work.trainingSettled = true;
+    return work;
+  }
+
+  function completeNiaProducerWorkAfterPlayback() {
+    const nia = normalizeNiaState(state.nia);
+    let work = niaProducerWorkCore.normalizeProducerWork(nia.producerWork);
+    state.pendingActionContext = null;
+    state.activeStoryNode = null;
+    state.eventMode = "none";
+    setElementHidden("eventOverlay", true);
+    if (work.status === "complete") {
+      work = settleNiaProducerWorkTraining(work);
+      const training = niaTrainingCore.normalizeNiaTraining(state.nia.training);
+      const completedDayIndex = training.actionIndex;
+      state.nia = {
+        ...normalizeNiaState(state.nia),
+        training: { ...training, actionIndex: training.actionIndex + 1 },
+        producerWork: work,
+        updatedAt: Date.now()
+      };
+      activateNiaEveningAfterDayCompletion(completedDayIndex);
+      setNiaPrototypeVisible(false);
+      saveState("nia.producer_work_day_complete");
+      render();
+      if (reconcileNiaFanMilestoneAfterSettlement()) return true;
+      resumeNiaEveningIfNeeded();
+      return true;
+    }
+    state.nia = { ...nia, producerWork: work, updatedAt: Date.now() };
+    saveState("nia.producer_work_period_complete");
+    if (reconcileNiaFanMilestoneAfterSettlement()) return true;
+    openNiaPrototype();
+    postNiaStateSync();
+    return true;
+  }
+
+  let niaLivePlaybackController = null;
+  function stopNiaLivePlayback() {
+    if (niaLivePlaybackController) niaLivePlaybackController.cancelled = true;
+    niaLivePlaybackController = null;
+  }
+  const niaLiveEl = (id) => document.getElementById(id);
+  function ensureNiaLiveOverlayRoot() {
+    const overlay = niaLiveEl("niaLiveOverlay");
+    if (!overlay || !document.body) return overlay;
+    const fullscreenRoot = document.fullscreenElement;
+    const hatsuFullscreenRoot = document.getElementById("hatsu-fullscreen-overlay");
+    const preferredRoot = fullscreenRoot || hatsuFullscreenRoot || document.body;
+    const mountTarget = preferredRoot !== overlay && !overlay.contains(preferredRoot)
+      ? preferredRoot
+      : (overlay.parentElement || document.body);
+    if (overlay.parentElement !== mountTarget) {
+      mountTarget.appendChild(overlay);
+    }
+    return overlay;
+  }
+  function syncNiaLiveOverlayRootForFullscreen() {
+    const overlay = niaLiveEl("niaLiveOverlay");
+    if (overlay && !overlay.hidden) ensureNiaLiveOverlayRoot();
+  }
+  function renderNiaLiveBusiness(runtime, message = "") {
+    const overlay = ensureNiaLiveOverlayRoot();
+    if (!overlay) return;
+    overlay.hidden = false;
+    const segment = Math.max(1, Number(runtime?.segmentIndex || runtime?.pendingSegmentIndex || 1));
+    const current = runtime?.segments?.[segment - 1] || {};
+    const context = niaBusinessSession?.context || {};
+    const standee = niaLiveEl("niaLiveStandee");
+    const defaultVisualSpeaker = globalThis.HatsuPortraitExpressions?.getDefaultSpeakerVisualCue?.(state.idol) || String(state.idol || "");
+    if (standee && (standee.dataset.portraitSpeaker !== defaultVisualSpeaker || standee.dataset.portraitFallbackApplied === "1" || !standee.dataset.portraitUserUrl)) {
+      applyResolvedPortraitToImage(standee, resolvePortraitForSpeakerVisualCue(defaultVisualSpeaker).portrait);
+    }
+    const topic = niaLiveEl("niaLiveTopic"); if (topic) topic.textContent = current.topic || context.businessBrief?.title || "N.I.A 网络直播";
+    const label = niaLiveEl("niaLiveSegmentLabel"); if (label) label.textContent = `${String(segment).padStart(2, "0")} / 04`;
+    const waitingForContinue = ["awaiting_continue_1", "awaiting_continue_2"].includes(runtime?.status);
+    const status = niaLiveEl("niaLiveStatus"); if (status) status.textContent = message || ({ retryable_failed: "本段生成失败，可以重试", awaiting_continue_1: "本段结束，点击画面继续下一段", awaiting_continue_2: "本段结束，点击画面继续下一段", awaiting_producer_instruction: "等待制作人的现场指示", awaiting_settlement: "直播已结束，正在整理结果" }[runtime?.status] || "直播进行中");
+    const metrics = runtime?.metrics || {};
+    const viewers = niaLiveEl("niaLiveViewers"); if (viewers) viewers.textContent = Number(metrics.viewers || 0).toLocaleString();
+    const heat = niaLiveEl("niaLiveHeat"); if (heat) heat.textContent = `${Math.round(metrics.heat || 0)}`;
+    const pressure = niaLiveEl("niaLivePressure"); if (pressure) pressure.textContent = `${Math.round(metrics.pressure || 0)}%`;
+    const retry = niaLiveEl("niaLiveRetryBtn"); if (retry) retry.hidden = runtime?.status !== "retryable_failed";
+    const cont = niaLiveEl("niaLiveContinueBtn"); if (cont) { cont.hidden = !waitingForContinue; cont.disabled = false; }
+    const stageContinue = niaLiveEl("niaLiveStageContinue"); if (stageContinue) stageContinue.hidden = !waitingForContinue;
+    const drawer = niaLiveEl("niaLiveProducerDrawer");
+    if (drawer) drawer.hidden = runtime?.status !== "awaiting_producer_instruction";
+    if (runtime?.status === "awaiting_producer_instruction") {
+      const incident = niaLiveEl("niaLiveIncident"); if (incident) incident.textContent = current.incident || "现场需要你做出判断。";
+      const options = niaLiveEl("niaLiveProducerOptions");
+      if (options && options.childElementCount !== (current.options || []).length) {
+        options.replaceChildren(...(current.options || []).map((value) => { const b = document.createElement("button"); b.type = "button"; b.className = "nia-live-action"; b.textContent = value; b.dataset.liveInstruction = value; return b; }));
+      }
+    }
+    const result = niaLiveEl("niaLiveResultPanel"); if (result) result.hidden = runtime?.status !== "settled";
+    const confirm = niaLiveEl("niaLiveResultConfirmBtn");
+    if (confirm) {
+      confirm.disabled = runtime?.status !== "settled";
+      confirm.onclick = handleNiaLiveResultConfirm;
+    }
+  }
+  function appendNiaLiveComment(comment) {
+    const list = niaLiveEl("niaLiveComments"); if (!list || !comment?.text) return;
+    const viewerNames = ["星光观测员", "新生P见习中", "舞台前排", "初星应援部", "今日也在追光", "路过的同学"];
+    const viewerName = viewerNames[list.childElementCount % viewerNames.length];
+    const item = document.createElement("article");
+    item.className = "nia-live-comment";
+    item.dataset.tone = comment.tone || "neutral";
+    const avatar = document.createElement("span"); avatar.className = "nia-live-comment-avatar"; avatar.textContent = viewerName.slice(0, 1);
+    const body = document.createElement("span"); body.className = "nia-live-comment-body";
+    const name = document.createElement("strong"); name.className = "nia-live-comment-name"; name.textContent = viewerName;
+    const text = document.createElement("span"); text.className = "nia-live-comment-text"; text.textContent = comment.text;
+    body.append(name, text); item.append(avatar, body); list.appendChild(item); list.scrollTop = list.scrollHeight;
+    const count = niaLiveEl("niaLiveCommentCount"); if (count) count.textContent = String(list.childElementCount);
+  }
+  function advanceNiaLivePlayback(event) {
+    if (event?.target?.closest?.("button, input, form, #niaLiveResultPanel, #niaLiveProducerDrawer")) return;
+    if (event?.currentTarget?.id === "niaLiveCaption") event.stopPropagation?.();
+    const runtime = niaBusinessSession?.runtime;
+    if (["awaiting_continue_1", "awaiting_continue_2"].includes(runtime?.status)) {
+      requestNiaLiveSegment(runtime.segmentIndex + 1);
+      return;
+    }
+    const controller = niaLivePlaybackController;
+    if (!controller || controller.cancelled || typeof controller.advance !== "function") return;
+    controller.advance();
+  }
+  function advanceNiaRadioOrTvPlayback(event) {
+    if (event?.target?.closest?.("button, input, form, #niaRadioResultPanel, #niaRadioProducerCue")) return;
+    if (event?.currentTarget?.id === "niaRadioCaption") event.stopPropagation?.();
+    const radioSession = niaRadioBusinessSession;
+    const tvSession = niaTvBusinessSession;
+    const session = radioSession || tvSession;
+    if (!session) return;
+    const runtime = session.runtime;
+    if (["awaiting_continue_1", "awaiting_continue_2"].includes(runtime?.status)) {
+      const nextIndex = Number(runtime.segmentIndex || 0) + 1;
+      if (radioSession) requestNiaRadioSegment(nextIndex);
+      else requestNiaTvSegment(nextIndex);
+      return;
+    }
+    session.playbackController?.advance?.();
+  }
+  function playNiaLiveSegment(payload) {
+    const session = niaBusinessSession; if (!session) return;
+    stopNiaLivePlayback();
+    const controller = { cancelled: false, advance: null }; niaLivePlaybackController = controller;
+    const beats = Array.isArray(payload.beats) ? payload.beats : [];
+    const comments = Array.isArray(payload.comments) ? payload.comments : [];
+    let index = 0;
+    const next = () => {
+      if (controller.cancelled) return;
+      if (index >= beats.length) {
+        const completed = niaLiveBusinessCore.completeSegmentPlayback(session.runtime);
+        if (completed.ok) {
+          session.runtime = completed.runtime; state.nia = { ...normalizeNiaState(state.nia), liveBusiness: completed.runtime, updatedAt: Date.now() }; saveState("nia.live.segment_complete"); renderNiaLiveBusiness(session.runtime);
+          if (completed.runtime?.status === "awaiting_settlement") settleNiaLiveBusiness();
+        }
+        return;
+      }
+      const beat = beats[index++];
+      const visual = resolvePortraitForSpeakerVisualCue(beat.speaker);
+      const standee = niaLiveEl("niaLiveStandee");
+      if (beat.speaker && visual.portrait?.url && standee?.dataset.portraitSpeaker !== visual.rawSpeaker) {
+        applyResolvedPortraitToImage(standee, visual.portrait);
+      }
+      const caption = niaLiveEl("niaLiveCaption"); if (caption) { caption.replaceChildren(); if (beat.speaker) { const strong = document.createElement("strong"); strong.textContent = visual.speaker; caption.appendChild(strong); } caption.appendChild(document.createTextNode(beat.text)); }
+      comments.filter((comment) => comment.triggerAfterBeatId === beat.id).forEach(appendNiaLiveComment);
+    };
+    controller.advance = next;
+    next();
+  }
+  function failNiaBusiness(message, reason = "generation_failed") {
+    const session = niaBusinessSession; if (!session) return;
+    stopNiaLivePlayback(); pendingAiRequestId = ""; state.pendingAiRequestId = "";
+    const index = session.runtime?.pendingSegmentIndex || session.segmentIndex || 1;
+    session.runtime = { ...session.runtime, status: "retryable_failed", retrySegmentIndex: index, pendingSegmentIndex: 0, activeRequest: null, lastError: String(message || "营业生成失败") };
+    state.nia = { ...normalizeNiaState(state.nia), liveBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.live.failed");
+    renderNiaLiveBusiness(session.runtime, message || "本段生成失败，可以重试");
+    postNiaBusinessMessage({ type: "niaBusinessFailed", businessId: session.businessId, message: message || "营业生成失败，请重试。", reason });
+  }
+  function requestNiaLiveSegment(segmentIndex) {
+    const session = niaBusinessSession; const api = globalThis.HatsuNiaBusiness;
+    if (!session || !api?.buildNiaLiveSegmentPrompt) return false;
+    const started = niaLiveBusinessCore.beginSegmentGeneration(session.runtime, segmentIndex, { requestId: "pending" });
+    if (!started.ok) { renderNiaLiveBusiness(session.runtime, "当前直播阶段无法继续"); return false; }
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({ requestId, ownerKind: "nia_business", turnId: session.businessId, saveScope: activeHostSaveScope, sessionEpoch: runtimeSessionEpoch });
+    if (!acquired.ok) { failNiaBusiness("主API正在处理其他请求，请稍后重试。", "channel_occupied"); return false; }
+    session.runtime = { ...started.runtime, activeRequest: { requestId, channelLeaseId: acquired.owner.channelLeaseId } }; session.requestId = requestId; session.channelLeaseId = acquired.owner.channelLeaseId; session.segmentIndex = segmentIndex;
+    pendingAiRequestId = requestId; state.pendingAiRequestId = requestId; state.lastPrompt = api.buildNiaLiveSegmentPrompt(session.context, { ...session.runtime, pendingSegmentIndex: segmentIndex }) + "\n\n" + buildNiaAuthoritativeScheduleContext();
+    state.nia = { ...normalizeNiaState(state.nia), liveBusiness: session.runtime, liveBusinessContext: clone(session.context), updatedAt: Date.now() }; saveState("nia.live.generating"); renderNiaLiveBusiness(session.runtime, `正在生成第 ${segmentIndex} 段直播...`);
+    const sent = requestHostPromptSend(state.lastPrompt, requestId, { channelLeaseId: acquired.owner.channelLeaseId, ownerKind: "nia_business", turnId: session.businessId, generationMode: "shujuku_same_layer" });
+    if (!sent) { failNiaBusiness("当前没有连接到酒馆主API，请从酒馆主页重新进入。", "host_unavailable"); return false; }
+    return true;
+  }
+  function dispatchNiaBusinessPrompt(prompt, phase) { return requestNiaLiveSegment(Number(phase) || 1); }
+
+  async function startNiaBusinessSession(data) {
+    const businessId = String(data?.businessId || "");
+    const context = data?.context && typeof data.context === "object" ? data.context : null;
+    if (!businessId || !context) return false;
+    if (niaBusinessSession) {
+      postNiaBusinessMessage({ type: "niaBusinessFailed", businessId, message: "已有一场营业正在进行。", reason: "session_busy" });
+      showToast("营业正在进行", "请先完成当前营业。", "warn");
+      return false;
+    }
+    niaBusinessSession = { businessId, context: { ...context, businessId }, runtime: niaLiveBusinessCore.createLiveRuntime({ businessId, baseFans: context.baseFans, audienceFans: context.audienceFans }), requestId: "", channelLeaseId: "", segmentIndex: 1 };
+    state.nia = {
+      ...normalizeNiaState(state.nia),
+      liveBusiness: niaBusinessSession.runtime,
+      liveBusinessContext: clone(niaBusinessSession.context),
+      updatedAt: Date.now()
+    };
+    setNiaPrototypeVisible(false);
+    state.pendingActionContext = { action: "nia_business", actionContext: { phase: "live", businessId } };
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    saveState("nia.live.preparing");
+    renderNiaLiveBusiness(niaBusinessSession.runtime, "正在加载营业模块...");
+
+    let api = globalThis.HatsuNiaBusiness;
+    if (!api?.buildNiaLiveSegmentPrompt && globalThis.HATSU_NIA_BUSINESS_READY) {
+      await Promise.race([
+        globalThis.HATSU_NIA_BUSINESS_READY,
+        new Promise((resolve) => setTimeout(resolve, 10000))
+      ]);
+      api = globalThis.HatsuNiaBusiness;
+    }
+    if (!api?.buildNiaLiveSegmentPrompt) {
+      failNiaBusiness("营业API模块尚未加载，请刷新酒馆主页后重试。", "module_unavailable");
+      showToast("营业模块尚未加载", "请刷新酒馆主页后重试。", "warn");
+      return false;
+    }
+    requestNiaLiveSegment(1);
+    return true;
+  }
+
+  function renderNiaSnsBusiness(runtime = normalizeNiaState(state.nia).snsBusiness, message = "") {
+    const nia = normalizeNiaState(state.nia);
+    state.nia = { ...nia, snsBusiness: runtime, updatedAt: Date.now() };
+    renderSnsBusinessCard();
+    const status = snsBusinessEl("phoneSnsBusinessComposerStatus");
+    if (status && message) status.textContent = message;
+  }
+
+  function failNiaSnsBusiness(message, reason = "generation_failed") {
+    const session = niaSnsBusinessSession;
+    if (!session) return false;
+    const runtime = niaSnsBusinessCore.recoverInterruptedSnsPost(session.runtime);
+    session.runtime = { ...runtime, lastError: String(message || runtime.lastError || "初星圈营业生成失败") };
+    pendingAiRequestId = ""; state.pendingAiRequestId = "";
+    state.nia = { ...normalizeNiaState(state.nia), snsBusiness: session.runtime, snsBusinessContext: clone(session.context), updatedAt: Date.now() };
+    saveState("nia.sns.failed"); renderNiaSnsBusiness(session.runtime, message);
+    postNiaBusinessMessage({ type: "niaSnsFailed", businessId: session.businessId, message, reason });
+    return true;
+  }
+
+  function requestNiaSnsPostGeneration() {
+    const session = niaSnsBusinessSession;
+    const api = globalThis.HatsuNiaSnsBusinessApi;
+    if (!session || !api?.buildSnsPostPrompt) return false;
+    const started = niaSnsBusinessCore.beginPostGeneration(session.runtime, session.runtime.draft, { requestId: "pending" });
+    if (!started.ok) { renderNiaSnsBusiness(session.runtime, "请先选择配图并填写帖子内容。"); return false; }
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({ requestId, ownerKind: "nia_sns_business", turnId: session.businessId, saveScope: activeHostSaveScope, sessionEpoch: runtimeSessionEpoch });
+    if (!acquired.ok) { failNiaSnsBusiness("主 API 正在处理其他请求，请稍后重试。", "channel_occupied"); return false; }
+    session.runtime = { ...started.runtime, activeRequest: { requestId, channelLeaseId: acquired.owner.channelLeaseId } };
+    session.requestId = requestId; session.channelLeaseId = acquired.owner.channelLeaseId;
+    state.lastPrompt = api.buildSnsPostPrompt(session.context, session.runtime) + "\n\n" + buildNiaAuthoritativeScheduleContext();
+    pendingAiRequestId = requestId; state.pendingAiRequestId = requestId;
+    state.nia = { ...normalizeNiaState(state.nia), snsBusiness: session.runtime, snsBusinessContext: clone(session.context), updatedAt: Date.now() };
+    saveState("nia.sns.generating_post"); renderNiaSnsBusiness(session.runtime, "正在生成帖子与评论…");
+    const sent = requestHostPromptSend(state.lastPrompt, requestId, { channelLeaseId: acquired.owner.channelLeaseId, ownerKind: "nia_sns_business", turnId: session.businessId, generationMode: "shujuku_same_layer" });
+    if (!sent) { failNiaSnsBusiness("当前没有连接到主 API，请重新进入酒馆主页。", "host_unavailable"); return false; }
+    return true;
+  }
+
+  function requestNiaSnsResultGeneration() {
+    const session = niaSnsBusinessSession; const api = globalThis.HatsuNiaSnsBusinessApi;
+    if (!session || !api?.buildSnsPostResultPrompt) return false;
+    const started = niaSnsBusinessCore.beginResultGeneration(session.runtime, { requestId: "pending" });
+    if (!started.ok) return false;
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({ requestId, ownerKind: "nia_sns_business", turnId: session.businessId, saveScope: activeHostSaveScope, sessionEpoch: runtimeSessionEpoch });
+    if (!acquired.ok) { failNiaSnsBusiness("主 API 正在处理其他请求，请稍后重试。", "channel_occupied"); return false; }
+    session.runtime = { ...started.runtime, activeRequest: { requestId, channelLeaseId: acquired.owner.channelLeaseId } };
+    session.requestId = requestId; session.channelLeaseId = acquired.owner.channelLeaseId;
+    state.lastPrompt = api.buildSnsPostResultPrompt(session.context, session.runtime) + "\n\n" + buildNiaAuthoritativeScheduleContext();
+    pendingAiRequestId = requestId; state.pendingAiRequestId = requestId;
+    state.nia = { ...normalizeNiaState(state.nia), snsBusiness: session.runtime, snsBusinessContext: clone(session.context), updatedAt: Date.now() };
+    saveState("nia.sns.generating_result"); renderNiaSnsBusiness(session.runtime, "正在整理评论反馈…");
+    const sent = requestHostPromptSend(state.lastPrompt, requestId, { channelLeaseId: acquired.owner.channelLeaseId, ownerKind: "nia_sns_business", turnId: session.businessId, generationMode: "shujuku_same_layer" });
+    if (!sent) { failNiaSnsBusiness("当前没有连接到主 API，请重新进入酒馆主页。", "host_unavailable"); return false; }
+    return true;
+  }
+
+  function handleNiaSnsAiReply(source, requestId, isFinal) {
+    const session = niaSnsBusinessSession; if (!session || session.requestId !== requestId) return;
+    if (!isFinal) { sendAiReplyAck(requestId, true, false, false); return; }
+    const api = globalThis.HatsuNiaSnsBusinessApi;
+    const expected = { businessId: session.businessId, imageId: session.runtime.draft.imageId, mode: session.runtime.draft.mode, manualText: session.runtime.draft.manualText };
+    const isResult = session.runtime.status === "generating_result";
+    const parsed = isResult
+      ? api?.parseSnsPostResultPayload?.({ rawText: source, text: source }, { businessId: session.businessId })
+      : api?.parseSnsPostPayload?.({ rawText: source, text: source }, expected);
+    if (!parsed?.ok) { sendAiReplyAck(requestId, false, false); failNiaSnsBusiness("AI 回复格式不完整，可以重新生成。", parsed?.reason || "invalid_payload"); return; }
+    const applied = isResult ? niaSnsBusinessCore.applyResultPayload(session.runtime, parsed.data) : niaSnsBusinessCore.applyPostPayload(session.runtime, parsed.data);
+    if (!applied.ok) { sendAiReplyAck(requestId, false, false); failNiaSnsBusiness("初星圈营业状态不匹配，可以重新生成。", applied.reason); return; }
+    pendingAiRequestId = ""; state.pendingAiRequestId = ""; sendAiReplyAck(requestId, true, false);
+    session.runtime = applied.runtime; session.requestId = "";
+    state.nia = { ...normalizeNiaState(state.nia), snsBusiness: session.runtime, snsBusinessContext: clone(session.context), updatedAt: Date.now() };
+    saveState(isResult ? "nia.sns.result_ready" : "nia.sns.post_ready"); renderNiaSnsBusiness(session.runtime);
+  }
+
+  function startNiaSnsBusinessSession(data) {
+    const businessId = String(data?.businessId || ""); const context = data?.context && typeof data.context === "object" ? data.context : null;
+    if (!businessId || !context || niaSnsBusinessSession || niaBusinessSession || niaRadioBusinessSession) return false;
+    const runtime = niaSnsBusinessCore.createSnsPostRuntime({ businessId, baseFans: Number(context.baseFans) || 0 });
+    runtime.draft = { ...runtime.draft, mode: "ai_expand", imageId: "practice" };
+    niaSnsSelectedCommentId = "";
+    niaSnsBusinessSession = { businessId, context: { ...context, businessId }, runtime, requestId: "", channelLeaseId: "" };
+    state.nia = { ...normalizeNiaState(state.nia), snsBusiness: niaSnsBusinessSession.runtime, snsBusinessContext: clone(niaSnsBusinessSession.context), updatedAt: Date.now() };
+    state.pendingActionContext = { action: "nia_sns_business", actionContext: { phase: "sns", businessId } };
+    returnToNiaAfterPhone = true;
+    setNiaPrototypeVisible(false); saveState("nia.sns.preparing"); openPhoneSnsApp(); renderNiaSnsBusiness(niaSnsBusinessSession.runtime, "请选择配图和发帖方式。");
+    return true;
+  }
+
+  function confirmNiaSnsBusinessResult() {
+    const session = niaSnsBusinessSession;
+    const nia = normalizeNiaState(state.nia);
+    const runtime = session?.runtime || nia.snsBusiness;
+    const businessId = session?.businessId || runtime?.businessId;
+    const settled = niaSnsBusinessCore.settleSnsPostOnce(runtime, businessId);
+    if (!settled.ok && settled.reason !== "already_settled") return false;
+    const result = settled.result || runtime.result || {};
+    if (!runtime.progressionApplied) {
+      const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+      const completedDayIndex = training.actionIndex;
+      state.nia = { ...nia, snsBusiness: { ...runtime, progressionApplied: true }, training: { ...training, fans: training.fans + Math.max(0, Number(result.bonusFans) || 0), actionIndex: training.actionIndex + 1 }, updatedAt: Date.now() };
+      activateNiaEveningAfterDayCompletion(completedDayIndex);
+      state.pendingActionContext = null; pendingAiRequestId = ""; state.pendingAiRequestId = "";
+      postNiaBusinessMessage({ type: "niaSnsBusinessCompleted", businessId, result });
+      niaSnsBusinessSession = null; saveState("nia.sns.progression"); render();
+      resumeNiaEveningIfNeeded();
+    }
+    return true;
+  }
+
+  function resumeNiaSnsBusinessIfNeeded() {
+    const nia = normalizeNiaState(state.nia); const runtime = nia.snsBusiness; const context = nia.snsBusinessContext;
+    if (!runtime?.businessId || runtime.status === "idle" || runtime.progressionApplied || !context) return false;
+    const recovered = niaSnsBusinessCore.recoverInterruptedSnsPost(runtime);
+    niaSnsBusinessSession = { businessId: recovered.businessId, context, runtime: recovered, requestId: "", channelLeaseId: "" };
+    state.nia = { ...nia, snsBusiness: recovered, updatedAt: Date.now() };
+    state.pendingActionContext = { action: "nia_sns_business", actionContext: { phase: "sns", businessId: recovered.businessId } };
+    if (document.getElementById("phoneSnsApp") && isPhoneWorldFeedUnlocked()) openPhoneSnsApp();
+    renderNiaSnsBusiness(recovered, recovered.status === "retryable_failed" ? "上次生成未完成，可以重试。" : "");
+    return true;
+  }
+
+  const niaMiniLiveEl = (id) => document.getElementById(id);
+
+  function ensureNiaMiniLiveOverlayRoot() {
+    const overlay = niaMiniLiveEl("niaMiniLiveOverlay");
+    if (!overlay || !document.body) return overlay;
+    const preferredRoot = document.fullscreenElement || document.getElementById("hatsu-fullscreen-overlay") || document.body;
+    const mountTarget = preferredRoot !== overlay && !overlay.contains(preferredRoot)
+      ? preferredRoot
+      : (overlay.parentElement || document.body);
+    if (overlay.parentElement !== mountTarget) mountTarget.appendChild(overlay);
+    return overlay;
+  }
+
+  function resolveNiaMiniLiveSceneUrl(scene) {
+    const value = String(scene || "").trim();
+    if (!value) return "";
+    try {
+      return new URL(value, window.HATSU_ASSET_BASE || document.baseURI).href;
+    } catch {
+      return value;
+    }
+  }
+
+  function renderNiaMiniLive(runtime = normalizeNiaState(state.nia).miniLiveBusiness, message = "") {
+    const overlay = ensureNiaMiniLiveOverlayRoot();
+    if (!overlay) return false;
+    overlay.hidden = false;
+    const venue = niaMiniLiveCore.VENUES?.[runtime?.venueId] || null;
+    const stage = niaMiniLiveEl("niaMiniLiveStage");
+    const sceneUrl = resolveNiaMiniLiveSceneUrl(venue?.scene);
+    if (stage) stage.style.backgroundImage = sceneUrl ? `url("${sceneUrl}")` : "";
+    const venuePanel = niaMiniLiveEl("niaMiniLiveVenuePanel");
+    if (venuePanel) venuePanel.hidden = true;
+    const venueList = niaMiniLiveEl("niaMiniLiveVenueList");
+    if (venueList && !venueList.childElementCount) {
+      venueList.replaceChildren(...Object.values(niaMiniLiveCore.VENUES || {}).map((item) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "nia-mini-live-venue";
+        button.dataset.miniLiveVenue = item.id;
+        const itemSceneUrl = resolveNiaMiniLiveSceneUrl(item.scene);
+        button.style.backgroundImage = itemSceneUrl ? `url("${itemSceneUrl}")` : "";
+        const name = document.createElement("strong"); name.textContent = item.name;
+        const detail = document.createElement("small"); detail.textContent = item.audience;
+        button.append(name, detail);
+        return button;
+      }));
+    }
+    venueList?.querySelectorAll("[data-mini-live-venue]").forEach((button) => {
+      button.classList.toggle("is-selected", button.dataset.miniLiveVenue === runtime?.venueId);
+      button.disabled = runtime?.status !== "selecting_venue";
+    });
+    const title = niaMiniLiveEl("niaMiniLiveTitle"); if (title) title.textContent = runtime?.title || venue?.name || "迷你演出";
+    const venueLabel = niaMiniLiveEl("niaMiniLiveVenueLabel"); if (venueLabel) venueLabel.textContent = venue?.name || "N.I.A PROMOTION";
+    const statusCopy = message || ({
+      selecting_venue: "正在读取企划中指定的演出地点…",
+      generating: "正在编排并生成整场迷你演出…",
+      playing: "点击舞台或台词框继续",
+      retryable_failed: runtime?.lastError || "生成失败，可以重新生成整场演出。",
+      settled: "演出结束，确认本次营业结果"
+    }[runtime?.status] || "正在准备迷你演出");
+    const status = niaMiniLiveEl("niaMiniLiveStatus"); if (status) { status.textContent = statusCopy; status.hidden = runtime?.status === "settled"; }
+    const caption = niaMiniLiveEl("niaMiniLiveCaption");
+    if (caption) {
+      const lineIndex = Math.max(0, Number(runtime?.playbackIndex || 0) - 1);
+      const line = runtime?.lines?.[lineIndex];
+      caption.hidden = runtime?.status !== "playing" || !line;
+      if (line) {
+        caption.replaceChildren();
+        const visual = resolvePortraitForSpeakerVisualCue(line.speaker);
+        if (line.speaker) { const strong = document.createElement("strong"); strong.textContent = visual.speaker; caption.appendChild(strong); }
+        caption.appendChild(document.createTextNode(line.text));
+        const standee = niaMiniLiveEl("niaMiniLiveStandee");
+        if (line.speaker && visual.portrait?.url && standee?.dataset.portraitSpeaker !== visual.rawSpeaker) applyResolvedPortraitToImage(standee, visual.portrait);
+      }
+    }
+    const standee = niaMiniLiveEl("niaMiniLiveStandee");
+    if (standee && !standee.dataset.portraitUserUrl) {
+      const cue = globalThis.HatsuPortraitExpressions?.getDefaultSpeakerVisualCue?.(state.idol) || String(state.idol || "");
+      applyResolvedPortraitToImage(standee, resolvePortraitForSpeakerVisualCue(cue).portrait);
+    }
+    const progress = niaMiniLiveEl("niaMiniLiveProgress");
+    if (progress) progress.textContent = runtime?.status === "playing"
+      ? `${Math.min(runtime.playbackIndex, runtime.lines.length)} / ${runtime.lines.length} · 点击舞台继续`
+      : venue?.challenge || "等待场地确认";
+    const retry = niaMiniLiveEl("niaMiniLiveRetryBtn"); if (retry) retry.hidden = runtime?.status !== "retryable_failed";
+    const resultPanel = niaMiniLiveEl("niaMiniLiveResultPanel"); if (resultPanel) resultPanel.hidden = runtime?.status !== "settled";
+    if (runtime?.status === "settled") renderNiaMiniLiveResult(runtime.result);
+    return true;
+  }
+
+  function renderNiaMiniLiveResult(result) {
+    const summary = niaMiniLiveEl("niaMiniLiveResultSummary");
+    if (!summary || !result) return;
+    summary.replaceChildren(...[
+      ["新增粉丝", Number(result.fanGain || 0).toLocaleString("zh-CN")],
+      ["现场亮点", result.highlight || "演出顺利完成"],
+      ["观众反馈", result.audienceResponse || "现场观众记住了这次演出"],
+      ["公众印象", result.impressionChange || "偶像形象得到强化"]
+    ].map(([label, value]) => {
+      const item = document.createElement("span"); item.append(document.createTextNode(label));
+      const strong = document.createElement("strong"); strong.textContent = value; item.appendChild(strong); return item;
+    }));
+  }
+
+  function startNiaMiniLiveSession(data) {
+    const businessId = String(data?.businessId || "");
+    const context = data?.context && typeof data.context === "object" ? data.context : null;
+    if (!businessId || !context || niaMiniLiveSession || niaBusinessSession || niaRadioBusinessSession || niaTvBusinessSession || niaSnsBusinessSession) return false;
+    const venueId = Object.prototype.hasOwnProperty.call(niaMiniLiveCore.VENUES || {}, data?.venueId)
+      ? data.venueId
+      : "shopping_street";
+    const runtime = niaMiniLiveCore.createMiniLiveRuntime({ businessId, venueId });
+    niaMiniLiveSession = { businessId, context: { ...context, businessId, venueId }, runtime, requestId: "", channelLeaseId: "" };
+    state.nia = { ...normalizeNiaState(state.nia), miniLiveBusiness: runtime, miniLiveBusinessContext: clone(niaMiniLiveSession.context), updatedAt: Date.now() };
+    state.pendingActionContext = { action: "nia_mini_live", actionContext: { phase: "preparing", businessId, venueId } };
+    setNiaPrototypeVisible(false); saveState("nia.mini_live.preparing");
+    if (requestNiaMiniLiveGenerationWithApiRecovery()) return true;
+    if (niaMiniLiveSession?.runtime?.status !== "retryable_failed") {
+      failNiaMiniLive("迷你演出模块尚未加载，已保留企划地点，可以稍后重试。");
+    }
+    return false;
+  }
+
+  function selectNiaMiniLiveVenue(venueId) {
+    const session = niaMiniLiveSession;
+    if (!session) return false;
+    const selected = niaMiniLiveCore.selectVenue(session.runtime, venueId);
+    if (!selected.ok) return false;
+    session.runtime = selected.runtime;
+    state.nia = { ...normalizeNiaState(state.nia), miniLiveBusiness: session.runtime, updatedAt: Date.now() };
+    saveState("nia.mini_live.venue_selected"); renderNiaMiniLive(session.runtime);
+    return requestNiaMiniLiveGenerationWithApiRecovery();
+  }
+
+  function loadNiaMiniLiveApi() {
+    const loaded = globalThis.HatsuNiaMiniLiveApi;
+    if (loaded?.buildNiaMiniLivePrompt && loaded?.parseNiaMiniLivePayload) return Promise.resolve(loaded);
+    if (niaMiniLiveApiLoadPromise) return niaMiniLiveApiLoadPromise;
+    let moduleUrl = "";
+    try {
+      moduleUrl = new URL("nia-mini-live-api.js", window.HATSU_ASSET_BASE || document.baseURI).href;
+    } catch (error) {
+      console.warn("[Hatsu NIA Mini Live] API URL resolution failed:", error);
+      return Promise.resolve(null);
+    }
+    niaMiniLiveApiLoadPromise = fetch(moduleUrl, { cache: "no-store" })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.text();
+      })
+      .then((source) => {
+        const script = document.createElement("script");
+        script.textContent = `(function(){\n${source.replace(/export\s+/g, "")}\n})();\n//# sourceURL=${moduleUrl}`;
+        (document.head || document.documentElement).appendChild(script);
+        script.remove();
+        const api = globalThis.HatsuNiaMiniLiveApi;
+        if (!api?.buildNiaMiniLivePrompt || !api?.parseNiaMiniLivePayload) throw new Error("api_not_registered");
+        return api;
+      })
+      .catch((error) => {
+        console.warn("[Hatsu NIA Mini Live] API fallback loading failed:", error);
+        return null;
+      })
+      .finally(() => {
+        niaMiniLiveApiLoadPromise = null;
+      });
+    return niaMiniLiveApiLoadPromise;
+  }
+
+  function requestNiaMiniLiveGenerationWithApiRecovery() {
+    const session = niaMiniLiveSession;
+    if (!session) return false;
+    if (globalThis.HatsuNiaMiniLiveApi?.buildNiaMiniLivePrompt) return requestNiaMiniLiveGeneration();
+    if (session.apiLoadPending) return true;
+    session.apiLoadPending = true;
+    renderNiaMiniLive(session.runtime, "正在加载迷你演出生成模块…");
+    loadNiaMiniLiveApi().then((api) => {
+      const current = niaMiniLiveSession;
+      if (!current || current.businessId !== session.businessId) return;
+      current.apiLoadPending = false;
+      if (!api) {
+        failNiaMiniLive("迷你演出生成模块加载失败，请点击重新生成。");
+        return;
+      }
+      if (!["selecting_venue", "retryable_failed"].includes(current.runtime?.status)) return;
+      if (!requestNiaMiniLiveGeneration() && current.runtime?.status !== "generating") {
+        failNiaMiniLive("未能启动迷你演出生成，请点击重新生成。");
+      }
+    });
+    return true;
+  }
+
+  function requestNiaMiniLiveGeneration() {
+    const session = niaMiniLiveSession;
+    const api = globalThis.HatsuNiaMiniLiveApi;
+    if (!session || !api?.buildNiaMiniLivePrompt) return false;
+    const started = niaMiniLiveCore.beginGeneration(session.runtime, { requestId: "pending" });
+    if (!started.ok) return false;
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({ requestId, ownerKind: "nia_mini_live", turnId: session.businessId, saveScope: activeHostSaveScope, sessionEpoch: runtimeSessionEpoch });
+    if (!acquired.ok) { failNiaMiniLive("主 API 正在处理其他请求，请稍后重试。"); return false; }
+    session.runtime = { ...started.runtime, activeRequest: { requestId, channelLeaseId: acquired.owner.channelLeaseId } };
+    session.requestId = requestId; session.channelLeaseId = acquired.owner.channelLeaseId;
+    const venue = niaMiniLiveCore.VENUES[session.runtime.venueId];
+    const promptContext = { ...session.context, venue, venueId: session.runtime.venueId };
+    state.lastPrompt = api.buildNiaMiniLivePrompt(promptContext, session.runtime) + "\n\n" + buildNiaAuthoritativeScheduleContext();
+    pendingAiRequestId = requestId; state.pendingAiRequestId = requestId;
+    state.nia = { ...normalizeNiaState(state.nia), miniLiveBusiness: session.runtime, miniLiveBusinessContext: clone(session.context), updatedAt: Date.now() };
+    saveState("nia.mini_live.generating"); renderNiaMiniLive(session.runtime);
+    if (!requestHostPromptSend(state.lastPrompt, requestId, { channelLeaseId: acquired.owner.channelLeaseId, ownerKind: "nia_mini_live", turnId: session.businessId, generationMode: "shujuku_same_layer" })) {
+      failNiaMiniLive("当前没有连接到主 API，请重新进入酒馆主页。"); return false;
+    }
+    return true;
+  }
+
+  function failNiaMiniLive(message) {
+    const session = niaMiniLiveSession;
+    if (!session) return false;
+    session.runtime = niaMiniLiveCore.failGeneration(session.runtime, message);
+    session.requestId = ""; pendingAiRequestId = ""; state.pendingAiRequestId = "";
+    state.nia = { ...normalizeNiaState(state.nia), miniLiveBusiness: session.runtime, updatedAt: Date.now() };
+    saveState("nia.mini_live.failed"); renderNiaMiniLive(session.runtime); return true;
+  }
+
+  function handleNiaMiniLiveAiReply(source, requestId, isFinal) {
+    const session = niaMiniLiveSession;
+    if (!session || session.requestId !== requestId) return;
+    if (!isFinal) { sendAiReplyAck(requestId, true, false, false); return; }
+    const parsed = globalThis.HatsuNiaMiniLiveApi?.parseNiaMiniLivePayload?.(
+      { rawText: source, text: source },
+      { businessId: session.businessId, venueId: session.runtime.venueId }
+    );
+    if (!parsed?.ok) { sendAiReplyAck(requestId, false, false); failNiaMiniLive("AI 回复格式不完整，可以重新生成整场演出。"); return; }
+    const applied = niaMiniLiveCore.applyPayload(session.runtime, parsed.data);
+    if (!applied.ok) { sendAiReplyAck(requestId, false, false); failNiaMiniLive("迷你演出回复与当前场地不匹配，可以重试。"); return; }
+    pendingAiRequestId = ""; state.pendingAiRequestId = ""; sendAiReplyAck(requestId, true, false);
+    session.requestId = ""; session.runtime = applied.runtime;
+    state.nia = { ...normalizeNiaState(state.nia), miniLiveBusiness: session.runtime, updatedAt: Date.now() };
+    saveState("nia.mini_live.payload"); advanceNiaMiniLivePlayback();
+  }
+
+  function advanceNiaMiniLivePlayback(event) {
+    if (event?.target?.closest?.("button, #niaMiniLiveVenuePanel, #niaMiniLiveResultPanel")) return;
+    if (event?.currentTarget?.id === "niaMiniLiveCaption") event.stopPropagation?.();
+    const session = niaMiniLiveSession;
+    if (!session || session.runtime.status !== "playing") return;
+    const advanced = niaMiniLiveCore.advancePlayback(session.runtime);
+    if (!advanced.ok) return;
+    session.runtime = advanced.runtime;
+    state.nia = { ...normalizeNiaState(state.nia), miniLiveBusiness: session.runtime, updatedAt: Date.now() };
+    saveState(advanced.finished ? "nia.mini_live.settled" : "nia.mini_live.line"); renderNiaMiniLive(session.runtime);
+  }
+
+  function confirmNiaMiniLiveResult() {
+    const nia = normalizeNiaState(state.nia);
+    const runtime = niaMiniLiveSession?.runtime || nia.miniLiveBusiness;
+    const businessId = niaMiniLiveSession?.businessId || runtime?.businessId;
+    const settled = niaMiniLiveCore.settleMiniLiveOnce(runtime, businessId);
+    if (!settled.ok && settled.reason !== "already_settled") return false;
+    const settledRuntime = settled.runtime || runtime;
+    if (settledRuntime.progressionApplied) return true;
+    const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+    const completedDayIndex = training.actionIndex;
+    state.nia = {
+      ...nia,
+      miniLiveBusiness: { ...settledRuntime, progressionApplied: true },
+      training: { ...training, fans: training.fans + Math.max(0, Number(settledRuntime.result?.fanGain) || 0), actionIndex: training.actionIndex + 1 },
+      updatedAt: Date.now()
+    };
+    activateNiaEveningAfterDayCompletion(completedDayIndex);
+    state.pendingActionContext = null; niaMiniLiveSession = null;
+    const overlay = niaMiniLiveEl("niaMiniLiveOverlay"); if (overlay) overlay.hidden = true;
+    setNiaPrototypeVisible(!isNiaTrainingActive()); saveState("nia.mini_live.progression"); render();
+    if (!reconcileNiaFanMilestoneAfterSettlement()) resumeNiaEveningIfNeeded();
+    return true;
+  }
+
+  function resumeNiaMiniLiveIfNeeded() {
+    const nia = normalizeNiaState(state.nia);
+    const context = nia.miniLiveBusinessContext;
+    let runtime = nia.miniLiveBusiness;
+    if (!runtime?.businessId || runtime.status === "idle" || runtime.progressionApplied || !context) return false;
+    runtime = niaMiniLiveCore.recoverInterruptedMiniLive(runtime);
+    if (runtime.status === "selecting_venue") {
+      const venueId = Object.prototype.hasOwnProperty.call(niaMiniLiveCore.VENUES || {}, runtime.venueId)
+        ? runtime.venueId
+        : (Object.prototype.hasOwnProperty.call(niaMiniLiveCore.VENUES || {}, context.venueId) ? context.venueId : "shopping_street");
+      runtime = niaMiniLiveCore.selectVenue(runtime, venueId).runtime;
+    }
+    niaMiniLiveSession = { businessId: runtime.businessId, context, runtime, requestId: "", channelLeaseId: "" };
+    state.nia = { ...nia, miniLiveBusiness: runtime, updatedAt: Date.now() };
+    state.pendingActionContext = { action: "nia_mini_live", actionContext: { phase: runtime.status, businessId: runtime.businessId } };
+    setNiaPrototypeVisible(false); renderNiaMiniLive(runtime); saveState("nia.mini_live.recovered");
+    if (runtime.status === "selecting_venue") requestNiaMiniLiveGenerationWithApiRecovery();
+    return true;
+  }
+
+  async function startCurrentNiaBusinessAction() {
+    if (resumeBlockingNiaFanMilestone()) return false;
+    if (resumeBlockingNiaEvening()) return false;
+    if (!isNiaTrainingActive()) return false;
+    const planDay = niaTrainingCore.getCurrentNiaPlanAction(state.nia);
+    if (!planDay || String(planDay.type) !== "营业") return false;
+    const miniLiveRequested = String(planDay.businessType || planDay.business_type || "") === "mini_live"
+      || /迷你演出|迷你Live|小型演出|商店街演出|中等部演出/.test(String(planDay.title || planDay.purpose || ""));
+    if (miniLiveRequested) {
+      const currentNia = normalizeNiaState(state.nia);
+      const currentTraining = niaTrainingCore.normalizeNiaTraining(currentNia.training);
+      const venueId = [planDay.venueId, currentNia.plan?.miniLiveVenueId, currentNia.draft?.miniLiveVenueId]
+        .find((value) => Object.prototype.hasOwnProperty.call(niaMiniLiveCore.VENUES || {}, value)) || "shopping_street";
+      showToast("正在准备迷你演出", `${niaMiniLiveCore.VENUES?.[venueId]?.name || "企划地点"} · 正在生成整场演出。`, "info");
+      return startNiaMiniLiveSession({
+        businessId: createHarnessId("nia-mini-live"),
+        venueId,
+        context: {
+          businessType: "mini_live",
+          venueId,
+          idol: state.idol,
+          round: currentNia.round,
+          dayIndex: currentTraining.actionIndex,
+          day: clone(planDay),
+          plan: clone(currentNia.plan),
+          currentFans: currentTraining.fans
+        }
+      });
+    }
+    if (typeof niaProducerWorkCore.resolveBusinessPreparation !== "function") {
+      showToast("制作人工作模块尚未更新", "请刷新酒馆主页后重新进入前端。", "warn");
+      return false;
+    }
+    const nia = normalizeNiaState(state.nia);
+    const work = niaProducerWorkCore.normalizeProducerWork(nia.producerWork);
+    const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+    const businessLevel = nia.round >= 3 && training.fans >= 20000
+      ? 3
+      : nia.round >= 2 && training.fans >= 5000
+        ? 2
+        : 1;
+    const snsRequested = String(planDay.businessType || "") === "sns_post" || /初星圈|SNS|发帖/.test(String(planDay.title || ""));
+    if (snsRequested) {
+      const preparation = niaProducerWorkCore.resolveBusinessPreparation(work, "sns_post", planDay);
+      if (!preparation?.ok) {
+        showToast("初星圈营业尚未准备好", "请先完成对应的线上运营制作人工作。", "warn");
+        return false;
+      }
+      const onlineTask = preparation.task;
+      return startNiaSnsBusinessSession({
+        businessId: createHarnessId("nia-sns-business"),
+        context: {
+          businessType: "sns_post",
+          businessLevel: 1,
+          businessBrief: { sourceTaskId: onlineTask.id, title: onlineTask.title, targetImage: onlineTask.goal, audience: onlineTask.background, approach: onlineTask.expectedOutput, preparation: onlineTask.assets, risk: onlineTask.constraints, boundaries: onlineTask.boundaries, sourceKind: preparation.sourceKind, workEvidence: preparation.evidence },
+          idol: state.idol,
+          round: state.nia.round,
+          dayIndex: training.actionIndex,
+          day: clone(planDay),
+          plan: clone(state.nia.plan),
+          baseFans: 0
+        }
+      });
+    }
+    const explicitOnlineLive = String(planDay.businessType || "") === "online_live"
+      || String(planDay.title || "").includes("直播");
+    const radioRequested = String(planDay.businessType || planDay.type || "").toLowerCase().includes("radio")
+      || String(planDay.title || "").includes("放送")
+      || String(planDay.title || "").includes("广播")
+      || (!explicitOnlineLive && Boolean(work.radioPlan?.business_id)
+        && !/综艺|电视节目|访谈节目|电视|访谈/.test(String(planDay.title || planDay.purpose || "")));
+    const radioPreparation = radioRequested && typeof niaProducerWorkCore.resolveBusinessPreparation === "function"
+      ? niaProducerWorkCore.resolveBusinessPreparation(work, "school_radio", { ...planDay, idol: state.idol })
+      : null;
+    if (radioRequested) {
+      if (!radioPreparation?.ok) {
+        showToast("广播企划尚未完成", "请先完成广播部企划，再安排《初星放送部》。", "warn");
+        return false;
+      }
+      const plan = radioPreparation.radioPlan;
+      const candidates = Object.keys(idols).filter((name) => name !== state.idol);
+      const specifiedGuest = canonicalIdolName(String(plan.additionalGuest || "").trim());
+      let additionalGuest = "";
+      if (businessLevel >= 2 && plan.additionalGuestMode === "specified") {
+        if (!specifiedGuest || !candidates.includes(specifiedGuest)) {
+          showToast("指定嘉宾无效", "广播企划中的指定嘉宾无法识别，请返回制作人工作重新确认。", "warn");
+          return false;
+        }
+        additionalGuest = specifiedGuest;
+      } else if (businessLevel >= 2) {
+        additionalGuest = candidates[Math.floor(Math.random() * candidates.length)] || "";
+      }
+      state.nia = { ...nia, producerWork: radioPreparation.runtime || work, updatedAt: Date.now() };
+      showToast("正在准备广播", "正在打开《初星放送部》演播室。", "info");
+      return startNiaRadioBusinessSession({
+        businessId: radioPreparation.radioPlan.business_id,
+        context: {
+          businessType: "school_radio",
+          businessLevel,
+          ...radioPreparation.radioPlan,
+          radioPlan: radioPreparation.radioPlan,
+          additionalGuest,
+          idol: state.idol,
+          round: state.nia.round,
+          dayIndex: training.actionIndex,
+          day: clone(planDay),
+          plan: clone(state.nia.plan),
+          baseFans: 0
+        }
+      });
+    }
+    const tvRequested = String(planDay.businessType || planDay.business_type || "").toLowerCase().includes("tv")
+      || String(planDay.businessType || "").toLowerCase().includes("television")
+      || /综艺|电视节目|访谈节目|电视|访谈/.test(String(planDay.title || planDay.purpose || ""));
+    if (tvRequested) {
+      showToast("正在准备电视节目", "正在打开《偶像生活访谈》录制现场。", "info");
+      return startNiaTvBusinessSession({
+        businessId: createHarnessId("nia-tv-business"),
+        context: {
+          businessType: "tv_program",
+          businessLevel,
+          programId: "idol-life-interview",
+          programName: "偶像生活访谈",
+          theme: String(planDay.purpose || "展现偶像在舞台外的真实魅力"),
+          strategyId: String(planDay.strategyId || "natural"),
+          selectedTopics: Array.isArray(planDay.selectedTopics) ? planDay.selectedTopics : ["训练日常", "营养料理", "姐妹竞争"],
+          idol: state.idol,
+          round: state.nia.round,
+          dayIndex: training.actionIndex,
+          day: clone(planDay),
+          plan: clone(state.nia.plan),
+          baseFans: 0
+        }
+      });
+    }
+    let preparation = niaProducerWorkCore.resolveBusinessPreparation(work, "online_live", planDay);
+    if (!preparation?.ok) {
+      const planDays = Array.isArray(nia.plan?.days) ? nia.plan.days : [];
+      const priorDays = planDays.slice(0, Math.max(0, training.actionIndex));
+      const priorScheduleHasProducerWork = priorDays.some((day) => {
+        const description = [day?.type, day?.title, day?.purpose, day?.output]
+          .map((value) => String(value || ""))
+          .join(" ");
+        return /制作人工作|制作工作|producer[_ -]?work/i.test(description);
+      });
+      const producerWorkHasCompletionEvidence = work.status === "complete"
+        || Number(work.periodIndex) >= 3
+        || Boolean(work.trainingSettled)
+        || (Array.isArray(work.processedReceiptIds) && work.processedReceiptIds.length > 0);
+      const firstRoundFixedWorkCompleted = nia.round === 1 && training.actionIndex > 0;
+      const progressedToLaterBusinessDay = explicitOnlineLive && training.actionIndex > 0;
+      const missingModernLivePlan = !work.tasks?.some((task) => task.id === "online-live-plan");
+      const untypedLegacyBusinessDay = !String(planDay.businessType || planDay.business_type || "").trim();
+      const canRecoverLegacyPreparation = Boolean(training.active) && (
+        untypedLegacyBusinessDay
+        || missingModernLivePlan
+        || firstRoundFixedWorkCompleted
+        || progressedToLaterBusinessDay
+        || priorScheduleHasProducerWork
+        || producerWorkHasCompletionEvidence
+      );
+      if (canRecoverLegacyPreparation) {
+        preparation = {
+          ok: true,
+          sourceKind: "legacy_completed_producer_work",
+          task: {
+            id: "legacy-online-live-plan",
+            category: "online",
+            title: String(planDay.title || "网络直播企划"),
+            goal: String(planDay.purpose || nia.plan?.publicImage || "执行本轮网络直播企划"),
+            background: "旧存档已完成本轮前置制作人工作；系统依据已确认日程恢复直播执行简报。",
+            expectedOutput: String(planDay.output || nia.plan?.principle || "完成本轮直播公开验证"),
+            assets: Array.isArray(work.materials) ? work.materials : [],
+            constraints: Array.isArray(work.risks) ? work.risks : [],
+            boundaries: Array.isArray(work.terms) ? work.terms : []
+          },
+          evidence: { documents: work.documents || [], materials: work.materials || [], contacts: work.contacts || [], terms: work.terms || [], careerLog: work.careerLog || [] }
+        };
+        state.nia = {
+          ...nia,
+          processedOperationIds: [...new Set([
+            ...(Array.isArray(nia.processedOperationIds) ? nia.processedOperationIds : []),
+            `legacy-online-live-plan:${nia.round}:${training.actionIndex}`
+          ])].slice(-12),
+          updatedAt: Date.now()
+        };
+        saveState("nia.online_live_legacy_preparation_recovered");
+      }
+    }
+    if (!preparation?.ok) {
+      showToast("营业企划尚未完成", `请先完成网上直播对应的制作人工作，再安排这场营业。（${String(preparation?.reason || "unknown")}）`, "warn");
+      return false;
+    }
+    const onlineTask = preparation.task;
+    showToast("正在准备营业", "正在打开网络直播现场。", "info");
+    return startNiaBusinessSession({
+      businessId: createHarnessId("nia-training-business"),
+      context: {
+        businessType: "online_live",
+        businessLevel,
+        businessBrief: {
+          sourceTaskId: onlineTask.id,
+          title: onlineTask.title,
+          targetImage: onlineTask.goal,
+          audience: onlineTask.background,
+          approach: onlineTask.expectedOutput,
+          preparation: onlineTask.assets,
+          risk: onlineTask.constraints,
+          boundaries: onlineTask.boundaries,
+          sourceKind: preparation.sourceKind,
+          workEvidence: preparation.evidence
+        },
+        idol: state.idol,
+        round: state.nia.round,
+        dayIndex: training.actionIndex,
+        day: clone(planDay),
+        plan: clone(state.nia.plan),
+        baseFans: 2000,
+        audienceFans: training.fans
+      }
+    });
+  }
+
+  function requestNiaBusinessResolution(actionText) { submitNiaLiveProducerInstruction(actionText); }
+
+  function handleNiaBusinessChoiceSelection(index) {
+    requestNiaBusinessResolution(state.pendingOptionTexts?.[index] || "");
+  }
+
+  function handleNiaBusinessCustomChoice(rawText) {
+    requestNiaBusinessResolution(rawText);
+  }
+
+  function submitNiaLiveProducerInstruction(rawText) {
+    const session = niaBusinessSession;
+    const instruction = String(rawText || "").trim();
+    if (!session || !instruction) { showToast("还没有指示", "请选择方案或输入制作人的现场指示。", "warn"); return false; }
+    const submitted = niaLiveBusinessCore.submitProducerInstruction(session.runtime, instruction);
+    if (!submitted.ok) return false;
+    session.runtime = submitted.runtime;
+    const drawer = niaLiveEl("niaLiveProducerDrawer"); if (drawer) drawer.hidden = true;
+    const input = niaLiveEl("niaLiveProducerInput"); if (input) input.value = "";
+    state.nia = { ...normalizeNiaState(state.nia), liveBusiness: session.runtime, updatedAt: Date.now() };
+    saveState("nia.live.producer_instruction");
+    return requestNiaLiveSegment(4);
+  }
+
+  function triggerNiaBusinessRegeneration() { const session = niaBusinessSession; if (session) requestNiaLiveSegment(session.runtime.retrySegmentIndex || session.segmentIndex || 1); }
+
+  function isCurrentNiaBusinessReply(requestId) {
+    return Boolean(niaBusinessSession && niaBusinessSession.requestId === requestId);
+  }
+
+  function handleNiaBusinessAiReply(source, requestId, isFinal) {
+    const session = niaBusinessSession; if (!session || session.requestId !== requestId) return;
+    if (!isFinal) { sendAiReplyAck(requestId, true, false, false); return; }
+    const api = globalThis.HatsuNiaBusiness;
+    const parsed = api?.parseNiaLiveSegmentPayload?.({ rawText: source, text: source }, { businessId: session.businessId, segmentIndex: session.segmentIndex });
+    if (!parsed?.ok) { sendAiReplyAck(requestId, false, false); failNiaBusiness("主API回复格式不完整，本段保留在直播界面，可以重试。", parsed?.reason || "invalid_payload"); return; }
+    const applied = niaLiveBusinessCore.applySegmentPayload(session.runtime, parsed.data);
+    if (!applied.ok) { sendAiReplyAck(requestId, false, false); failNiaBusiness("直播段落与当前状态不匹配，可以重试。", applied.reason); return; }
+    pendingAiRequestId = ""; state.pendingAiRequestId = ""; sendAiReplyAck(requestId, true, false); session.runtime = applied.runtime;
+    state.nia = { ...normalizeNiaState(state.nia), liveBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.live.payload"); renderNiaLiveBusiness(session.runtime); playNiaLiveSegment(parsed.data);
+  }
+
+  function completeNiaBusinessAfterPlayback() {
+    const session = niaBusinessSession; if (!session || session.runtime?.status !== "awaiting_settlement") return;
+    const settled = niaLiveBusinessCore.settleLiveOnce(session.runtime, session.businessId); if (!settled.ok) return;
+    session.runtime = settled.runtime; session.result = settled.result;
+    renderNiaLiveResult(settled.result);
+    state.nia = { ...normalizeNiaState(state.nia), liveBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.live.settled"); renderNiaLiveBusiness(session.runtime);
+  }
+
+  function settleNiaLiveBusiness() { completeNiaBusinessAfterPlayback(); }
+
+  function renderNiaLiveResult(result) {
+    const summary = niaLiveEl("niaLiveResultSummary"); if (!summary || !result) return;
+    summary.replaceChildren();
+    [["新增粉丝", Number(result.fans || 0).toLocaleString()], ["形象匹配", result.imageMatch || "partial"], ["峰值观众", Number(result.peakViewers || 0).toLocaleString()], ["加分理由", result.bonusReason || "无"], ["最终印象", result.publicImage || "企划方向得到了一次公开验证"]].forEach(([label, value]) => {
+      const span = document.createElement("span"); span.append(document.createTextNode(`${label} `)); const strong = document.createElement("strong"); strong.textContent = value; span.appendChild(strong); summary.appendChild(span);
+    });
+  }
+
+  function resumeNiaLiveBusinessIfNeeded() {
+    if (!niaLiveBusinessCore.normalizeLiveRuntime) return false;
+    const nia = normalizeNiaState(state.nia); let runtime = nia.liveBusiness;
+    if (!runtime?.businessId || runtime.status === "idle" || runtime.progressionApplied) return false;
+    const context = nia.liveBusinessContext; if (!context) return false;
+    runtime = niaLiveBusinessCore.recoverInterruptedLive(runtime);
+    niaBusinessSession = { businessId: runtime.businessId, context, runtime, result: runtime.result || null, requestId: "", channelLeaseId: "", segmentIndex: runtime.retrySegmentIndex || runtime.segmentIndex || 1 };
+    state.nia = { ...nia, liveBusiness: runtime, updatedAt: Date.now() }; state.pendingActionContext = { action: "nia_business", actionContext: { phase: "live", businessId: runtime.businessId } };
+    setNiaPrototypeVisible(false); renderNiaLiveBusiness(runtime);
+    if (runtime.status === "settled") renderNiaLiveResult(runtime.result);
+    if (runtime.status === "awaiting_settlement") settleNiaLiveBusiness();
+    if (/^playing_[1-4]$/.test(runtime.status)) playNiaLiveSegment(runtime.segments[runtime.segmentIndex - 1]);
+    saveState("nia.live.recovered"); return true;
+  }
+
+  function confirmNiaLiveBusinessResult() {
+    if (!niaBusinessSession) {
+      const nia = normalizeNiaState(state.nia);
+      const runtime = nia.liveBusiness;
+      if (runtime?.businessId && runtime?.status === "settled" && runtime?.result) {
+        niaBusinessSession = {
+          businessId: runtime.businessId,
+          context: nia.liveBusinessContext || {},
+          runtime,
+          result: runtime.result,
+          requestId: "",
+          channelLeaseId: "",
+          segmentIndex: 4
+        };
+      }
+    }
+    const session = niaBusinessSession;
+    const result = session?.result || session?.runtime?.result;
+    if (!session || !result) {
+      const status = niaLiveEl("niaLiveStatus");
+      if (status) status.textContent = "结算状态尚未就绪，请刷新页面后再次确认";
+      showToast("无法确认结果", "没有找到本场直播的结算数据。", "warn");
+      return false;
+    }
+    if (session.runtime?.progressionApplied) return true;
+    session.result = result;
+    const nia = normalizeNiaState(state.nia); const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+    const completedDayIndex = training.actionIndex;
+    const runtime = { ...session.runtime, progressionApplied: true };
+    state.nia = { ...nia, liveBusiness: runtime, training: { ...training, fans: training.fans + Math.max(0, Math.floor(Number(result.fans) || 0)), actionIndex: training.actionIndex + 1 }, updatedAt: Date.now() };
+    activateNiaEveningAfterDayCompletion(completedDayIndex);
+    postNiaBusinessMessage({ type: "niaBusinessCompleted", businessId: session.businessId, result });
+    stopNiaLivePlayback(); state.pendingActionContext = null; state.eventMode = "none"; state.choiceStep = 0; state.pendingOptionTexts = []; state.selectedChoiceText = ""; state.selectedChoiceRating = ""; pendingAiRequestId = ""; state.pendingAiRequestId = "";
+    niaBusinessSession = null; const overlay = niaLiveEl("niaLiveOverlay"); if (overlay) overlay.hidden = true; setNiaPrototypeVisible(!isNiaTrainingActive()); saveState("nia.live.progression");
+    if (reconcileNiaFanMilestoneAfterSettlement()) return true;
+    render();
+    resumeNiaEveningIfNeeded();
+    return true;
+  }
+
+  function handleNiaLiveResultConfirm(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    confirmNiaLiveBusinessResult();
+  }
+
+  function handleNiaLiveOverlayClick(event) {
+    const confirmButton = event?.target?.closest?.("#niaLiveResultConfirmBtn");
+    if (!confirmButton) return;
+    handleNiaLiveResultConfirm(event);
+  }
+
+  // Dedicated four-segment school-radio flow. It deliberately does not reuse
+  // the online-live parser or overlay so a stale live reply cannot advance it.
+  const niaRadioEl = (id) => document.getElementById(id);
+  function ensureNiaRadioOverlayRoot() {
+    const overlay = niaRadioEl("niaRadioOverlay");
+    if (!overlay || !document.body) return overlay;
+    const root = document.fullscreenElement || document.getElementById("hatsu-fullscreen-overlay") || document.body;
+    if (overlay.parentElement !== root && !overlay.contains(root)) root.appendChild(overlay);
+    return overlay;
+  }
+  function syncNiaRadioOverlayRootForFullscreen() {
+    const overlay = niaRadioEl("niaRadioOverlay");
+    if (!niaRadioBusinessSession || !overlay || overlay.hidden) return;
+    ensureNiaRadioOverlayRoot();
+  }
+  function renderNiaRadioBusiness(runtime, message = "") {
+    const overlay = ensureNiaRadioOverlayRoot();
+    if (!overlay) return;
+    overlay.hidden = false;
+    const index = Math.max(1, Number(runtime?.segmentIndex || runtime?.pendingSegmentIndex || 1));
+    const current = runtime?.segments?.[index - 1] || {};
+    const context = niaRadioBusinessSession?.context || state.nia?.radioBusinessContext || {};
+    const stage = document.querySelector("#niaRadioOverlay .nia-radio-stage"); if (stage) stage.classList.remove("nia-tv-mode");
+    const host = niaRadioEl("niaRadioHostStandee"); if (host) host.hidden = false;
+    const stageSign = document.querySelector("#niaRadioOverlay .nia-radio-stage-sign"); if (stageSign) stageSign.textContent = "HATSUBOSHI RADIO CLUB";
+    const brand = document.querySelector("#niaRadioOverlay .nia-radio-brand strong"); if (brand) brand.textContent = "初星放送部";
+    const episode = niaRadioEl("niaRadioEpisodeTitle"); if (episode) episode.textContent = context.episodeTitle || context.programTitle || "校园广播特别回";
+    const label = niaRadioEl("niaRadioSegmentLabel"); if (label) label.textContent = `${String(index).padStart(2, "0")} / 04`;
+    const topic = niaRadioEl("niaRadioTopic"); if (topic) topic.textContent = current.topic || context.interviewFocus || context.goal || "节目准备中";
+    const waitingForContinue = ["awaiting_continue_1", "awaiting_continue_2"].includes(runtime?.status);
+    const status = niaRadioEl("niaRadioStatus"); if (status) status.textContent = message || ({ retryable_failed: "本段生成失败，可以重试", awaiting_continue_1: "本段结束，点击字幕或画面继续下一段", awaiting_continue_2: "本段结束，点击字幕或画面继续下一段", awaiting_producer_instruction: "等待制作人临场指示", awaiting_settlement: "节目已收播，请确认结果", settled: "广播已完成" }[runtime?.status] || "广播进行中");
+    const guest = niaRadioEl("niaRadioGuestStandee");
+    const additionalGuest = niaRadioEl("niaRadioAdditionalGuestStandee");
+    const guestName = String(context.guest || context.idol || state.idol || "");
+    const additionalGuestName = String(context.additionalGuest || "").trim();
+    const hasAdditionalGuest = Boolean(additionalGuestName && canonicalIdolName(additionalGuestName) !== canonicalIdolName(guestName));
+    if (stage) stage.classList.toggle("has-multiple-guests", hasAdditionalGuest);
+    if (guest) { guest.hidden = false; guest.style.left = ""; guest.dataset.radioCharacter = guestName; }
+    const guestDefaultCue = globalThis.HatsuPortraitExpressions?.getDefaultSpeakerVisualCue?.(guestName) || guestName;
+    const guestCue = resolvePortraitForSpeakerVisualCue(guestDefaultCue);
+    if (guest && guestCue?.portrait?.url && guest.dataset.portraitSpeaker !== guestCue.rawSpeaker) applyResolvedPortraitToImage(guest, guestCue.portrait);
+    if (additionalGuest) {
+      additionalGuest.hidden = !hasAdditionalGuest;
+      additionalGuest.dataset.radioCharacter = hasAdditionalGuest ? additionalGuestName : "";
+      if (hasAdditionalGuest) {
+        const additionalDefaultCue = globalThis.HatsuPortraitExpressions?.getDefaultSpeakerVisualCue?.(additionalGuestName) || additionalGuestName;
+        const additionalCue = resolvePortraitForSpeakerVisualCue(additionalDefaultCue);
+        if (additionalCue?.portrait?.url && additionalGuest.dataset.portraitSpeaker !== additionalCue.rawSpeaker) applyResolvedPortraitToImage(additionalGuest, additionalCue.portrait);
+      }
+    }
+    [host, guest, additionalGuest].forEach((standee) => standee?.classList.remove("is-speaking", "is-listening"));
+    const retry = niaRadioEl("niaRadioRetryBtn"); if (retry) retry.hidden = runtime?.status !== "retryable_failed";
+    const cont = niaRadioEl("niaRadioContinueBtn"); if (cont) { cont.hidden = !waitingForContinue; cont.disabled = false; }
+    const stageContinue = niaRadioEl("niaRadioStageContinue"); if (stageContinue) stageContinue.hidden = !waitingForContinue;
+    const cue = niaRadioEl("niaRadioProducerCue"); if (cue) cue.hidden = runtime?.status !== "awaiting_producer_instruction";
+    if (runtime?.status === "awaiting_producer_instruction") {
+      const problem = niaRadioEl("niaRadioProblem"); if (problem) problem.textContent = current.problem || current.listenerLetter || "听众来信需要你的判断";
+      const letter = niaRadioEl("niaRadioListenerLetter"); if (letter) letter.textContent = current.listenerLetter || "";
+      const options = niaRadioEl("niaRadioProducerOptions");
+      if (options && options.childElementCount !== (current.options || []).length) {
+        options.replaceChildren(...(current.options || []).map((value) => { const button = document.createElement("button"); button.type = "button"; button.className = "nia-radio-action"; button.textContent = value; button.dataset.radioInstruction = value; return button; }));
+      }
+    }
+    const resultPanel = niaRadioEl("niaRadioResultPanel"); if (resultPanel) resultPanel.hidden = runtime?.status !== "settled";
+    const confirm = niaRadioEl("niaRadioResultConfirmBtn"); if (confirm) { confirm.disabled = runtime?.status !== "settled"; confirm.textContent = "确认广播结果"; }
+    const count = niaRadioEl("niaRadioHistoryCount"); if (count) count.textContent = String(runtime?.playedLines?.length || 0);
+    const history = niaRadioEl("niaRadioHistoryList");
+    if (history && history.childElementCount !== (runtime?.playedLines?.length || 0)) {
+      history.replaceChildren(); (runtime?.playedLines || []).forEach(appendNiaRadioHistory);
+    }
+  }
+  function stopNiaRadioPlayback() {
+    if (niaRadioBusinessSession?.playbackController) niaRadioBusinessSession.playbackController.cancelled = true;
+    if (niaRadioBusinessSession) niaRadioBusinessSession.playbackController = null;
+  }
+  function appendNiaRadioHistory(line) {
+    const list = niaRadioEl("niaRadioHistoryList"); if (!list || !line?.text) return;
+    const entry = document.createElement("div"); entry.className = "nia-radio-history-entry";
+    const speaker = document.createElement("strong"); speaker.textContent = line.speaker || "演播室";
+    entry.append(speaker, document.createTextNode(line.text)); list.appendChild(entry);
+  }
+  function updateNiaRadioSpeakerStandees(speaker) {
+    const visual = resolvePortraitForSpeakerVisualCue(String(speaker || ""));
+    const speakerName = canonicalIdolName(visual.speaker || String(speaker || ""));
+    const host = niaRadioEl("niaRadioHostStandee");
+    const guest = niaRadioEl("niaRadioGuestStandee");
+    const additionalGuest = niaRadioEl("niaRadioAdditionalGuestStandee");
+    const standees = [host, guest, additionalGuest].filter((standee) => standee && !standee.hidden);
+    standees.forEach((standee) => {
+      const character = canonicalIdolName(standee === host ? "真诚优" : String(standee.dataset.radioCharacter || ""));
+      const speaking = Boolean(speakerName && character === speakerName);
+      standee.classList.toggle("is-speaking", speaking);
+      standee.classList.toggle("is-listening", Boolean(speakerName) && !speaking);
+    });
+    const target = [guest, additionalGuest].find((standee) => (
+      standee && !standee.hidden
+      && canonicalIdolName(String(standee.dataset.radioCharacter || "")) === speakerName
+    ));
+    if (target && visual?.portrait?.url && visual.matched && target.dataset.portraitSpeaker !== visual.rawSpeaker) {
+      applyResolvedPortraitToImage(target, visual.portrait);
+    }
+    return visual;
+  }
+  function playNiaRadioSegment(payload) {
+    const session = niaRadioBusinessSession; if (!session) return;
+    stopNiaRadioPlayback();
+    const controller = { cancelled: false, advance: null }; session.playbackController = controller;
+    const lines = Array.isArray(payload.lines) ? payload.lines : [];
+    let index = Math.min(lines.length, Math.max(0, Number(session.runtime.playbackLineIndex || 0)));
+    const next = () => {
+      if (controller.cancelled) return;
+      if (index >= lines.length) {
+        const completed = niaRadioBusinessCore.completeSegmentPlayback(session.runtime);
+        if (completed.ok) {
+          session.runtime = completed.runtime;
+          state.nia = { ...normalizeNiaState(state.nia), radioBusiness: completed.runtime, updatedAt: Date.now() };
+          saveState("nia.radio.segment_complete"); renderNiaRadioBusiness(session.runtime);
+          if (completed.runtime?.status === "awaiting_settlement") completeNiaRadioAfterPlayback();
+        }
+        return;
+      }
+      const line = lines[index++];
+      const visual = updateNiaRadioSpeakerStandees(line.speaker);
+      const caption = niaRadioEl("niaRadioCaption");
+      if (caption) { caption.replaceChildren(); if (line.speaker) { const strong = document.createElement("strong"); strong.textContent = visual.speaker || line.speaker; caption.appendChild(strong); } caption.appendChild(document.createTextNode(line.text)); }
+      appendNiaRadioHistory(line);
+      session.runtime = { ...session.runtime, playbackLineIndex: index, playedLines: [...(session.runtime.playedLines || []), line].slice(-120) };
+      state.nia = { ...normalizeNiaState(state.nia), radioBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.radio.line");
+    };
+    controller.advance = next; next();
+  }
+  function failNiaRadioBusiness(message, reason = "generation_failed") {
+    const session = niaRadioBusinessSession; if (!session) return;
+    stopNiaRadioPlayback(); pendingAiRequestId = ""; state.pendingAiRequestId = "";
+    const index = session.runtime?.pendingSegmentIndex || session.segmentIndex || 1;
+    session.runtime = { ...session.runtime, status: "retryable_failed", retrySegmentIndex: index, pendingSegmentIndex: 0, activeRequest: null, lastError: String(message || "广播生成失败") };
+    state.nia = { ...normalizeNiaState(state.nia), radioBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.radio.failed"); renderNiaRadioBusiness(session.runtime, message || "本段生成失败，可以重试");
+    postNiaBusinessMessage({ type: "niaRadioFailed", businessId: session.businessId, message: message || "广播生成失败，请重试。", reason });
+  }
+  function requestNiaRadioSegment(segmentIndex) {
+    const session = niaRadioBusinessSession; const api = globalThis.HatsuNiaRadioApi;
+    if (!session || !api?.buildNiaRadioSegmentPrompt) return false;
+    const started = niaRadioBusinessCore.beginSegmentGeneration(session.runtime, segmentIndex, { requestId: "pending" });
+    if (!started.ok) { renderNiaRadioBusiness(session.runtime, "当前广播段落无法继续"); return false; }
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({ requestId, ownerKind: "nia_radio_business", turnId: session.businessId, saveScope: activeHostSaveScope, sessionEpoch: runtimeSessionEpoch });
+    if (!acquired.ok) { failNiaRadioBusiness("主API正在处理其他请求，请稍后重试。", "channel_occupied"); return false; }
+    session.runtime = { ...started.runtime, activeRequest: { requestId, channelLeaseId: acquired.owner.channelLeaseId } }; session.requestId = requestId; session.channelLeaseId = acquired.owner.channelLeaseId; session.segmentIndex = segmentIndex;
+    pendingAiRequestId = requestId; state.pendingAiRequestId = requestId; state.lastPrompt = api.buildNiaRadioSegmentPrompt(session.context, { ...session.runtime, pendingSegmentIndex: segmentIndex }) + "\n\n" + buildNiaAuthoritativeScheduleContext();
+    state.nia = { ...normalizeNiaState(state.nia), radioBusiness: session.runtime, radioBusinessContext: clone(session.context), updatedAt: Date.now() }; saveState("nia.radio.generating"); renderNiaRadioBusiness(session.runtime, `正在生成第 ${segmentIndex} 段广播...`);
+    const sent = requestHostPromptSend(state.lastPrompt, requestId, { channelLeaseId: acquired.owner.channelLeaseId, ownerKind: "nia_radio_business", turnId: session.businessId, generationMode: "shujuku_same_layer" });
+    if (!sent) { failNiaRadioBusiness("当前没有连接到酒馆主API，请从酒馆主页重新进入。", "host_unavailable"); return false; }
+    return true;
+  }
+  async function startNiaRadioBusinessSession(data) {
+    const businessId = String(data?.businessId || ""); const context = data?.context && typeof data.context === "object" ? data.context : null;
+    if (!businessId || !context || niaRadioBusinessSession || niaBusinessSession) return false;
+    const plan = context.radioPlan || {};
+    niaRadioBusinessSession = { businessId, context: { ...context, businessId }, runtime: niaRadioBusinessCore.createRadioRuntime({ businessId, plan, baseFans: 0 }), requestId: "", channelLeaseId: "", segmentIndex: 1, playbackController: null };
+    niaRadioEl("niaRadioHistoryList")?.replaceChildren();
+    niaRadioEl("niaRadioCaption")?.replaceChildren();
+    state.nia = { ...normalizeNiaState(state.nia), radioBusiness: niaRadioBusinessSession.runtime, radioBusinessContext: clone(niaRadioBusinessSession.context), updatedAt: Date.now() };
+    setNiaPrototypeVisible(false); state.pendingActionContext = { action: "nia_radio_business", actionContext: { phase: "radio", businessId } }; state.eventMode = "none"; state.choiceStep = 0; saveState("nia.radio.preparing"); renderNiaRadioBusiness(niaRadioBusinessSession.runtime, "正在加载广播模块...");
+    let api = globalThis.HatsuNiaRadioApi;
+    if (!api?.buildNiaRadioSegmentPrompt && globalThis.HATSU_NIA_RADIO_READY) { await Promise.race([globalThis.HATSU_NIA_RADIO_READY, new Promise((resolve) => setTimeout(resolve, 10000))]); api = globalThis.HatsuNiaRadioApi; }
+    if (!api?.buildNiaRadioSegmentPrompt) { failNiaRadioBusiness("广播API模块尚未加载，请刷新酒馆主页后重试。", "module_unavailable"); return false; }
+    return requestNiaRadioSegment(1);
+  }
+  function submitNiaRadioProducerInstruction(rawText) {
+    const session = niaRadioBusinessSession; const instruction = String(rawText || "").trim(); if (!session || !instruction) return false;
+    const submitted = niaRadioBusinessCore.submitProducerInstruction(session.runtime, instruction); if (!submitted.ok) return false;
+    session.runtime = submitted.runtime; state.nia = { ...normalizeNiaState(state.nia), radioBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.radio.producer_instruction"); return requestNiaRadioSegment(4);
+  }
+  function handleNiaRadioAiReply(source, requestId, isFinal) {
+    const session = niaRadioBusinessSession; if (!session || session.requestId !== requestId) return;
+    if (!isFinal) { sendAiReplyAck(requestId, true, false, false); return; }
+    const parsed = globalThis.HatsuNiaRadioApi?.parseNiaRadioSegmentPayload?.({ rawText: source, text: source }, { businessId: session.businessId, segmentIndex: session.segmentIndex });
+    if (!parsed?.ok) { sendAiReplyAck(requestId, false, false); failNiaRadioBusiness("主API回复不是有效的广播格式，本段可以重试。", parsed?.reason || "invalid_payload"); return; }
+    const applied = niaRadioBusinessCore.applySegmentPayload(session.runtime, parsed.data); if (!applied.ok) { sendAiReplyAck(requestId, false, false); failNiaRadioBusiness("广播段落与当前状态不匹配，可以重试。", applied.reason); return; }
+    pendingAiRequestId = ""; state.pendingAiRequestId = ""; sendAiReplyAck(requestId, true, false); session.runtime = applied.runtime; state.nia = { ...normalizeNiaState(state.nia), radioBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.radio.payload"); renderNiaRadioBusiness(session.runtime); playNiaRadioSegment(parsed.data);
+  }
+  function completeNiaRadioAfterPlayback() {
+    const session = niaRadioBusinessSession; if (!session || session.runtime?.status !== "awaiting_settlement") return;
+    const settled = niaRadioBusinessCore.settleRadioOnce(session.runtime, session.businessId); if (!settled.ok) return;
+    session.runtime = settled.runtime; session.result = settled.result; state.nia = { ...normalizeNiaState(state.nia), radioBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.radio.settled"); renderNiaRadioBusiness(session.runtime); renderNiaRadioResult(settled.result);
+  }
+  // Generic TV programs reuse the proven four-stage playback surface while
+  // keeping their runtime, parser, and settlement isolated from radio.
+  function renderNiaTvBusiness(runtime, message = "") {
+    const overlay = ensureNiaRadioOverlayRoot(); if (!overlay) return;
+    overlay.hidden = false;
+    const context = niaTvBusinessSession?.context || state.nia?.tvBusinessContext || {};
+    const index = Math.max(1, Number(runtime?.segmentIndex || runtime?.pendingSegmentIndex || 1));
+    const current = runtime?.segments?.[index - 1] || {};
+    const stage = document.querySelector("#niaRadioOverlay .nia-radio-stage"); if (stage) { stage.classList.add("nia-tv-mode"); stage.classList.remove("has-multiple-guests"); }
+    const title = niaRadioEl("niaRadioEpisodeTitle"); if (title) title.textContent = context.programName || "偶像生活访谈";
+    const brand = document.querySelector("#niaRadioOverlay .nia-radio-brand strong"); if (brand) brand.textContent = "HATSUBOSHI TV";
+    const stageSign = document.querySelector("#niaRadioOverlay .nia-radio-stage-sign"); if (stageSign) stageSign.textContent = "HATSUBOSHI TV STUDIO";
+    const host = niaRadioEl("niaRadioHostStandee"); if (host) host.hidden = true;
+    const additionalGuest = niaRadioEl("niaRadioAdditionalGuestStandee"); if (additionalGuest) additionalGuest.hidden = true;
+    const guest = niaRadioEl("niaRadioGuestStandee");
+    const idolName = String(context.idol || state.idol || "");
+    const defaultVisualSpeaker = globalThis.HatsuPortraitExpressions?.getDefaultSpeakerVisualCue?.(idolName) || idolName;
+    const guestCue = resolvePortraitForSpeakerVisualCue(defaultVisualSpeaker);
+    if (guest) { guest.hidden = false; guest.style.left = "52%"; }
+    if (guest && guestCue?.portrait?.url && (guest.dataset.portraitSpeaker !== guestCue.rawSpeaker || guest.dataset.portraitFallbackApplied === "1" || !guest.dataset.portraitUserUrl)) applyResolvedPortraitToImage(guest, guestCue.portrait);
+    const label = niaRadioEl("niaRadioSegmentLabel"); if (label) label.textContent = `${String(index).padStart(2, "0")} / 04`;
+    const topic = niaRadioEl("niaRadioTopic"); if (topic) topic.textContent = current.topic || context.theme || "节目准备中";
+    const waitingForContinue = ["awaiting_continue_1", "awaiting_continue_2"].includes(runtime?.status);
+    const status = niaRadioEl("niaRadioStatus"); if (status) status.textContent = message || ({ retryable_failed: "本段生成失败，可以重试", awaiting_continue_1: "本段结束，点击字幕或画面继续下一段", awaiting_continue_2: "本段结束，点击字幕或画面继续下一段", awaiting_producer_instruction: "等待制作人的现场指示", awaiting_settlement: "节目已收播，请确认结果", settled: "电视节目已完成" }[runtime?.status] || "电视节目进行中");
+    const retry = niaRadioEl("niaRadioRetryBtn"); if (retry) retry.hidden = runtime?.status !== "retryable_failed";
+    const cont = niaRadioEl("niaRadioContinueBtn"); if (cont) cont.hidden = !waitingForContinue;
+    const stageContinue = niaRadioEl("niaRadioStageContinue"); if (stageContinue) stageContinue.hidden = !waitingForContinue;
+    const cue = niaRadioEl("niaRadioProducerCue"); if (cue) cue.hidden = runtime?.status !== "awaiting_producer_instruction";
+    if (runtime?.status === "awaiting_producer_instruction") {
+      const problem = niaRadioEl("niaRadioProblem"); if (problem) problem.textContent = current.problem || "需要制作人判断的节目状况";
+      const letter = niaRadioEl("niaRadioListenerLetter"); if (letter) letter.textContent = current.incident || "节目组临时提出了新的要求。";
+      const options = niaRadioEl("niaRadioProducerOptions");
+      if (options) options.replaceChildren(...(current.options || []).map((value) => { const button = document.createElement("button"); button.type = "button"; button.className = "nia-radio-action"; button.textContent = value; button.dataset.tvInstruction = value; return button; }));
+    }
+    const resultPanel = niaRadioEl("niaRadioResultPanel"); if (resultPanel) resultPanel.hidden = runtime?.status !== "settled";
+    const confirm = niaRadioEl("niaRadioResultConfirmBtn"); if (confirm) { confirm.disabled = runtime?.status !== "settled"; confirm.textContent = "确认电视节目结果"; }
+  }
+  function playNiaTvSegment(payload) {
+    const session = niaTvBusinessSession; if (!session) return;
+    if (session.playbackController) session.playbackController.cancelled = true;
+    const controller = { cancelled: false }; session.playbackController = controller;
+    const lines = Array.isArray(payload.lines) ? payload.lines : []; let index = 0;
+    const next = () => {
+      if (controller.cancelled) return;
+      if (index >= lines.length) {
+        const completed = niaTvBusinessCore.completeSegmentPlayback(session.runtime);
+        if (completed.ok) { session.runtime = completed.runtime; state.nia = { ...normalizeNiaState(state.nia), tvBusiness: completed.runtime, updatedAt: Date.now() }; saveState("nia.tv.segment_complete"); renderNiaTvBusiness(session.runtime); if (completed.runtime.status === "awaiting_settlement") completeNiaTvAfterPlayback(); }
+        return;
+      }
+      const line = lines[index++]; const caption = niaRadioEl("niaRadioCaption");
+      const visual = resolvePortraitForSpeakerVisualCue(line.speaker);
+      const idolName = String(session.context?.idol || state.idol || "");
+      const guest = niaRadioEl("niaRadioGuestStandee");
+      if (line.speaker && canonicalIdolName(visual.speaker) === canonicalIdolName(idolName) && visual.portrait?.url && guest?.dataset.portraitSpeaker !== visual.rawSpeaker) {
+        applyResolvedPortraitToImage(guest, visual.portrait);
+      }
+      if (caption) { caption.replaceChildren(); if (line.speaker) { const strong = document.createElement("strong"); strong.textContent = visual.speaker; caption.appendChild(strong); } caption.appendChild(document.createTextNode(line.text || "")); }
+      session.runtime = { ...session.runtime, playbackLineIndex: index }; state.nia = { ...normalizeNiaState(state.nia), tvBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.tv.line");
+    };
+    controller.advance = next; next();
+  }
+  function failNiaTvBusiness(message, reason = "generation_failed") {
+    const session = niaTvBusinessSession; if (!session) return;
+    if (session.playbackController) session.playbackController.cancelled = true;
+    const index = session.runtime?.pendingSegmentIndex || session.segmentIndex || 1;
+    session.runtime = { ...session.runtime, status: "retryable_failed", retrySegmentIndex: index, pendingSegmentIndex: 0, activeRequest: null, lastError: String(message || "电视节目生成失败") };
+    state.nia = { ...normalizeNiaState(state.nia), tvBusiness: session.runtime, updatedAt: Date.now() }; pendingAiRequestId = ""; state.pendingAiRequestId = ""; saveState("nia.tv.failed"); renderNiaTvBusiness(session.runtime, message || "本段生成失败，可以重试");
+    postNiaBusinessMessage({ type: "niaTvFailed", businessId: session.businessId, message, reason });
+  }
+  function requestNiaTvSegment(segmentIndex) {
+    const session = niaTvBusinessSession; const api = globalThis.HatsuNiaTvApi; if (!session || !api?.buildNiaTvSegmentPrompt) return false;
+    const started = niaTvBusinessCore.beginSegmentGeneration(session.runtime, segmentIndex, { requestId: "pending" }); if (!started.ok) return false;
+    const requestId = createRequestId(); const acquired = tryAcquirePrimaryModelChannel({ requestId, ownerKind: "nia_tv_business", turnId: session.businessId, saveScope: activeHostSaveScope, sessionEpoch: runtimeSessionEpoch });
+    if (!acquired.ok) { failNiaTvBusiness("主API正在处理其他请求，请稍后重试。", "channel_occupied"); return false; }
+    session.runtime = { ...started.runtime, activeRequest: { requestId, channelLeaseId: acquired.owner.channelLeaseId } }; session.requestId = requestId; session.segmentIndex = segmentIndex; session.channelLeaseId = acquired.owner.channelLeaseId;
+    pendingAiRequestId = requestId; state.pendingAiRequestId = requestId; state.lastPrompt = api.buildNiaTvSegmentPrompt(session.context, { ...session.runtime, pendingSegmentIndex: segmentIndex }) + "\n\n" + buildNiaAuthoritativeScheduleContext(); state.nia = { ...normalizeNiaState(state.nia), tvBusiness: session.runtime, tvBusinessContext: clone(session.context), updatedAt: Date.now() }; saveState("nia.tv.generating"); renderNiaTvBusiness(session.runtime, `正在生成第 ${segmentIndex} 段电视节目...`);
+    if (!requestHostPromptSend(state.lastPrompt, requestId, { channelLeaseId: acquired.owner.channelLeaseId, ownerKind: "nia_tv_business", turnId: session.businessId, generationMode: "shujuku_same_layer" })) { failNiaTvBusiness("当前没有连接到酒馆主API，请重试。", "host_unavailable"); return false; }
+    return true;
+  }
+  async function startNiaTvBusinessSession(data) {
+    const businessId = String(data?.businessId || ""); const context = data?.context && typeof data.context === "object" ? data.context : null;
+    if (!businessId || !context || niaTvBusinessSession || niaBusinessSession || niaRadioBusinessSession) return false;
+    niaTvBusinessSession = { businessId, context: { ...context, businessId }, runtime: niaTvBusinessCore.createTvRuntime({ businessId, strategyId: context.strategyId, selectedTopics: context.selectedTopics, baseFans: 0 }), requestId: "", segmentIndex: 1, channelLeaseId: "", playbackController: null };
+    state.nia = { ...normalizeNiaState(state.nia), tvBusiness: niaTvBusinessSession.runtime, tvBusinessContext: clone(niaTvBusinessSession.context), updatedAt: Date.now() }; setNiaPrototypeVisible(false); state.pendingActionContext = { action: "nia_tv_business", actionContext: { phase: "tv", businessId } }; saveState("nia.tv.preparing"); renderNiaTvBusiness(niaTvBusinessSession.runtime, "正在加载电视节目模块...");
+    if (!globalThis.HatsuNiaTvApi?.buildNiaTvSegmentPrompt && globalThis.HATSU_NIA_TV_READY) await globalThis.HATSU_NIA_TV_READY;
+    if (!globalThis.HatsuNiaTvApi?.buildNiaTvSegmentPrompt) { failNiaTvBusiness("电视节目API模块尚未加载，请刷新后重试。", "module_unavailable"); return false; }
+    return requestNiaTvSegment(1);
+  }
+  function submitNiaTvProducerInstruction(value) { const session = niaTvBusinessSession; const submitted = session && niaTvBusinessCore.submitProducerInstruction(session.runtime, value); if (!submitted?.ok) return false; session.runtime = submitted.runtime; state.nia = { ...normalizeNiaState(state.nia), tvBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.tv.producer_instruction"); return requestNiaTvSegment(4); }
+  function handleNiaTvAiReply(source, requestId, isFinal) {
+    const session = niaTvBusinessSession; if (!session || session.requestId !== requestId) return;
+    if (!isFinal) { sendAiReplyAck(requestId, true, false, false); return; }
+    const parsed = globalThis.HatsuNiaTvApi?.parseNiaTvSegmentPayload?.({ rawText: source, text: source }, { businessId: session.businessId, segmentIndex: session.segmentIndex });
+    if (!parsed?.ok) { sendAiReplyAck(requestId, false, false); failNiaTvBusiness("主API回复不是有效的电视节目格式，本段可以重试。", parsed?.reason); return; }
+    const applied = niaTvBusinessCore.applySegmentPayload(session.runtime, parsed.data); if (!applied.ok) { failNiaTvBusiness("电视节目段落与当前状态不匹配，可以重试。", applied.reason); return; }
+    pendingAiRequestId = ""; state.pendingAiRequestId = ""; sendAiReplyAck(requestId, true, false); session.runtime = applied.runtime; state.nia = { ...normalizeNiaState(state.nia), tvBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.tv.payload"); renderNiaTvBusiness(session.runtime); playNiaTvSegment(parsed.data);
+  }
+  function completeNiaTvAfterPlayback() { const session = niaTvBusinessSession; if (!session || session.runtime?.status !== "awaiting_settlement") return; const settled = niaTvBusinessCore.settleTvOnce(session.runtime, session.businessId); if (!settled.ok) return; session.runtime = settled.runtime; session.result = settled.result; state.nia = { ...normalizeNiaState(state.nia), tvBusiness: session.runtime, updatedAt: Date.now() }; saveState("nia.tv.settled"); renderNiaTvBusiness(session.runtime); renderNiaRadioResult(settled.result); }
+  function confirmNiaTvResult() { const session = niaTvBusinessSession; if (!session || session.runtime?.status !== "settled" || session.runtime.progressionApplied) return false; const nia = normalizeNiaState(state.nia); const training = niaTrainingCore.normalizeNiaTraining(nia.training); const runtime = { ...session.runtime, progressionApplied: true }; const completedDayIndex = training.actionIndex; state.nia = { ...nia, tvBusiness: runtime, training: { ...training, fans: training.fans + Number(session.result?.fanGain || 0), actionIndex: training.actionIndex + 1 }, updatedAt: Date.now() }; activateNiaEveningAfterDayCompletion(completedDayIndex); niaTvBusinessSession = null; state.pendingActionContext = null; niaRadioEl("niaRadioOverlay").hidden = true; setNiaPrototypeVisible(!isNiaTrainingActive()); saveState("nia.tv.progression"); render(); resumeNiaEveningIfNeeded(); return true; }
+  function resumeNiaTvBusinessIfNeeded() { const nia = normalizeNiaState(state.nia); const runtime = nia.tvBusiness; const context = nia.tvBusinessContext; if (!runtime?.businessId || runtime.status === "idle" || runtime.progressionApplied || !context) return false; niaTvBusinessSession = { businessId: runtime.businessId, context, runtime, requestId: "", segmentIndex: runtime.retrySegmentIndex || runtime.segmentIndex || 1, playbackController: null }; setNiaPrototypeVisible(false); renderNiaTvBusiness(runtime); if (runtime.status === "settled") renderNiaRadioResult(runtime.result); return true; }
+
+  function renderNiaRadioResult(result) {
+    const summary = niaRadioEl("niaRadioResultSummary"); if (!summary || !result) return; summary.replaceChildren();
+    [["新增粉丝", result.fanGain || 0], ["节目高光", result.highlight], ["公开反馈", result.audienceResponse], ["形成印象", result.impressionChange], ["后续伏笔", result.followupHook], ["结果", result.resultSummary]].forEach(([label, value]) => { const item = document.createElement("div"); item.textContent = `${label}：${value || "无"}`; summary.appendChild(item); });
+  }
+  function confirmNiaRadioResult() {
+    const session = niaRadioBusinessSession; if (!session || session.runtime?.status !== "settled" || session.runtime.progressionApplied) return false;
+    const nia = normalizeNiaState(state.nia); const training = niaTrainingCore.normalizeNiaTraining(nia.training); const runtime = { ...session.runtime, progressionApplied: true };
+    const completedDayIndex = training.actionIndex;
+    let producerWork = niaProducerWorkCore.normalizeProducerWork(nia.producerWork); if (typeof niaProducerWorkCore.markRadioPlanSettled === "function") producerWork = niaProducerWorkCore.markRadioPlanSettled(producerWork, session.businessId).runtime;
+    state.nia = { ...nia, liveBusiness: nia.liveBusiness, radioBusiness: runtime, producerWork, training: { ...training, fans: training.fans + Math.max(0, Number(session.result?.fanGain || 0)), actionIndex: training.actionIndex + 1 }, updatedAt: Date.now() };
+    activateNiaEveningAfterDayCompletion(completedDayIndex);
+    postNiaBusinessMessage({ type: "niaRadioCompleted", businessId: session.businessId, result: session.result }); stopNiaRadioPlayback(); pendingAiRequestId = ""; state.pendingAiRequestId = ""; state.pendingActionContext = null; niaRadioBusinessSession = null; niaRadioEl("niaRadioOverlay").hidden = true; setNiaPrototypeVisible(!isNiaTrainingActive()); saveState("nia.radio.progression");
+    if (reconcileNiaFanMilestoneAfterSettlement()) return true;
+    render(); resumeNiaEveningIfNeeded(); return true;
+  }
+  function resumeNiaRadioBusinessIfNeeded() {
+    const nia = normalizeNiaState(state.nia); let runtime = nia.radioBusiness; const context = nia.radioBusinessContext;
+    if (!runtime?.businessId || runtime.status === "idle" || runtime.progressionApplied || !context) return false;
+    runtime = niaRadioBusinessCore.recoverInterruptedRadio(runtime); niaRadioBusinessSession = { businessId: runtime.businessId, context, runtime, requestId: "", segmentIndex: runtime.retrySegmentIndex || runtime.segmentIndex || 1, playbackController: null, result: runtime.result || null };
+    state.nia = { ...nia, radioBusiness: runtime, updatedAt: Date.now() }; state.pendingActionContext = { action: "nia_radio_business", actionContext: { phase: "radio", businessId: runtime.businessId } }; setNiaPrototypeVisible(false); renderNiaRadioBusiness(runtime);
+    if (runtime.status === "settled") renderNiaRadioResult(runtime.result); if (runtime.status === "awaiting_settlement") completeNiaRadioAfterPlayback(); if (/^playing_[1-4]$/.test(runtime.status)) playNiaRadioSegment(runtime.segments[runtime.segmentIndex - 1]); saveState("nia.radio.recovered"); return true;
+  }
+
+  function auditionXmlStory(segment) {
+    const escape = (value) => String(value || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const lines = Array.isArray(segment?.lines) ? segment.lines : [];
+    return lines.map((line) => line.type === "dialogue"
+      ? `<dialogue char="${escape(line.speaker)}">${escape(line.text)}</dialogue>`
+      : `<narration>${escape(line.text)}</narration>`).join("\n");
+  }
+
+  function getNiaAuditionLabel(context = {}) {
+    return context.isFinale || Number(context.round) >= 3
+      ? "FINALE"
+      : `第 ${Number(context.round) || 1} 轮试镜`;
+  }
+
+  function buildNiaAuditionContext() {
+    const nia = normalizeNiaState(state.nia);
+    const plan = nia.plan || {};
+    const days = Array.isArray(plan.days) ? plan.days : [];
+    const trainingDay = days.find((day) => String(day?.type || "").includes("陪同")) || days.find((day) => String(day?.type || "").includes("训练")) || {};
+    const publicRuntime = nia.tvBusiness?.result || nia.snsBusiness?.result || nia.radioBusiness?.result || nia.liveBusiness?.result || {};
+    const roundNumber = Math.max(1, Number(nia.round) || 1);
+    const routeRound = getNiaRouteForIdol(state.idol)?.rounds?.find((entry) => Number(entry.round) === roundNumber) || {};
+    const configuredOpponents = Array.isArray(routeRound.opponents)
+      ? routeRound.opponents
+      : routeRound.opponent
+        ? [routeRound.opponent]
+        : [];
+    const opponentPool = configuredOpponents.length
+      ? configuredOpponents.map((opponent) => ({
+          id: String(opponent.id || "").trim(),
+          name: String(opponent.name || "对手").trim(),
+          avatar: String(opponent.avatar || "").trim()
+        }))
+      : roundNumber >= 3 && !getNiaRouteForIdol(state.idol)?.rounds?.length
+        ? [{ id: "nia-finale-hanami-ume", name: "花海佑芽", avatar: "./assets/avatars/hanami-ume.png" }]
+        : [];
+    return {
+      auditionId: createHarnessId(roundNumber >= 3 ? `nia-round${roundNumber}-audition` : roundNumber === 2 ? "nia-second-audition" : "nia-first-audition"),
+      idol: state.idol || "担当偶像",
+      idolAvatar: idols[state.idol]?.avatar || "",
+      producer: clone(state.producer || {}),
+      growth: clone(state.growth),
+      round: roundNumber,
+      isFinale: roundNumber >= 3,
+      stageName: roundNumber >= 3 ? "N.I.A FINALE" : `N.I.A 第 ${roundNumber} 轮试镜`,
+      fixedOpponents: clone(opponentPool),
+      authoritativeSchedule: buildNiaAuthoritativeScheduleContext(nia),
+      plan: {
+        goal: plan.goal || { playerGoal: "让观众看到担当偶像本轮形成的魅力" },
+        publicImage: plan.publicImage || "按本轮已经确认的公众印象继续表现",
+        characterQuestion: plan.characterQuestion || "如何把本轮训练和营业成果变成自己的舞台能力"
+      },
+      payoffs: {
+        trainingPayoff: {
+          sourceRef: trainingDay.id || `round-${roundNumber}-training`,
+          before: trainingDay.purpose || "本轮训练中暴露的具体问题",
+          gain: trainingDay.expectedOutput || trainingDay.output || "训练后形成的可观察改善",
+          auditionUse: "第二段训练成果检验"
+        },
+        publicPayoff: {
+          sourceRef: nia.tvBusiness?.businessId || nia.snsBusiness?.businessId || nia.radioBusiness?.businessId || nia.liveBusiness?.businessId || `round-${roundNumber}-business`,
+          confirmedCharm: publicRuntime.impressionChange || publicRuntime.publicImage || "公开活动中得到确认的魅力",
+          auditionUse: "第三段观众与评审反应"
+        },
+        remainingWeakness: {
+          sourceRef: `round-${roundNumber}-unresolved-risk`,
+          content: "在重要镜头前仍然容易过度在意是否完美",
+          auditionEffect: "开场留下轻微紧绷，不改变最终第一名结果"
+        }
+      }
+    };
+  }
+
+  function buildNiaAuthoritativeScheduleContext(nia = normalizeNiaState(state.nia)) {
+    const plan = nia?.plan || {};
+    const days = Array.isArray(plan.days) ? plan.days.slice(0, 5) : [];
+    const training = nia?.training || {};
+    const currentDay = Number(training.actionIndex || 0) + 1;
+    const rows = days.map((day, index) => {
+      const marker = index + 1 === currentDay ? "【今天】" : index + 1 < currentDay ? "【已完成】" : "【未来】";
+      return marker + " DAY " + (day.day || index + 1) + "｜" + String(day.type || "") + "｜" + String(day.title || "") + "｜目的：" + String(day.purpose || "");
+    });
+    const today = days[currentDay - 1];
+    return [
+      "【权威 N.I.A. 日程】",
+      "当前轮次：第 " + String(nia?.round || 1) + " 轮；当前日：Day " + String(currentDay),
+      "今日行动：" + (today ? String(today.type || "") + "｜" + String(today.title || "") : "五日日程已完成，当前进入试镜或复盘阶段"),
+      "今天只执行标记为【今天】的行动；【未来】项目只是准备目标，不代表正在发生。",
+      rows.join("\n")
+    ].join("\n");
+  }
+
+  function syncNiaAuditionState(runtime, context = null) {
+    const nia = normalizeNiaState(state.nia);
+    state.nia = {
+      ...nia,
+      audition: runtime,
+      auditionContext: context ? clone(context) : nia.auditionContext,
+      updatedAt: Date.now()
+    };
+  }
+
+  function failNiaAudition(message, reason = "generation_failed") {
+    const session = niaAuditionSession;
+    if (!session) return false;
+    const runtime = niaAuditionCore.recoverInterruptedAudition(session.runtime);
+    session.runtime = runtime;
+    syncNiaAuditionState(runtime, session.context);
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    saveState("nia.audition.failed");
+    openEventOverlay(`N.I.A · ${getNiaAuditionLabel(session.context)}`, "本段生成失败，可重新生成", message || "本段试镜生成失败，请点击重新生成。\n\n当前排名与已完成段落已经保留。");
+    return true;
+  }
+
+  function requestNiaAuditionSegment(segmentIndex) {
+    const session = niaAuditionSession;
+    const api = globalThis.HatsuNiaAuditionApi;
+    if (!session || !api?.buildNiaAuditionSegmentPrompt || !niaAuditionCore.beginAuditionSegment) return false;
+    const started = niaAuditionCore.beginAuditionSegment(session.runtime, segmentIndex, { requestId: "pending" });
+    if (!started.ok) return false;
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "nia_audition",
+      turnId: session.auditionId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      failNiaAudition("主 API 正在处理其他请求，请稍后重试。", "channel_occupied");
+      return false;
+    }
+    session.runtime = {
+      ...started.runtime,
+      activeRequest: { requestId, channelLeaseId: acquired.owner.channelLeaseId, turnId: session.auditionId, saveScope: activeHostSaveScope, sessionEpoch: runtimeSessionEpoch }
+    };
+    session.requestId = requestId;
+    session.channelLeaseId = acquired.owner.channelLeaseId;
+    session.segmentIndex = segmentIndex;
+    state.pendingActionContext = { action: "nia_audition", actionContext: { phase: "audition", auditionId: session.auditionId, segmentIndex } };
+    state.eventMode = "none";
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = api.buildNiaAuditionSegmentPrompt(session.context, { ...session.runtime, pendingSegmentIndex: segmentIndex }) + "\n\n" + buildNiaAuthoritativeScheduleContext();
+    syncNiaAuditionState(session.runtime, session.context);
+    saveState("nia.audition.generating");
+    openEventOverlay(`N.I.A · ${getNiaAuditionLabel(session.context)}`, `正在生成第 ${segmentIndex} / 4 段`, "评审席与舞台镜头已经准备好，正在等待本段试镜演出。\n\n排名由前端冻结，AI 只负责写现场表现。");
+    const sent = requestHostPromptSend(state.lastPrompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "nia_audition",
+      turnId: session.auditionId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) {
+      failNiaAudition("当前没有连接到酒馆主 API，请从酒馆主页重新进入。", "host_unavailable");
+      return false;
+    }
+    return true;
+  }
+
+  function startCurrentNiaAudition() {
+    if (resumeBlockingNiaFanMilestone()) return false;
+    if (resumeBlockingNiaEvening()) return false;
+    if (!isNiaTrainingActive() || !niaAuditionCore.createAuditionRuntime) return false;
+    const nia = normalizeNiaState(state.nia);
+    const days = Array.isArray(nia.plan?.days) ? nia.plan.days : [];
+    const training = nia.training || {};
+    const audition = niaAuditionCore.normalizeAuditionRuntime?.(nia.audition) || nia.audition;
+    const auditionRound = Number(audition?.roundNumber || audition?.context?.round || 1);
+    const currentRound = Number(nia.round || 1);
+    const currentRoundAudition = auditionRound === currentRound ? audition : null;
+    if (training.actionIndex < days.length || currentRoundAudition?.progressionApplied) return false;
+    if (niaAuditionSession) return requestNiaAuditionSegment(currentRoundAudition?.retrySegmentIndex || currentRoundAudition?.segmentIndex + 1 || 1);
+    const context = buildNiaAuditionContext();
+    const runtime = niaAuditionCore.createAuditionRuntime({ auditionId: context.auditionId, idolName: context.idol, idolAvatar: context.idolAvatar, roundNumber: context.round, candidates: context.fixedOpponents, context });
+    niaAuditionSession = { auditionId: context.auditionId, context, runtime, requestId: "", channelLeaseId: "", segmentIndex: 1 };
+    syncNiaAuditionState(runtime, context);
+    state.pendingActionContext = { action: "nia_audition", actionContext: { phase: "audition", auditionId: context.auditionId, segmentIndex: 1 } };
+    state.eventMode = "none";
+    setNiaPrototypeVisible(false);
+    saveState("nia.audition.start");
+    return requestNiaAuditionSegment(1);
+  }
+
+  function failNiaPostAudition(message, reason = "generation_failed") {
+    const session = niaAuditionSession;
+    if (!session) return false;
+    if (session.requestId && session.channelLeaseId) {
+      releasePrimaryModelChannel(session.requestId, session.channelLeaseId, reason);
+    }
+    session.runtime = niaAuditionCore.recoverInterruptedAudition(session.runtime);
+    session.requestId = "";
+    session.channelLeaseId = "";
+    syncNiaAuditionState(session.runtime, session.context);
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    state.pendingActionContext = {
+      action: "nia_audition",
+      actionContext: { phase: "post_audition_retry", auditionId: session.auditionId, reason }
+    };
+    saveState("nia.audition.recap_failed");
+    openEventOverlay("N.I.A · 赛后复盘", "生成失败，可重新生成", message || "赛后复盘生成失败，请点击重新生成。\n\n试镜结果和已经结算的奖励不会受到影响。");
+    return true;
+  }
+
+  function requestNiaPostAuditionOpening() {
+    const session = niaAuditionSession;
+    const api = globalThis.HatsuNiaAuditionApi;
+    if (!session || !api?.buildNiaPostAuditionOpeningPrompt || !niaAuditionCore.beginPostAuditionOpening) return false;
+    const started = niaAuditionCore.beginPostAuditionOpening(session.runtime, { requestId: "pending" });
+    if (!started.ok) return false;
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "nia_audition",
+      turnId: session.auditionId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      session.runtime = started.runtime;
+      failNiaPostAudition("主 API 正在处理其他请求，请稍后重试。", "channel_occupied");
+      return false;
+    }
+    session.runtime = {
+      ...started.runtime,
+      postAudition: {
+        ...started.runtime.postAudition,
+        activeRequest: { requestId, channelLeaseId: acquired.owner.channelLeaseId, turnId: session.auditionId, saveScope: activeHostSaveScope, sessionEpoch: runtimeSessionEpoch }
+      }
+    };
+    session.requestId = requestId;
+    session.channelLeaseId = acquired.owner.channelLeaseId;
+    session.requestPhase = "post_audition_opening";
+    state.pendingActionContext = { action: "nia_audition", actionContext: { phase: "post_audition_opening", auditionId: session.auditionId } };
+    state.eventMode = "none";
+    state.pendingOptionTexts = [];
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = api.buildNiaPostAuditionOpeningPrompt(session.context, session.runtime) + "\n\n" + buildNiaAuthoritativeScheduleContext();
+    syncNiaAuditionState(session.runtime, session.context);
+    saveState("nia.audition.recap_opening_generating");
+    openEventOverlay("N.I.A · 赛后复盘", "正在生成后台对话", "第一名结果已经确认。\n\n担当偶像正在离开舞台，前往后台与制作人会合。");
+    const sent = requestHostPromptSend(state.lastPrompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "nia_audition",
+      turnId: session.auditionId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) {
+      failNiaPostAudition("当前没有连接到酒馆主 API，请从酒馆主页重新进入。", "host_unavailable");
+      return false;
+    }
+    return true;
+  }
+
+  function requestNiaPostAuditionResolution() {
+    const session = niaAuditionSession;
+    const api = globalThis.HatsuNiaAuditionApi;
+    if (!session || !api?.buildNiaPostAuditionResolutionPrompt || !niaAuditionCore.beginPostAuditionResolution) return false;
+    const started = niaAuditionCore.beginPostAuditionResolution(session.runtime, { requestId: "pending" });
+    if (!started.ok) return false;
+    const requestId = createRequestId();
+    const acquired = tryAcquirePrimaryModelChannel({
+      requestId,
+      ownerKind: "nia_audition",
+      turnId: session.auditionId,
+      saveScope: activeHostSaveScope,
+      sessionEpoch: runtimeSessionEpoch
+    });
+    if (!acquired.ok) {
+      session.runtime = started.runtime;
+      failNiaPostAudition("主 API 正在处理其他请求，请稍后重试。", "channel_occupied");
+      return false;
+    }
+    session.runtime = {
+      ...started.runtime,
+      postAudition: {
+        ...started.runtime.postAudition,
+        activeRequest: { requestId, channelLeaseId: acquired.owner.channelLeaseId, turnId: session.auditionId, saveScope: activeHostSaveScope, sessionEpoch: runtimeSessionEpoch }
+      }
+    };
+    session.requestId = requestId;
+    session.channelLeaseId = acquired.owner.channelLeaseId;
+    session.requestPhase = "post_audition_resolution";
+    state.pendingActionContext = { action: "nia_audition", actionContext: { phase: "post_audition_resolution", auditionId: session.auditionId } };
+    state.eventMode = "none";
+    state.pendingOptionTexts = [];
+    pendingAiRequestId = requestId;
+    state.pendingAiRequestId = requestId;
+    state.lastPrompt = api.buildNiaPostAuditionResolutionPrompt(session.context, session.runtime) + "\n\n" + buildNiaAuthoritativeScheduleContext();
+    syncNiaAuditionState(session.runtime, session.context);
+    saveState("nia.audition.recap_resolution_generating");
+    closeVnChoicesOverlay();
+    openEventOverlay("N.I.A · 赛后复盘", "正在生成偶像的回应", `制作人的话已经传达。\n\n正在等待担当偶像作出回应并完成${getNiaAuditionLabel(session.context)}收尾。`);
+    const sent = requestHostPromptSend(state.lastPrompt, requestId, {
+      channelLeaseId: acquired.owner.channelLeaseId,
+      ownerKind: "nia_audition",
+      turnId: session.auditionId,
+      generationMode: "shujuku_same_layer"
+    });
+    if (!sent) {
+      failNiaPostAudition("当前没有连接到酒馆主 API，请从酒馆主页重新进入。", "host_unavailable");
+      return false;
+    }
+    return true;
+  }
+
+  function handleNiaAuditionAiReply(source, requestId, isFinal) {
+    const session = niaAuditionSession;
+    if (!session || session.requestId !== requestId) return;
+    if (!isFinal) {
+      sendAiReplyAck(requestId, true, false, false);
+      return;
+    }
+    const postAudition = session.runtime.postAudition || {};
+    if (postAudition.status === "generating_opening") {
+      const parsed = globalThis.HatsuNiaAuditionApi?.parseNiaPostAuditionOpeningPayload?.(
+        { rawText: source, text: source },
+        { auditionId: session.auditionId }
+      );
+      if (!parsed?.ok) {
+        sendAiReplyAck(requestId, false, false);
+        failNiaPostAudition("主 API 回复不是有效的赛后复盘开场格式，可以重新生成。", parsed?.reason || "invalid_recap_opening");
+        return;
+      }
+      const applied = niaAuditionCore.applyPostAuditionOpening(session.runtime, parsed.data);
+      if (!applied.ok) {
+        sendAiReplyAck(requestId, false, false);
+        failNiaPostAudition("赛后复盘开场与当前状态不匹配，可以重新生成。", applied.reason);
+        return;
+      }
+      pendingAiRequestId = "";
+      state.pendingAiRequestId = "";
+      sendAiReplyAck(requestId, true, false);
+      session.requestId = "";
+      session.channelLeaseId = "";
+      session.requestPhase = "";
+      session.runtime = applied.runtime;
+      state.pendingActionContext = { action: "nia_audition", actionContext: { phase: "post_audition_opening", auditionId: session.auditionId } };
+      state.eventMode = "choice_prompt";
+      state.choiceStep = 1;
+      state.pendingOptionTexts = [...session.runtime.postAudition.options];
+      state.lastStory = session.runtime.postAudition.openingStory;
+      syncNiaAuditionState(session.runtime, session.context);
+      saveState("nia.audition.recap_opening_ready");
+      openEventOverlay("N.I.A · 赛后复盘", "试镜会场后台候场区", session.runtime.postAudition.openingStory);
+      return;
+    }
+    if (postAudition.status === "generating_resolution") {
+      const parsed = globalThis.HatsuNiaAuditionApi?.parseNiaPostAuditionResolutionPayload?.(
+        { rawText: source, text: source },
+        { auditionId: session.auditionId }
+      );
+      if (!parsed?.ok) {
+        sendAiReplyAck(requestId, false, false);
+        failNiaPostAudition("主 API 回复不是有效的赛后复盘收尾格式，可以重新生成。", parsed?.reason || "invalid_recap_resolution");
+        return;
+      }
+      const applied = niaAuditionCore.applyPostAuditionResolution(session.runtime, parsed.data);
+      if (!applied.ok) {
+        sendAiReplyAck(requestId, false, false);
+        failNiaPostAudition("赛后复盘收尾与当前状态不匹配，可以重新生成。", applied.reason);
+        return;
+      }
+      pendingAiRequestId = "";
+      state.pendingAiRequestId = "";
+      sendAiReplyAck(requestId, true, false);
+      session.requestId = "";
+      session.channelLeaseId = "";
+      session.requestPhase = "";
+      session.runtime = applied.runtime;
+      state.pendingActionContext = { action: "nia_audition", actionContext: { phase: "post_audition_resolution", auditionId: session.auditionId } };
+      state.eventMode = "none";
+      state.choiceStep = 0;
+      state.pendingOptionTexts = [];
+      state.lastStory = session.runtime.postAudition.resolutionStory;
+      syncNiaAuditionState(session.runtime, session.context);
+      saveState("nia.audition.recap_resolution_ready");
+      openEventOverlay("N.I.A · 赛后复盘", `${getNiaAuditionLabel(session.context)}收尾`, session.runtime.postAudition.resolutionStory);
+      return;
+    }
+    const parsed = globalThis.HatsuNiaAuditionApi?.parseNiaAuditionSegmentPayload?.(
+      { rawText: source, text: source },
+      { auditionId: session.auditionId, segmentIndex: session.segmentIndex }
+    );
+    if (!parsed?.ok) {
+      sendAiReplyAck(requestId, false, false);
+      failNiaAudition("主 API 回复不是有效的试镜段落格式，本段可以重试。", parsed?.reason || "invalid_payload");
+      return;
+    }
+    const applied = niaAuditionCore.applyAuditionSegment(session.runtime, parsed.data);
+    if (!applied.ok) {
+      sendAiReplyAck(requestId, false, false);
+      failNiaAudition("试镜段落与当前状态不匹配，本段可以重试。", applied.reason);
+      return;
+    }
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    sendAiReplyAck(requestId, true, false);
+    session.runtime = applied.runtime;
+    syncNiaAuditionState(session.runtime, session.context);
+    saveState("nia.audition.payload");
+    openEventOverlay(`N.I.A · ${getNiaAuditionLabel(session.context)}`, `第 ${session.segmentIndex} / 4 段`, auditionXmlStory(parsed.data));
+  }
+
+  function completeNiaAuditionSegmentAfterPlayback() {
+    const session = niaAuditionSession;
+    if (!session || !niaAuditionCore.completeAuditionPlayback) return false;
+    const completed = niaAuditionCore.completeAuditionPlayback(session.runtime);
+    if (!completed.ok) return false;
+    session.runtime = completed.runtime;
+    syncNiaAuditionState(session.runtime, session.context);
+    saveState("nia.audition.segment_complete");
+    if (session.runtime.status === "awaiting_settlement") {
+      const settled = niaAuditionCore.settleAuditionOnce(session.runtime, session.auditionId);
+      if (!settled.ok) return false;
+      session.runtime = settled.runtime;
+      session.result = settled.result;
+      syncNiaAuditionState(session.runtime, session.context);
+      const textEl = document.getElementById("vnText");
+      const nameplate = document.getElementById("vnNameplate");
+      if (nameplate) nameplate.style.display = "none";
+      const statGains = settled.result.statGains || {};
+      if (textEl) textEl.innerHTML = `<strong>${getNiaAuditionLabel(session.context)}结果</strong><br>${formatStoryText(settled.result.resultSummary)}<br><br>最终排名：第 1 名 · ${settled.result.score} pt<br>奖励：粉丝 +${settled.result.fanGain} · Vo +${statGains.Vo || 0} · Da +${statGains.Da || 0} · Vi +${statGains.Vi || 0}<br>点击对话框确认结果并进入下一阶段。`;
+      const dialogueBox = document.getElementById("vnDialogueBox");
+      if (dialogueBox) dialogueBox.onclick = (event) => {
+        if (event.target.closest(".vn-controls") || event.target.closest(".vn-btn")) return;
+        confirmNiaAuditionResult();
+      };
+      saveState("nia.audition.settled");
+      return true;
+    }
+    requestNiaAuditionSegment(session.runtime.segmentIndex + 1);
+    return true;
+  }
+
+  function confirmNiaAuditionResult() {
+    const session = niaAuditionSession;
+    if (!session || session.runtime?.status !== "settled" || session.runtime.progressionApplied) return false;
+    const nia = normalizeNiaState(state.nia);
+    const training = niaTrainingCore.normalizeNiaTraining(nia.training);
+    const runtime = { ...session.runtime, progressionApplied: true };
+    const fanGain = Math.max(0, Number(session.result?.fanGain || 0));
+    const statGains = session.result?.statGains && typeof session.result.statGains === "object"
+      ? session.result.statGains
+      : {};
+    ["Vo", "Da", "Vi"].forEach((key) => {
+      const gain = Math.max(0, Math.round(Number(statGains[key]) || 0));
+      const max = Number(state.cap?.[key] || 999);
+      state[key] = clamp((state[key] || 0) + gain, 0, max);
+    });
+    session.runtime = runtime;
+    state.nia = { ...nia, audition: runtime, training: { ...training, fans: training.fans + fanGain }, updatedAt: Date.now() };
+    state.eventMode = "none";
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    saveState("nia.audition.progression");
+    reconcileNiaFanMilestoneAfterSettlement({ defer: true });
+    return requestNiaPostAuditionOpening();
+  }
+
+  function isNiaPostAuditionChoiceActive() {
+    return Boolean(
+      state.pendingActionContext?.action === "nia_audition"
+      && niaAuditionSession?.runtime?.postAudition?.status === "awaiting_choice"
+      && state.pendingOptionTexts?.length === 3
+    );
+  }
+
+  function selectNiaPostAuditionResponse(selection) {
+    const session = niaAuditionSession;
+    if (!session || !niaAuditionCore.selectPostAuditionResponse) return false;
+    const selected = niaAuditionCore.selectPostAuditionResponse(session.runtime, selection);
+    if (!selected.ok) return false;
+    session.runtime = selected.runtime;
+    state.pendingOptionTexts = [];
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    closeVnChoicesOverlay();
+    syncNiaAuditionState(session.runtime, session.context);
+    saveState("nia.audition.recap_choice");
+    return requestNiaPostAuditionResolution();
+  }
+
+  function handleNiaPostAuditionChoice(index) {
+    const response = niaAuditionSession?.runtime?.postAudition?.options?.[index] || "";
+    return selectNiaPostAuditionResponse({ response, source: "generated_option" });
+  }
+
+  function handleNiaPostAuditionCustomChoice(rawText) {
+    const customText = String(rawText || "").replace(/\s+/g, " ").trim().slice(0, 200);
+    if (!customText) {
+      showToast("还没有内容", "请输入制作人想说的话。", "warn");
+      return false;
+    }
+    return selectNiaPostAuditionResponse({ response: customText, source: "free_input" });
+  }
+
+  function completeNiaPostAuditionAfterPlayback() {
+    const session = niaAuditionSession;
+    if (!session || !niaAuditionCore.completePostAudition) return false;
+    const completed = niaAuditionCore.completePostAudition(session.runtime);
+    if (!completed.ok) return false;
+    session.runtime = completed.runtime;
+    syncNiaAuditionState(session.runtime, session.context);
+    pendingAiRequestId = "";
+    state.pendingAiRequestId = "";
+    state.pendingActionContext = null;
+    state.eventMode = "none";
+    state.choiceStep = 0;
+    state.pendingOptionTexts = [];
+    closeVnChoicesOverlay();
+    clearAuditionRankingHud();
+    setElementHidden("eventOverlay", true);
+    setNiaPrototypeVisible(false);
+    niaAuditionSession = null;
+    if (Number(session.context?.round || 1) === 1) prepareNiaInterRoundOuting();
+    saveState("nia.audition.recap_completed");
+    render();
+    if (Number(session.context?.round || 1) >= 3 && startNiaFinaleLive()) return true;
+    if (reconcileNiaFanMilestoneAfterSettlement()) return true;
+    return true;
+  }
+
+  function retryNiaAuditionSegment() {
+    const runtime = niaAuditionSession?.runtime || normalizeNiaState(state.nia).audition;
+    if (runtime?.postAudition?.retryPhase === "opening") return requestNiaPostAuditionOpening();
+    if (runtime?.postAudition?.retryPhase === "resolution") return requestNiaPostAuditionResolution();
+    const segment = runtime?.retrySegmentIndex || runtime?.pendingSegmentIndex || runtime?.segmentIndex || 1;
+    return requestNiaAuditionSegment(segment);
+  }
+
+  function resumeNiaAuditionIfNeeded() {
+    if (!isNiaTrainingActive() || !niaAuditionCore.normalizeAuditionRuntime) return false;
+    const nia = normalizeNiaState(state.nia);
+    let runtime = niaAuditionCore.normalizeAuditionRuntime(nia.audition);
+    const context = nia.auditionContext;
+    if (!runtime.auditionId || !context) return false;
+    if (Number(runtime.roundNumber || context.round || 1) !== Number(nia.round || 1)) return false;
+    if (runtime.progressionApplied && runtime.postAudition?.status === "completed") return false;
+    runtime = niaAuditionCore.recoverInterruptedAudition(runtime);
+    niaAuditionSession = { auditionId: runtime.auditionId, context, runtime, requestId: "", channelLeaseId: "", segmentIndex: runtime.retrySegmentIndex || runtime.segmentIndex || 1, result: runtime.result || null };
+    syncNiaAuditionState(runtime, context);
+    setNiaPrototypeVisible(false);
+    if (runtime.progressionApplied) {
+      const recap = runtime.postAudition || {};
+      if (recap.status === "idle") return requestNiaPostAuditionOpening();
+      if (recap.status === "retryable_failed" && recap.retryPhase === "opening") return requestNiaPostAuditionOpening();
+      if (recap.status === "retryable_failed" && recap.retryPhase === "resolution") return requestNiaPostAuditionResolution();
+      if (recap.status === "awaiting_choice") {
+        state.pendingActionContext = { action: "nia_audition", actionContext: { phase: "post_audition_opening", auditionId: runtime.auditionId } };
+        state.eventMode = "choice_prompt";
+        state.choiceStep = 1;
+        state.pendingOptionTexts = [...recap.options];
+        state.lastStory = recap.openingStory;
+        openEventOverlay("N.I.A · 赛后复盘", "试镜会场后台候场区", recap.openingStory);
+        return true;
+      }
+      if (recap.status === "playing_resolution") {
+        state.pendingActionContext = { action: "nia_audition", actionContext: { phase: "post_audition_resolution", auditionId: runtime.auditionId } };
+        state.eventMode = "none";
+        state.choiceStep = 0;
+        state.pendingOptionTexts = [];
+        state.lastStory = recap.resolutionStory;
+        openEventOverlay("N.I.A · 赛后复盘", `${getNiaAuditionLabel(context)}收尾`, recap.resolutionStory);
+        return true;
+      }
+      return false;
+    }
+    state.pendingActionContext = { action: "nia_audition", actionContext: { phase: "audition", auditionId: runtime.auditionId, segmentIndex: niaAuditionSession.segmentIndex } };
+    if (runtime.status === "retryable_failed" || runtime.status === "ready" || runtime.status.startsWith("awaiting_continue_")) {
+      const segment = runtime.status === "ready" ? 1 : runtime.status === "retryable_failed" ? runtime.retrySegmentIndex : runtime.segmentIndex + 1;
+      return requestNiaAuditionSegment(segment);
+    }
+    if (/^playing_[1-4]$/.test(runtime.status)) {
+      const segment = runtime.segments[runtime.segmentIndex - 1];
+      openEventOverlay(`N.I.A · ${getNiaAuditionLabel(context)}`, `第 ${runtime.segmentIndex} / 4 段`, auditionXmlStory(segment));
+      return true;
+    }
+    if (runtime.status === "awaiting_settlement") return completeNiaAuditionSegmentAfterPlayback();
+    return false;
+  }
+
+  function normalizeAuditionRankingState(value) {
+    const source = value && typeof value === "object" ? value : {};
+    const rawCandidates = Array.isArray(source.candidates) ? source.candidates : [];
+    const candidates = rawCandidates
+      .map((candidate, index) => {
+        const name = String(candidate?.name || `Candidate ${index + 1}`).trim();
+        const idol = idols[canonicalIdolName(name)];
+        return {
+          id: String(candidate?.id || `audition-candidate-${index + 1}`),
+          name,
+          score: Math.max(0, Math.round(Number(candidate?.score) || 0)),
+          rank: Math.max(1, Math.round(Number(candidate?.rank) || index + 1)),
+          avatar: String(candidate?.avatar || idol?.avatar || ""),
+          isSelf: Boolean(candidate?.isSelf || canonicalIdolName(name) === canonicalIdolName(state.idol))
+        };
+      })
+      .sort((a, b) => a.rank - b.rank || b.score - a.score)
+      .slice(0, 6);
+    return {
+      segment: Math.min(4, Math.max(1, Math.round(Number(source.segment) || 1))),
+      totalSegments: 4,
+      candidates
+    };
+  }
+
+  function clearAuditionRankingHud() {
+    const hud = document.getElementById("auditionRankingHud");
+    const strip = document.getElementById("auditionRankingStrip");
+    const summary = document.getElementById("auditionRankingSummary");
+    if (hud) hud.hidden = true;
+    if (strip) strip.textContent = "";
+    if (summary) summary.textContent = "";
+  }
+
+  function renderAuditionRankingHud(value) {
+    const hud = document.getElementById("auditionRankingHud");
+    const strip = document.getElementById("auditionRankingStrip");
+    const phase = document.getElementById("auditionRankingPhase");
+    const summary = document.getElementById("auditionRankingSummary");
+    if (!hud || !strip || !phase || !summary) return false;
+
+    const ranking = normalizeAuditionRankingState(value);
+    if (!ranking.candidates.length) {
+      clearAuditionRankingHud();
+      return false;
+    }
+
+    strip.textContent = "";
+    ranking.candidates.forEach((candidate) => {
+      const card = document.createElement("div");
+      card.className = "audition-rank-card";
+      card.classList.toggle("is-leader", candidate.rank === 1);
+      card.classList.toggle("is-self", candidate.isSelf);
+      card.dataset.candidateId = candidate.id;
+
+      const position = document.createElement("span");
+      position.className = "audition-rank-position";
+      position.textContent = String(candidate.rank);
+      card.append(position);
+
+      if (candidate.avatar) {
+        const avatar = document.createElement("img");
+        avatar.className = "audition-rank-avatar";
+        avatar.src = candidate.avatar;
+        avatar.alt = `${candidate.name} avatar`;
+        avatar.draggable = false;
+        card.append(avatar);
+      } else {
+        const silhouette = document.createElement("span");
+        silhouette.className = "audition-rank-silhouette";
+        silhouette.setAttribute("aria-hidden", "true");
+        card.append(silhouette);
+      }
+
+      if (candidate.rank === 1) {
+        const qualified = document.createElement("span");
+        qualified.className = "audition-rank-qualified";
+        qualified.textContent = "\u664b\u7ea7";
+        card.append(qualified);
+      }
+
+      const name = document.createElement("span");
+      name.className = "audition-rank-name";
+      name.textContent = candidate.name;
+      card.append(name);
+
+      const score = document.createElement("strong");
+      score.className = "audition-rank-score";
+      score.textContent = String(candidate.score);
+      card.append(score);
+      strip.append(card);
+    });
+
+    phase.textContent = `\u7b2c ${ranking.segment} / ${ranking.totalSegments} \u6bb5`;
+    const self = ranking.candidates.find((candidate) => candidate.isSelf);
+    const leader = ranking.candidates[0];
+    summary.textContent = "";
+    const rule = document.createElement("span");
+    rule.textContent = "\u4ec5\u7b2c\u4e00\u540d\u664b\u7ea7";
+    summary.append(rule);
+    if (self && leader) {
+      const status = document.createElement("span");
+      status.append(`\u5f53\u524d\u7b2c ${self.rank} \u540d \u00b7 `);
+      const gap = document.createElement("strong");
+      gap.textContent = self.rank === 1 ? "\u6682\u5217\u7b2c\u4e00" : `\u8ddd\u7b2c\u4e00 ${Math.max(0, leader.score - self.score)} pt`;
+      status.append(gap);
+      summary.append(status);
+    }
+    hud.hidden = false;
+    return true;
+  }
+
+  function syncAuditionRankingHud() {
+    const actionContext = state.pendingActionContext?.actionContext || {};
+    const audition = actionContext.audition || actionContext.auditionState || state.nia?.audition;
+    if (state.pendingActionContext?.action === "nia_audition" && audition) {
+      const segment = Math.max(1, Number(audition.pendingSegmentIndex || audition.segmentIndex || actionContext.segmentIndex || 1));
+      const candidates = Array.isArray(audition.rankings?.[segment - 1])
+        ? audition.rankings[segment - 1]
+        : audition.candidates;
+      renderAuditionRankingHud({ segment, candidates });
+      return;
+    }
+    clearAuditionRankingHud();
+  }
+
+  globalThis.HatsuAuditionRanking = Object.freeze({
+    render: renderAuditionRankingHud,
+    clear: clearAuditionRankingHud
+  });
+
   function openEventOverlay(title, result, story) {
     if (typeof closeVnLogView === "function") closeVnLogView();
     if (typeof closeVnDebugView === "function") closeVnDebugView();
@@ -20265,7 +26835,7 @@ ${buildChoiceOnlyExample()}`;
     state.lastEventResult = result || "本次行动已经完成结算。";
     state.lastEventStory = story || state.lastStory || "本次行动已经完成。";
     saveState();
-    
+
     // 1. 填充古典面板（用于 LOG 切换查看）
     const titleEl = document.getElementById("eventTitle");
     if (titleEl) titleEl.textContent = title || "行动事件";
@@ -20285,7 +26855,7 @@ ${buildChoiceOnlyExample()}`;
     if (vnChoicesOverlay) vnChoicesOverlay.style.display = "none";
     const vnChoicesContainer = document.getElementById("vnChoicesContainer");
     if (vnChoicesContainer) vnChoicesContainer.innerHTML = "";
-    
+
     if (pendingAiRequestId) {
       setEventActionsEnabled(false, true);
     } else {
@@ -20301,7 +26871,8 @@ ${buildChoiceOnlyExample()}`;
     const initContent = () => {
       setElementHidden("eventOverlay", false);
       if (isFreeModeActive()) updateFreeModeHeader();
-      
+      syncAuditionRankingHud();
+
       // 2. 判断当前是否为加载状态
       const isLoading = pendingAiRequestId || story.includes("等待角色卡") || story.includes("等待 AI") || story.includes("等待 SillyTavern") || story.includes("正在重新生成");
       aiBridgeDebug.lastOverlay = {
@@ -20315,10 +26886,10 @@ ${buildChoiceOnlyExample()}`;
         choiceStep: state.choiceStep
       };
       refreshVnDebugView();
-      
+
       if (isLoading) {
-        // 如果正在加载，直接显示一行静态文本，并禁用 VN 对话框点击动作
-        const slides = [{ type: "narration", speaker: "", text: story }];
+        // 加载态只显示短等待文案，避免把历史正文整段塞进单个对话框
+        const slides = [{ type: "narration", speaker: "", text: resolveVnLoadingSlideText(story) }];
         initVisualNovelPlayer(slides);
         completeVnSlideText();
         const dialogueBox = document.getElementById("vnDialogueBox");
@@ -20357,12 +26928,177 @@ ${buildChoiceOnlyExample()}`;
   let vnSpeed = 25; // Typewriter speed (ms/char)
   let vnAutoDelay = 1800; // Auto play delay after text finished
   let vnCurrentText = "";
+  let vnNsfwModeActive = false;
+  let vnActivePoseId = "";
+  // 等待下一轮 AI 回复时，slides 往往没有 pose 标签；用 sticky 保住当前 CG
+  let vnStickyHcgMode = false;
+  let vnStickyHcgPoseId = "";
+
+  function getVnHcgCharacterName() {
+    return getNsfwIntimacyTargetIdol() || state.idol || "";
+  }
+
+  function shouldHoldVnHcgVisual() {
+    // 一旦显示过 CG，在收到新 pose 或结束指令前都保持；NSFW 亲密进行中也同理
+    return isNsfwIntimacyActive() || vnStickyHcgMode || Boolean(vnStickyHcgPoseId);
+  }
+
+  function clearVnHcgSticky() {
+    vnStickyHcgMode = false;
+    vnStickyHcgPoseId = "";
+  }
+
+  function resetVnHcgVisual(options = {}) {
+    const clearSticky = options.clearSticky !== false;
+    vnNsfwModeActive = false;
+    vnActivePoseId = "";
+    if (clearSticky) clearVnHcgSticky();
+    const layer = document.getElementById("vnHcgLayer");
+    const image = document.getElementById("vnHcgImage");
+    if (image) {
+      image.onload = null;
+      image.onerror = null;
+      image.removeAttribute("src");
+      image.alt = "";
+    }
+    if (layer) {
+      layer.hidden = true;
+      layer.classList.remove("is-active", "is-mode-only");
+      layer.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  function hideVnStandeeForHcg() {
+    const standeeEl = document.getElementById("vnStandee");
+    if (!standeeEl) return;
+    standeeEl.classList.remove("active");
+    standeeEl.classList.add("fade-out");
+    setTimeout(() => {
+      if (standeeEl.classList.contains("fade-out") && (vnNsfwModeActive || vnActivePoseId || vnStickyHcgPoseId)) {
+        standeeEl.style.display = "none";
+      }
+    }, 350);
+  }
+
+  function applyVnHcgVisual(nsfwMode, poseId) {
+    const layer = document.getElementById("vnHcgLayer");
+    const image = document.getElementById("vnHcgImage");
+    const nextMode = Boolean(nsfwMode);
+    const nextPose = nextMode ? String(poseId || "").trim() : "";
+    const poseChanged = nextPose !== vnActivePoseId;
+    const hadSrc = Boolean(image?.getAttribute("src"));
+    vnNsfwModeActive = nextMode;
+    vnActivePoseId = nextPose;
+
+    if (!nextMode) {
+      resetVnHcgVisual({ clearSticky: true });
+      return;
+    }
+
+    vnStickyHcgMode = true;
+    if (nextPose) vnStickyHcgPoseId = nextPose;
+
+    if (layer) {
+      layer.hidden = false;
+      layer.classList.add("is-active");
+      layer.classList.toggle("is-mode-only", !nextPose);
+      layer.setAttribute("aria-hidden", "false");
+    }
+    hideVnStandeeForHcg();
+
+    if (!image) return;
+    if (!nextPose) {
+      image.onload = null;
+      image.onerror = null;
+      image.removeAttribute("src");
+      image.alt = "";
+      return;
+    }
+    if (!poseChanged && hadSrc) return;
+
+    const resolveAsset = typeof hatsuHcg.resolveHcgAssetWithFallback === "function"
+      ? hatsuHcg.resolveHcgAssetWithFallback.bind(hatsuHcg)
+      : (typeof hatsuHcg.resolveHcgAsset === "function" ? hatsuHcg.resolveHcgAsset.bind(hatsuHcg) : null);
+    const asset = resolveAsset ? resolveAsset(getVnHcgCharacterName(), nextPose) : null;
+    if (!asset?.path) {
+      image.removeAttribute("src");
+      image.alt = nextPose;
+      return;
+    }
+
+    image.alt = asset.label || asset.poseId || nextPose;
+    const tryLoad = (candidate, depth = 0) => {
+      if (!candidate?.path || depth > 6) {
+        image.removeAttribute("src");
+        if (layer) layer.classList.add("is-mode-only");
+        return;
+      }
+      image.onerror = () => {
+        image.onerror = null;
+        const fallbackId = candidate.fallbackPoseId || "";
+        if (!fallbackId || fallbackId === candidate.poseId) {
+          image.removeAttribute("src");
+          if (layer) layer.classList.add("is-mode-only");
+          return;
+        }
+        const next = resolveAsset ? resolveAsset(getVnHcgCharacterName(), fallbackId) : null;
+        tryLoad(next, depth + 1);
+      };
+      image.onload = () => {
+        image.onload = null;
+        if (layer) layer.classList.remove("is-mode-only");
+      };
+      const resolvedPath = typeof window.HATSU_RESOLVE_ASSET_URL === "function"
+        ? window.HATSU_RESOLVE_ASSET_URL(candidate.path)
+        : candidate.path;
+      image.src = resolvedPath || candidate.path;
+    };
+    tryLoad(asset);
+  }
+
+  function syncVnHcgStateToIndex(index) {
+    const holdSticky = () => {
+      if (vnStickyHcgPoseId || vnStickyHcgMode) {
+        applyVnHcgVisual(true, vnStickyHcgPoseId);
+        return true;
+      }
+      return false;
+    };
+    if (typeof hatsuHcg.deriveHcgStateFromSlides !== "function") {
+      if (!holdSticky()) applyVnHcgVisual(false, "");
+      return;
+    }
+    const derived = hatsuHcg.deriveHcgStateFromSlides(vnSlides, index);
+    // 仅在明确结束指令时关闭 CG：nsfw_mode=off / pose hide
+    if (derived?.endedExplicitly) {
+      applyVnHcgVisual(false, "");
+      return;
+    }
+    const pose = String(derived?.poseId || "");
+    if (pose) {
+      applyVnHcgVisual(true, pose);
+      return;
+    }
+    // 无新姿势（含仅 nsfw_mode=on、等待页、下一轮纯对话）：始终保持上一张 CG
+    if (holdSticky()) return;
+    if (derived?.nsfwMode) {
+      applyVnHcgVisual(true, "");
+      return;
+    }
+    applyVnHcgVisual(false, "");
+  }
+
+  function sanitizeVnStorySource(value) {
+    return String(value || "")
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .trim();
+  }
 
   function parseNovelSlides(text) {
     if (!text) return [];
-    
+
     // 清除初星开始/结束标记
-    let cleanText = text
+    let cleanText = sanitizeVnStorySource(text)
       .replace(/[【\[]\s*初星正文开始\s*[】\]]/g, "")
       .replace(/[【\[]\s*初星正文结束\s*[】\]][\s\S]*$/g, "")
       .trim();
@@ -20372,10 +27108,15 @@ ${buildChoiceOnlyExample()}`;
     let match;
     let lastIndex = 0;
     let hasXmlTags = false;
-    
+    const stripControls = (value) => (
+      typeof hatsuHcg.stripControlTags === "function"
+        ? hatsuHcg.stripControlTags(value)
+        : String(value || "")
+    );
+
     // Helper to parse plain text segments using the same paragraph-splitting logic
     const parseFallbackParagraphs = (str) => {
-      const paragraphs = str
+      const paragraphs = String(str || "")
         .split(/\n+/)
         .map(p => p.trim())
         .filter(Boolean);
@@ -20385,7 +27126,7 @@ ${buildChoiceOnlyExample()}`;
           slides.push({ type: "narration", speaker: "", text: p });
           continue;
         }
-        
+
         const speakerMatch = p.match(/^([^：:「“"'\s]{1,10})\s*[：:]\s*([\s\S]+)$/);
         if (speakerMatch) {
           const speaker = speakerMatch[1].trim();
@@ -20402,11 +27143,11 @@ ${buildChoiceOnlyExample()}`;
     while ((match = xmlRegex.exec(cleanText)) !== null) {
       hasXmlTags = true;
       // Parse any raw text that appears before this XML tag
-      const rawTextBefore = cleanText.slice(lastIndex, match.index).trim();
+      const rawTextBefore = stripControls(cleanText.slice(lastIndex, match.index)).trim();
       if (rawTextBefore) {
         parseFallbackParagraphs(rawTextBefore);
       }
-      
+
       const type = match[1].toLowerCase();
       const speaker = match[2] || "";
       const content = match[3].trim();
@@ -20418,7 +27159,7 @@ ${buildChoiceOnlyExample()}`;
 
     if (hasXmlTags) {
       // Parse any remaining raw text that appears after the last XML tag
-      const rawTextAfter = cleanText.slice(lastIndex).trim();
+      const rawTextAfter = stripControls(cleanText.slice(lastIndex)).trim();
       if (rawTextAfter) {
         parseFallbackParagraphs(rawTextAfter);
       }
@@ -20426,19 +27167,48 @@ ${buildChoiceOnlyExample()}`;
     }
 
     // Fallback: entire text is treated as plain text paragraphs
-    parseFallbackParagraphs(cleanText);
+    parseFallbackParagraphs(stripControls(cleanText));
     return slides;
   }
 
   function buildVnSlidesFromStory(story) {
-    const parsed = parseNovelSlides(story);
-    if (parsed.length) return parsed;
-    const clean = cleanReplyText(String(story || "").trim());
+    const cleanStory = sanitizeVnStorySource(story);
+    const parsed = parseNovelSlides(cleanStory);
+    const withHcg = typeof hatsuHcg.attachControlEventsToSlides === "function"
+      ? hatsuHcg.attachControlEventsToSlides(parsed, cleanStory)
+      : parsed;
+    if (withHcg.length) return withHcg;
+    const clean = cleanReplyText(cleanStory);
     if (!clean) return [];
     return [{ type: "narration", speaker: "", text: clean }];
   }
 
   function getSceneBackground() {
+    if (state.pendingActionContext?.action === "nia_fan_milestone") {
+      const eventId = state.pendingActionContext.actionContext?.eventId
+        || state.nia?.fanMilestoneEvent?.eventId;
+      const routeEpisode = getCurrentNiaRoute()?.episodes?.find((entry) => entry.eventId === eventId);
+      if (routeEpisode?.background) return routeEpisode.background;
+    }
+    if (state.pendingActionContext?.action === "nia_audition") {
+      const auditionContext = state.pendingActionContext.actionContext || {};
+      const isFinale = Boolean(auditionContext.isFinale)
+        || Boolean(niaAuditionSession?.context?.isFinale)
+        || Number(state.nia?.round) >= 3;
+      return isFinale
+        ? "./assets/scenes/NIA_Finale.png"
+        : "./assets/scenes/NIA_Audition1.png";
+    }
+    if (state.pendingActionContext?.action === "nia_producer_work") {
+      return "./assets/scenes/Producer_Office.png";
+    }
+    if (state.pendingActionContext?.action === "nia_plan_review") {
+      return "./assets/scenes/Producer_Class.png";
+    }
+    if (state.pendingActionContext?.action === "nia_campus_activity") {
+      const campusActionContext = state.pendingActionContext.actionContext || {};
+      return getMapLocationSceneBackground(campusActionContext);
+    }
     // 正在进行地图地点探索时，优先使用该地区的场景，避免残留剧情节点把每个地区的背景覆盖成默认
     if (state.pendingActionContext?.action === "map_location") {
       const mapActionContext = state.pendingActionContext.actionContext || {};
@@ -20466,7 +27236,7 @@ ${buildChoiceOnlyExample()}`;
     if (context) {
       const action = context.rawAction || context.action;
       const attr = context.rawAttribute || context.attribute;
-      
+
       if (action === "lesson") {
         return "./assets/scenes/Class.png";
       }
@@ -20484,6 +27254,9 @@ ${buildChoiceOnlyExample()}`;
         return "./assets/scenes/campus.png";
       }
       if (action === "companion" || action === "intimacy") {
+        if (context.actionContext?.nsfwCgTest && context.actionContext?.scenePath) {
+          return context.actionContext.scenePath;
+        }
         if (context.actionContext?.apartmentInvite) {
           return PRODUCER_APARTMENT_SCENE;
         }
@@ -20505,6 +27278,10 @@ ${buildChoiceOnlyExample()}`;
     vnCurrentIndex = 0;
     vnIsTyping = false;
     stopVnAuto();
+    // 已有 sticky CG 时不要重置图层；下一轮无 pose 时会继续沿用
+    if (!(vnStickyHcgPoseId || vnStickyHcgMode)) {
+      resetVnHcgVisual({ clearSticky: false });
+    }
 
     if (isResume) {
       const choiceIdx = vnSlides.findIndex(slide => slide.text && (slide.text.includes("制作人的选择") || slide.text.includes("▶ 制作人的选择")));
@@ -20512,19 +27289,19 @@ ${buildChoiceOnlyExample()}`;
         vnCurrentIndex = choiceIdx;
       }
     }
-    
+
     // 切换背景
     const bgUrl = getSceneBackground();
     const backdropEl = document.getElementById("vnBackdrop");
     if (backdropEl) {
       backdropEl.style.backgroundImage = `linear-gradient(180deg, rgba(18, 18, 24, 0.08) 0%, transparent 42%, rgba(18, 18, 24, 0.22) 100%), url('${bgUrl}')`;
     }
-    
+
     // 初始化显示层
     document.getElementById("vnContainer").style.display = "flex";
     document.getElementById("vnClassicPanel").style.display = "none";
     document.getElementById("vnChoicesOverlay").style.display = "none";
-    
+
     const dialogueBox = document.getElementById("vnDialogueBox");
     if (dialogueBox) {
       dialogueBox.onclick = null;
@@ -20535,7 +27312,7 @@ ${buildChoiceOnlyExample()}`;
         handleVnBoxClick();
       };
     }
-    
+
     renderVnSlide(vnCurrentIndex);
   }
 
@@ -20558,20 +27335,33 @@ ${buildChoiceOnlyExample()}`;
     }
 
     vnCurrentIndex = index;
-    
+
     if (index >= vnSlides.length) {
       handleVnSlidesEnd();
       return;
     }
-    
+
+    syncVnHcgStateToIndex(index);
+
     const slide = vnSlides[index];
     const nameplateEl = document.getElementById("vnNameplate");
     const textEl = document.getElementById("vnText");
     const standeeEl = document.getElementById("vnStandee");
-    
+
     // 1. 设置名字框和立绘显示
-    if (slide.type === "narration" || !slide.speaker) {
-      nameplateEl.style.display = "none";
+    if (slide.type === "narration" || !slide.speaker || vnNsfwModeActive) {
+      nameplateEl.style.display = slide.type === "narration" || !slide.speaker ? "none" : "block";
+      if (slide.type !== "narration" && slide.speaker) {
+        const visualSpeaker = globalThis.HatsuPortraitExpressions?.getDefaultSpeakerVisualCue?.(slide.speaker)
+          || String(slide.speaker || "");
+        const visual = resolvePortraitForSpeakerVisualCue(visualSpeaker);
+        nameplateEl.textContent = visual.speaker;
+        let themeColor = "#7e57c2";
+        const speakerCanonical = canonicalIdolName(visual.speaker);
+        if (visual.portrait?.characterKey === "producer") themeColor = "#5c6bc0";
+        else if (idols[speakerCanonical]) themeColor = idols[speakerCanonical].theme;
+        nameplateEl.style.setProperty("--speaker-theme-color", themeColor);
+      }
       if (standeeEl) {
         standeeEl.classList.remove("active");
         standeeEl.classList.add("fade-out");
@@ -20582,22 +27372,25 @@ ${buildChoiceOnlyExample()}`;
         }, 350);
       }
     } else {
+      const visualSpeaker = globalThis.HatsuPortraitExpressions?.getDefaultSpeakerVisualCue?.(slide.speaker)
+        || String(slide.speaker || "");
+      const visual = resolvePortraitForSpeakerVisualCue(visualSpeaker);
+      const resolvedPortrait = visual.portrait;
       nameplateEl.style.display = "block";
-      nameplateEl.textContent = slide.speaker;
-      
+      nameplateEl.textContent = visual.speaker;
+
       // 决定主题色
       let themeColor = "#7e57c2";
-      const resolvedPortrait = resolvePortraitForSpeaker(slide.speaker);
       const isProducer = resolvedPortrait.characterKey === "producer";
-      const speakerCanonical = canonicalIdolName(slide.speaker);
-      
+      const speakerCanonical = canonicalIdolName(visual.speaker);
+
       if (isProducer) {
         themeColor = "#5c6bc0"; // 制作人专属蓝色
       } else if (idols[speakerCanonical]) {
         themeColor = idols[speakerCanonical].theme;
       }
       nameplateEl.style.setProperty("--speaker-theme-color", themeColor);
-      
+
       // 2. 加载发言者立绘并置于中央
       if (standeeEl) {
         if (resolvedPortrait.url) {
@@ -20623,10 +27416,10 @@ ${buildChoiceOnlyExample()}`;
     vnCurrentText = formatStoryText(slide.text);
     textEl.innerHTML = "";
     vnIsTyping = true;
-    
+
     let totalLength = vnCurrentText.length;
     let step = 0;
-    
+
     vnTypewriterTimer = setInterval(() => {
       step += 2;
       if (step >= totalLength) {
@@ -20641,7 +27434,7 @@ ${buildChoiceOnlyExample()}`;
         let sliceStr = vnCurrentText.slice(0, step);
         const openTags = (sliceStr.match(/<[a-zA-Z1-6]+/g) || []).length;
         const closeTags = (sliceStr.match(/<\/[a-zA-Z1-6]+/g) || []).length;
-        
+
         if (openTags > closeTags) {
           const nextClose = vnCurrentText.indexOf(">", step);
           if (nextClose !== -1) {
@@ -20679,7 +27472,50 @@ ${buildChoiceOnlyExample()}`;
 
   function handleVnSlidesEnd() {
     stopVnAuto();
-    
+    if (state.activeStoryNode?.type === "niaFanMilestone"
+      && normalizeNiaState(state.nia).fanMilestoneEvent?.status === "playing") {
+      completeNiaFanMilestoneAfterPlayback();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_audition"
+      && niaAuditionSession?.runtime?.status === `playing_${niaAuditionSession.runtime.segmentIndex}`) {
+      completeNiaAuditionSegmentAfterPlayback();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_audition"
+      && niaAuditionSession?.runtime?.postAudition?.status === "playing_resolution") {
+      completeNiaPostAuditionAfterPlayback();
+      return;
+    }
+    if (isNiaPostAuditionChoiceActive()) {
+      showVnChoicesOverlay();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_plan_review") {
+      completeNiaPlanReview();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_business"
+      && state.pendingActionContext?.actionContext?.phase === "resolution_ready") {
+      completeNiaBusinessAfterPlayback();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_producer_work"
+      && state.pendingActionContext?.actionContext?.phase === "result_ready") {
+      completeNiaProducerWorkAfterPlayback();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_campus_activity"
+      && state.pendingActionContext?.actionContext?.phase === "result_ready") {
+      completeNiaCampusActivityAfterPlayback();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_inter_round_outing"
+      && state.pendingActionContext?.actionContext?.phase === "result_ready") {
+      completeNiaInterRoundOutingAfterPlayback();
+      return;
+    }
+
     const hasOptionChoices = (isChoicePromptMode() && state.pendingOptionTexts?.length === 4)
       || (isEveningGoHomeActive() && state.pendingOptionTexts?.length >= 2);
     const showMapReturnOnly = isMapLocationExploreActive()
@@ -20691,7 +27527,7 @@ ${buildChoiceOnlyExample()}`;
       || showMapReturnOnly
       || (isChoicePromptMode() && !pendingAiRequestId && state.pendingOptionTexts.length === 0)
     );
-    
+
     if (hasOptionChoices || hasMapLocationControls) {
       showVnChoicesOverlay();
     } else {
@@ -20704,10 +27540,10 @@ ${buildChoiceOnlyExample()}`;
       if (textEl) {
         textEl.innerHTML = "<strong>[ 本次事件已播放完毕，点击对话框以继续 ]</strong>";
       }
-      
+
       const nameplateEl = document.getElementById("vnNameplate");
       if (nameplateEl) nameplateEl.style.display = "none";
-      
+
       const dialogueBox = document.getElementById("vnDialogueBox");
       if (dialogueBox) {
         dialogueBox.onclick = null;
@@ -20758,6 +27594,10 @@ ${buildChoiceOnlyExample()}`;
   }
 
   function settleNsfwIntimacyStats() {
+    if (isNsfwCgTestActive()) {
+      // 测试结束不改数值、不推进日程、不写晚间日志
+      return { stamina: 0, stress: 0 };
+    }
     const delta = { stamina: 38, stress: -10 };
     Object.entries(delta).forEach(([key, value]) => {
       const max = 100;
@@ -20836,6 +27676,14 @@ ${buildChoiceOnlyExample()}`;
 
   function handleVnCustomChoiceSubmit() {
     const customText = document.getElementById("vnCustomChoiceInput")?.value || "";
+    if (isNiaPostAuditionChoiceActive()) {
+      handleNiaPostAuditionCustomChoice(customText);
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_business" && isChoicePromptMode()) {
+      handleNiaBusinessCustomChoice(customText);
+      return;
+    }
     if (isNsfwIntimacyActive()) {
       handleNsfwIntimacyCustomChoice(customText);
       return;
@@ -20890,6 +27738,14 @@ ${buildChoiceOnlyExample()}`;
   }
 
   function appendMapLocationControlButtons(container) {
+    if (isNiaInterRoundOutingActive()) {
+      const endBtn = document.createElement("button");
+      endBtn.className = "vn-choice-btn vn-choice-btn-map-back";
+      endBtn.type = "button";
+      endBtn.textContent = "结束今天的外出";
+      endBtn.onclick = () => finishNiaInterRoundOutingDay();
+      container.appendChild(endBtn);
+    }
     const backBtn = document.createElement("button");
     backBtn.className = "vn-choice-btn vn-choice-btn-map-back";
     backBtn.type = "button";
@@ -20915,14 +27771,19 @@ ${buildChoiceOnlyExample()}`;
     const nsfwMode = isNsfwIntimacyActive();
     const eveningGoHome = isEveningGoHomeActive();
     const eventConversation = isStorytellerEventConversationChoiceActive();
-    const hasOptionChoices = (isChoicePromptMode() && state.pendingOptionTexts?.length === 4) || (eveningGoHome && state.pendingOptionTexts?.length >= 2);
+    const recapChoice = isNiaPostAuditionChoiceActive();
+    const hasOptionChoices = (isChoicePromptMode() && state.pendingOptionTexts?.length === 4)
+      || (recapChoice && state.pendingOptionTexts?.length === 3)
+      || (eveningGoHome && state.pendingOptionTexts?.length >= 2);
     const showMapReturnOnly = isMapLocationExploreActive()
       && state.eventMode === "none"
       && !isFreeModeTravelAllowed()
       && !pendingAiRequestId;
     const titleEl = document.getElementById("vnChoicesTitle");
     if (titleEl) {
-      titleEl.textContent = eveningGoHome
+      titleEl.textContent = recapChoice
+        ? "回应刚刚通过试镜的担当"
+        : eveningGoHome
         ? "请选择今晚的安排"
         : eventConversation
           ? "选择回应（可自定义或结束话题）"
@@ -20952,6 +27813,11 @@ ${buildChoiceOnlyExample()}`;
           : optText;
       btn.onclick = () => {
         if (btn.disabled) return;
+        if (recapChoice) {
+          closeVnChoicesOverlay();
+          handleNiaPostAuditionChoice(index);
+          return;
+        }
         if (eveningGoHome) {
           closeVnChoicesOverlay();
           handleEveningGoHomeChoice(index);
@@ -20975,7 +27841,7 @@ ${buildChoiceOnlyExample()}`;
       appendMapLocationControlButtons(container);
     }
 
-    if (nsfwMode || eventConversation || (isMapLocationExploreActive() && hasOptionChoices) || (isApartmentCompanionSessionActive() && hasOptionChoices)) {
+    if (recapChoice || nsfwMode || eventConversation || (isMapLocationExploreActive() && hasOptionChoices) || (isApartmentCompanionSessionActive() && hasOptionChoices)) {
       const customBtn = document.createElement("button");
       customBtn.className = "vn-choice-btn vn-choice-btn-custom";
       customBtn.type = "button";
@@ -20985,6 +27851,16 @@ ${buildChoiceOnlyExample()}`;
     }
 
     if (nsfwMode) {
+      // 仅 CG 测试流程提供换姿势；普通公寓邀约不受影响
+      if (isNsfwCgTestActive()) {
+        const poseBtn = document.createElement("button");
+        poseBtn.className = "vn-choice-btn vn-choice-btn-custom";
+        poseBtn.type = "button";
+        const lockedPose = String(state.pendingActionContext?.actionContext?.lockedPoseId || "").trim();
+        poseBtn.textContent = lockedPose ? `更换姿势（当前 ${lockedPose}）` : "更换姿势";
+        poseBtn.onclick = () => openNsfwCgTestPosePicker();
+        container.appendChild(poseBtn);
+      }
       const endBtn = document.createElement("button");
       endBtn.className = "vn-choice-btn vn-choice-btn-end";
       endBtn.type = "button";
@@ -21043,6 +27919,10 @@ ${buildChoiceOnlyExample()}`;
   }
 
   function skipAllVnDialogue() {
+    if (state.activeStoryNode?.type === "niaFanMilestone") {
+      showToast("无法跳过", "5000 粉丝纪念剧情需要完整观看。", "warn");
+      return;
+    }
     stopVnAuto();
     if (vnSlides.length > 0) {
       renderVnSlide(vnSlides.length - 1);
@@ -21797,7 +28677,12 @@ ${buildChoiceOnlyExample()}`;
   }
 
   function closeEventOverlay() {
+    if (state.activeStoryNode?.type === "niaFanMilestone") {
+      showToast("剧情尚未结束", "请看完 5000 粉丝纪念剧情后继续。", "warn");
+      return;
+    }
     stopVnAuto();
+    resetVnHcgVisual();
     if (isEveningGoHomeActive()) {
       showToast("请先选择", "请选择今晚要回家，还是再待一会儿。", "warn");
       return;
@@ -21842,6 +28727,54 @@ ${buildChoiceOnlyExample()}`;
       });
       return;
     }
+    if (state.activeStoryNode?.type === "niaOpening") {
+      if (!state.activeStoryNode.ready) return;
+      const nia = normalizeNiaState(state.nia);
+      state.nia = {
+        ...nia,
+        openingStatus: "completed",
+        openingRequest: null,
+        lastError: "",
+        updatedAt: Date.now()
+      };
+      state.activeStoryNode = null;
+      state.pendingActionContext = null;
+      state.eventMode = "none";
+      state.choiceStep = 0;
+      state.pendingOptionTexts = [];
+      saveState("nia.opening_completed");
+      setElementHidden("eventOverlay", true);
+      openNiaPrototype();
+      return;
+    }
+    if (state.activeStoryNode?.type === "niaProducerWorkResult") {
+      completeNiaProducerWorkAfterPlayback();
+      return;
+    }
+    if (state.activeStoryNode?.type === "niaProducerWorkError") {
+      state.activeStoryNode = null;
+      state.pendingActionContext = null;
+      state.eventMode = "none";
+      setElementHidden("eventOverlay", true);
+      setNiaPrototypeVisible(true);
+      saveState("nia.producer_work_error_closed");
+      postNiaStateSync();
+      render();
+      return;
+    }
+    if (state.activeStoryNode?.type === "niaCampusActivity") {
+      if (!state.activeStoryNode.ready) {
+        showToast("正在生成活动", "主 API 回复完成后才能结束当前时段。", "warn");
+        return;
+      }
+      completeNiaCampusActivityAfterPlayback();
+      return;
+    }
+    if (state.pendingActionContext?.action === "nia_producer_work"
+      && state.pendingActionContext?.actionContext?.phase === "generating") {
+      showToast("正在处理工作", "主 API 回复完成后才能结束当前时段。", "warn");
+      return;
+    }
     if (isFreeModeActive() && (isMapLocationExploreActive() || state.freeMode?.activeLocationId)) {
       if (isApartmentCompanionSessionActive()) {
         closeApartmentCompanionSession();
@@ -21851,15 +28784,50 @@ ${buildChoiceOnlyExample()}`;
       return;
     }
     triggerWipeTransition(() => {
-      if (state.pendingActionContext?.actionContext?.apartmentInvite) {
+      if (completeCurrentNiaOrdinaryActionAfterPlayback()) {
+        saveState("nia.ordinary_day_complete");
+        render();
+        setElementHidden("eventOverlay", true);
+        resumeNiaEveningIfNeeded();
+        return;
+      }
+      if (state.pendingActionContext?.actionContext?.nsfwCgTest) {
         state.pendingActionContext = null;
         state.eventMode = "none";
         state.choiceStep = 0;
         state.pendingOptionTexts = [];
         state.selectedChoiceText = "";
         state.selectedChoiceRating = "";
+        state.lastDisplayStory = "";
         clearIntimacyRoute();
-        if (state.freeMode) state.freeMode.atApartment = true;
+        resetVnHcgVisual({ clearSticky: true });
+        saveState();
+        render();
+        setElementHidden("eventOverlay", true);
+        openNsfwCgTestLab();
+        return;
+      }
+      if (state.pendingActionContext?.actionContext?.apartmentInvite) {
+        clearApartmentDialogueCheckpoint();
+        state.pendingActionContext = null;
+        state.eventMode = "none";
+        state.choiceStep = 0;
+        state.pendingOptionTexts = [];
+        state.selectedChoiceText = "";
+        state.selectedChoiceRating = "";
+        state.lastDisplayStory = "";
+        clearIntimacyRoute();
+        resetVnHcgVisual({ clearSticky: true });
+        if (isNiaEveningActive() && typeof niaEveningCore.enterEveningApartment === "function") {
+          const nia = normalizeNiaState(state.nia);
+          state.nia = {
+            ...nia,
+            evening: niaEveningCore.enterEveningApartment(nia.evening, nia.evening.companionIdol),
+            updatedAt: Date.now()
+          };
+        } else if (state.freeMode) {
+          state.freeMode.atApartment = true;
+        }
         saveState();
         render();
         setElementHidden("eventOverlay", true);
@@ -22140,7 +29108,7 @@ ${buildChoiceOnlyExample()}`;
       .replace(closedRegex, "")
       .replace(malformedClosedRegex, "")
       .replace(unclosedRegex, "")
-      .replace(/<(?!dialogue|narration|\/dialogue|\/narration)\/?[a-zA-Z_][\w:-]*\b[^>]*>/gi, "")
+      .replace(/<(?!dialogue|narration|nsfw_mode|pose|\/dialogue|\/narration|\/nsfw_mode|\/pose)\/?[a-zA-Z_][\w:-]*\b[^>]*>/gi, "")
       .replace(/\[\s*\{[\s\S]*?\}\s*\]\s*$/g, "")
       .replace(/^\s*\*{1,2}\s*/gm, "")
       .replace(/\s*\*{1,2}\s*$/gm, "")
@@ -22180,11 +29148,14 @@ ${buildChoiceOnlyExample()}`;
   }
 
   function extractPhoneChatReply(source) {
-    const raw = stripAiThinkingBlocks(String(source || "")
+    let raw = stripAiThinkingBlocks(String(source || "")
       .replace(/&lt;/g, "<")
       .replace(/&gt;/g, ">")
       .replace(/&amp;/g, "&")
       .replace(/\u200b/g, ""));
+
+    // Recover the observed terminal typo only when the next complete wrapper proves the block boundary.
+    raw = raw.replace(/<\/初星私聊(?=\s*(?:<\/content\s*>|$))/gi, "</初星私聊>");
 
     const strictMatches = [...raw.matchAll(/<初星私聊\s+from=["']([^"']+)["']\s*>([\s\S]*?)<\/初星私聊>/gi)];
     const looseMatches = [...raw.matchAll(/<初星私聊\s*>([\s\S]*?)<\/初星私聊>/gi)];
@@ -22231,19 +29202,28 @@ ${buildChoiceOnlyExample()}`;
       }
     }
 
+    // 去掉 HTML 注释草稿，避免干扰 option 定位
+    content = content.replace(/<!--[\s\S]*?-->/g, "\n");
+
     const storyMatches = [...content.matchAll(/<story\b[^>]*>[\s\S]*?<\/story>/gi)];
     if (storyMatches.length > 0) {
       const lastStoryMatch = storyMatches[storyMatches.length - 1];
       content = content.slice(lastStoryMatch.index || 0);
     }
 
-    const extractTaggedOption = (num) => {
+    const storyCloseMatch = content.match(/<\/story>/i);
+    const optionZone = storyCloseMatch
+      ? content.slice(storyCloseMatch.index + storyCloseMatch[0].length)
+      : content;
+
+    const extractTaggedOptionFrom = (zone, num) => {
       const regexes = [
         new RegExp(`<option_?${num}>([\\s\\S]*?)<\\/option_?${num}>`, "i"),
-        new RegExp(`<option\\s+${num}>([\\s\\S]*?)<\\/option\\s+${num}>`, "i")
+        new RegExp(`<option\\s+${num}>([\\s\\S]*?)<\\/option\\s+${num}>`, "i"),
+        new RegExp(`<option\\s+id=["']?${num}["']?\\s*>([\\s\\S]*?)<\\/option>`, "i")
       ];
       for (const regex of regexes) {
-        const match = content.match(regex);
+        const match = zone.match(regex);
         if (match?.[1]?.trim()) return match[1].trim();
       }
       return "";
@@ -22255,13 +29235,15 @@ ${buildChoiceOnlyExample()}`;
         new RegExp(`<time\\s+${num}>([\\s\\S]*?)<\\/time\\s+${num}>`, "i")
       ];
       for (const regex of regexes) {
-        const match = content.match(regex);
+        const match = optionZone.match(regex) || content.match(regex);
         if (match?.[1]?.trim()) return match[1].trim();
       }
       return "";
     };
 
-    let options = [1, 2, 3, 4].map(extractTaggedOption);
+    let options = [1, 2, 3, 4].map((num) => (
+      extractTaggedOptionFrom(optionZone, num) || extractTaggedOptionFrom(content, num)
+    ));
     const optionMinutes = [1, 2, 3, 4].map((num) => {
       const raw = extractTaggedTime(num);
       return raw ? parseMapOptionMinutes(raw) : null;
@@ -22273,15 +29255,19 @@ ${buildChoiceOnlyExample()}`;
       if (firstOptIndex !== -1) story = cleanReplyText(content.slice(0, firstOptIndex));
     }
 
+    // 引号兜底只在 </story> 之后取样，避免把正文对白误当成选项（亲密长文尤甚）
     if (!options.every(Boolean)) {
       const quoteRegex = new RegExp("“[^”]{2,160}”|「[^」]{2,160}」|\"[^\"]{2,160}\"", "g");
-      const quoteMatches = [...content.matchAll(quoteRegex)];
+      const quoteMatches = [...optionZone.matchAll(quoteRegex)];
       if (quoteMatches.length >= 4) {
         const last4 = quoteMatches.slice(-4);
         options = last4.map((match) => match[0].trim());
-        const firstChoiceIndex = last4[0].index ?? -1;
-        if (!story && firstChoiceIndex >= 0) {
-          story = cleanReplyText(content.slice(0, firstChoiceIndex));
+        if (!story) {
+          const firstChoiceIndex = last4[0].index ?? -1;
+          const prefix = storyCloseMatch
+            ? content.slice(0, storyCloseMatch.index)
+            : (firstChoiceIndex >= 0 ? content.slice(0, firstChoiceIndex) : "");
+          story = cleanReplyText(prefix);
         }
       }
     }
@@ -22327,6 +29313,10 @@ ${buildChoiceOnlyExample()}`;
 
   function applyFreeModeRelationshipUpdate(rawUpdate = {}) {
     if (!rawUpdate || typeof rawUpdate !== "object" || Array.isArray(rawUpdate)) return {};
+    if (typeof isNiaInterRoundOutingActive === "function" && isNiaInterRoundOutingActive()) {
+      // 轮间外出只在结束当天统一结算，探索中的每次 AI 回复不得改写 N.I.A 信赖。
+      return {};
+    }
     const applied = { idols: {}, npcs: {} };
     ensureFreeModeRelationships();
     if (typeof ensureFreeModeNpcRelationships === "function") ensureFreeModeNpcRelationships();
@@ -22380,6 +29370,29 @@ ${buildChoiceOnlyExample()}`;
     return applied;
   }
 
+  function applyApartmentRelationshipUpdate(rawUpdate = {}) {
+    if (!isNiaEveningActive()) return applyFreeModeRelationshipUpdate(rawUpdate);
+    if (!rawUpdate || typeof rawUpdate !== "object" || Array.isArray(rawUpdate)) return { idols: {}, npcs: {} };
+    const idolName = getCurrentAffinityIdolName();
+    if (!idolName) return { idols: {}, npcs: {} };
+    const nested = rawUpdate.idols && typeof rawUpdate.idols === "object" && !Array.isArray(rawUpdate.idols)
+      ? rawUpdate.idols[idolName]
+      : undefined;
+    const rawValue = nested === undefined ? rawUpdate[idolName] : nested;
+    const delta = Math.round(clamp(parseFreeModeRelationshipDelta(rawValue), -5, 5));
+    if (!delta) return { idols: {}, npcs: {} };
+    state.trust = Math.round(clamp((Number(state.trust) || 0) + delta, 0, 100));
+    const result = { 好感度: state.trust, delta };
+    const applied = { idols: { [idolName]: result }, npcs: {}, [idolName]: result };
+    refreshAffinityUnlocks();
+    try {
+      recordEveningJournalRelationships(applied);
+    } catch (_) {
+      // Isolated parser tests do not load the apartment journal helpers.
+    }
+    return applied;
+  }
+
   function decodeAiReplySource(value) {
     return String(value || "")
       .replace(/&lt;/g, "<")
@@ -22415,13 +29428,24 @@ ${buildChoiceOnlyExample()}`;
   }
   function formatStoryText(text) {
     if (!text) return "";
-    
+
+    // 视觉控制标签不应出现在对话框正文里
+    let source = String(text);
+    if (typeof hatsuHcg?.stripControlTags === "function") {
+      source = hatsuHcg.stripControlTags(source);
+    } else {
+      source = source
+        .replace(/<\/?nsfw_mode\b[^>]*>/gi, "")
+        .replace(/<pose\b[^>]*\/?>/gi, "")
+        .replace(/<\/pose>/gi, "");
+    }
+
     // Escape HTML first to prevent XSS
-    let html = text
+    let html = source
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
-      
+
     // Format escaped XML tags
     html = html.replace(/&lt;dialogue\s+char="([^"]+)"&gt;([\s\S]*?)&lt;\/dialogue&gt;/gi, (match, speaker, content) => {
       let cleanContent = content.trim();
@@ -22430,7 +29454,7 @@ ${buildChoiceOnlyExample()}`;
       }
       return `<strong>${speaker}</strong>：“${cleanContent}”`;
     });
-    
+
     html = html.replace(/&lt;narration&gt;([\s\S]*?)&lt;\/narration&gt;/gi, (match, content) => {
       return content.trim();
     });
@@ -22451,7 +29475,7 @@ ${buildChoiceOnlyExample()}`;
 
     // 5. Choice highlight: ▶ 制作人的选择：...
     html = html.replace(/(▶\s*制作人的选择：.*)/g, '<strong style="color:var(--violet)">$1</strong>');
-    
+
     return html;
   }
 
@@ -22540,6 +29564,7 @@ ${buildChoiceOnlyExample()}`;
       return;
     }
     const { action, attribute, actionContext } = state.pendingActionContext;
+    const niaOrdinaryAction = isCurrentNiaOrdinaryPlanAction(action, attribute);
 
     if (action === "map_location") {
       if (actionContext?.isReturn) {
@@ -22565,7 +29590,7 @@ ${buildChoiceOnlyExample()}`;
       }
       return;
     }
-    
+
     const delta = {};
     if (action === "outing") {
       delta.stamina = 38;
@@ -22582,25 +29607,25 @@ ${buildChoiceOnlyExample()}`;
         delta.trust = INTIMACY_NORMAL_TRUST_GAIN;
       }
     }
-    
+
     Object.entries(delta).forEach(([key, value]) => {
       const max = ["Vo", "Da", "Vi"].includes(key) ? Number(state.cap?.[key] || 999) : 100;
       state[key] = clamp((state[key] || 0) + value, 0, max);
     });
-    
+
     refreshAffinityUnlocks();
-    advanceRound();
+    if (!niaOrdinaryAction) advanceRound();
     rollSpCandidates();
-    
+
     const actionName = actionLabel(action, attribute);
     const resultText = formatDelta(delta);
     const locationText = action === "outing" && actionContext.destination ? `外出地点：${actionContext.destination}` : "";
     const companionText = action === "companion" && actionContext.companionTopic ? `交流主题：${actionContext.companionTopic}` : "";
     const resultSummary = [locationText, companionText, resultText].filter(Boolean).join("，");
-    
+
     state.log.unshift({ day: state.day, round: state.round, phase: getPhase(), action: actionName, result: resultSummary });
     state.log = state.log.slice(0, 24);
-    
+
     state.lastStory = reply;
     state.pendingOptionTexts = [];
     state.selectedChoiceText = "";
@@ -22622,22 +29647,26 @@ ${buildChoiceOnlyExample()}`;
     }
     saveState();
     render();
-    
+
     setElementHidden("eventChoices", true);
     const actionsEl = document.getElementById("eventActions");
     if (actionsEl) actionsEl.style.display = "grid";
-    
+
     const confirm = document.getElementById("eventConfirmBtn");
     if (confirm) {
       confirm.disabled = false;
       confirm.textContent = "确定";
     }
-    
+
     openEventOverlay(actionName, "已收到 SillyTavern 角色回复（已自动结算）", reply);
   }
 
   function handleChoiceSelection(index) {
     if (!state.pendingActionContext) return;
+    if (state.pendingActionContext.action === "nia_business") {
+      handleNiaBusinessChoiceSelection(index);
+      return;
+    }
     if (state.pendingActionContext.action === "storyteller_event") {
       handleStorytellerEventChoiceSelection(index);
       return;
@@ -22653,8 +29682,9 @@ ${buildChoiceOnlyExample()}`;
 
     const buttons = document.querySelectorAll("#eventChoices .choice-button");
     buttons.forEach(btn => btn.disabled = true);
-    
+
     const { action, attribute, actionContext } = state.pendingActionContext;
+    const niaOrdinaryAction = isCurrentNiaOrdinaryPlanAction(action, attribute);
     if (action === "bond") {
       const threshold = state.pendingActionContext.threshold;
       const chosenOptionText = state.pendingOptionTexts[index] || "选择该选项";
@@ -22712,7 +29742,7 @@ ${buildChoiceOnlyExample()}`;
         : (action === "outing" && trustGain === 6) || (action === "companion" && trustGain === 10)
           ? "【普通】"
           : "【笨拙】";
-    
+
     // 1. 正常结算属性增益
     const delta = {};
     if (action === "outing") {
@@ -22728,17 +29758,17 @@ ${buildChoiceOnlyExample()}`;
       delta.stress = -10;
       delta.trust = INTIMACY_NORMAL_TRUST_GAIN;
     }
-    
+
     Object.entries(delta).forEach(([key, value]) => {
       const max = ["Vo", "Da", "Vi"].includes(key) ? Number(state.cap?.[key] || 999) : 100;
       state[key] = clamp((state[key] || 0) + value, 0, max);
     });
-    
+
     // 2. 推进回合与日常刷新
     refreshAffinityUnlocks();
-    advanceRound();
+    if (!niaOrdinaryAction) advanceRound();
     rollSpCandidates();
-    
+
     // 3. 记录日志
     const actionName = actionLabel(action, attribute);
     const resultText = formatDelta(delta);
@@ -22747,7 +29777,7 @@ ${buildChoiceOnlyExample()}`;
     const resultSummary = [locationText, companionText, resultText, ratingName].filter(Boolean).join("，");
     state.log.unshift({ day: state.day, round: state.round, phase: getPhase(), action: actionName, result: resultSummary });
     state.log = state.log.slice(0, 24);
-    
+
     // 4. 更新选择记录状态并发起第二阶段反应生成
     state.selectedChoiceText = chosenOptionText;
     state.selectedChoiceRating = ratingName;
@@ -22755,28 +29785,28 @@ ${buildChoiceOnlyExample()}`;
     state.choiceStep = 2;
     const requestId = createRequestId();
     pendingAiRequestId = requestId;
-    
+
     const prompt = buildChoicePhase2Prompt(action, attribute, chosenOptionText, trustGain, actionContext);
     state.lastPrompt = prompt;
     state.lastDebug = action === "intimacy"
       ? `第二阶段剧情生成：已选择“${chosenOptionText}”，普通亲密固定结算体力 +38、压力 -10、信赖 +${INTIMACY_NORMAL_TRUST_GAIN}（${ratingName}）。等待 AI 生成偶像反应。`
       : `第二阶段剧情生成：已选择“${chosenOptionText}”，获得信赖度 +${trustGain}（${ratingName}）。等待 AI 生成偶像反应。`;
-    
+
     saveState();
     render();
-    
+
     // 5. 更新 UI 状态
     setElementHidden("eventChoices", true);
-    
+
     const actionsEl = document.getElementById("eventActions");
     if (actionsEl) actionsEl.style.display = "grid";
-    
+
     const confirm = document.getElementById("eventConfirmBtn");
     if (confirm) {
       confirm.disabled = true;
       confirm.textContent = "正在生成中...";
     }
-    
+
     const chosenLine = `<narration>▶ 制作人的选择：${chosenOptionText} (${ratingName})</narration>`;
     const pendingStory = buildChoicePendingDisplayStory(state.lastStory, chosenLine);
     const storyEl = document.getElementById("eventStory");
@@ -22784,7 +29814,7 @@ ${buildChoiceOnlyExample()}`;
       storyEl.innerHTML = formatStoryText(pendingStory);
     }
     openEventOverlay(actionName, "正在等待 SillyTavern 角色回复", pendingStory);
-    
+
     if (!requestHostPromptSend(prompt, requestId)) {
       openAiPromptOverlay("当前页面未连接 SillyTavern。请复制提示词发送获取后续。");
     }
@@ -22821,6 +29851,76 @@ ${buildChoiceOnlyExample()}`;
       });
       recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source: "", accepted: false });
       sendAiReplyAck(requestId, false, false);
+      return;
+    }
+    if (isCurrentNiaFanMilestoneReply(requestId)) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleNiaFanMilestoneAiReply(source, requestId, isFinal);
+      return;
+    }
+    if (isCurrentNiaOpeningReply(requestId)) {
+      handleNiaOpeningAiReply(text, rawText, renderedText, requestId, isFinal);
+      return;
+    }
+    if (isCurrentNiaInterRoundOutingReply(requestId)) {
+      handleNiaInterRoundOutingAiReply(text, rawText, renderedText, requestId, isFinal);
+      return;
+    }
+    if (isCurrentNiaPlanReply(requestId)) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleNiaPlanAiReply(text, rawText, renderedText, requestId, isFinal).catch((error) => {
+        failNiaPlanRequest(String(error?.message || "企划处理失败，可以重新提交。"), "plan_commit_failed");
+      });
+      return;
+    }
+    if (niaSnsBusinessSession && niaSnsBusinessSession.requestId === requestId) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleNiaSnsAiReply(source, requestId, isFinal);
+      return;
+    }
+    if (niaMiniLiveSession && niaMiniLiveSession.requestId === requestId) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleNiaMiniLiveAiReply(source, requestId, isFinal);
+      return;
+    }
+    if (isCurrentNiaBusinessReply(requestId)) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleNiaBusinessAiReply(source, requestId, isFinal);
+      return;
+    }
+    if (niaTvBusinessSession && niaTvBusinessSession.requestId === requestId) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleNiaTvAiReply(source, requestId, isFinal);
+      return;
+    }
+    if (niaRadioBusinessSession && niaRadioBusinessSession.requestId === requestId) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleNiaRadioAiReply(source, requestId, isFinal);
+      return;
+    }
+    if (niaAuditionSession && niaAuditionSession.requestId === requestId) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleNiaAuditionAiReply(source, requestId, isFinal);
+      return;
+    }
+    if (isCurrentNiaProducerWorkReply(requestId)) {
+      const source = selectAiReplySource(text, rawText, renderedText);
+      recordAiReplyDebug({ text, rawText, renderedText, requestId, isFinal, source, accepted: true });
+      handleNiaProducerWorkAiReply(text, rawText, renderedText, requestId, isFinal).catch((error) => {
+        failNiaProducerWork(String(error?.message || "制作人工作处理失败，可以保留方案重试。"), "receipt_processing_failed");
+      });
+      return;
+    }
+    if (isCurrentNiaCampusActivityReply(requestId)) {
+      handleNiaCampusActivityAiReply(text, rawText, renderedText, requestId, isFinal);
       return;
     }
     if (isCurrentStorytellerEventReply(requestId)) {
@@ -22898,7 +29998,8 @@ ${buildChoiceOnlyExample()}`;
     if (shouldRouteToBroadcast) {
       handleBroadcastAiReply(source, requestId, isFinal);
       return;
-    }    if (state.pendingActionContext?.action === "outing_scene_dialogue") {
+    }
+    if (state.pendingActionContext?.action === "outing_scene_dialogue") {
       const context = state.pendingActionContext.actionContext || {};
       const idolName = context.outingSelectedIdol || state.freeMode?.outingScene?.selectedIdol || state.idol || "担当偶像";
       const dialogue = extractFreeModeOutingSceneDialogue(source);
@@ -23001,7 +30102,7 @@ ${buildChoiceOnlyExample()}`;
         syncMapOptionMinutesFromPayload(extractChoicePayload(source));
         const nsfwMode = isNsfwIntimacyActive();
         const segmentStory = story;
-        
+
         if (!isFinal) {
           const storyEl = document.getElementById("eventStory");
           if (storyEl) {
@@ -23015,18 +30116,29 @@ ${buildChoiceOnlyExample()}`;
         pendingAiRequestId = "";
         state.eventMode = "choice_prompt";
         state.choiceStep = 1;
-        if (nsfwMode) {
-          state.lastStory = state.lastStory
-            ? `${state.lastStory}\n\n${segmentStory}`
+        if (nsfwMode || state.pendingActionContext?.action === "apartment_companion") {
+          const previous = String(state.lastStory || "").trim();
+          const isPlaceholder = previous.length < 100 && /正在|等待/.test(previous);
+          state.lastStory = previous && !isPlaceholder
+            ? `${previous}\n\n${segmentStory}`
             : segmentStory;
+          state.lastDisplayStory = segmentStory;
         } else if (state.pendingActionContext?.action === "bond" && state.bondChoiceRound === 2) {
           state.lastStory = `${state.lastStory}\n\n${segmentStory}`;
+          state.lastDisplayStory = segmentStory;
         } else {
           state.lastStory = segmentStory;
+          state.lastDisplayStory = segmentStory;
+        }
+        if (isApartmentDialogueSessionActive()) {
+          syncApartmentDialogueCheckpoint("awaiting_choice");
         }
         if (state.pendingActionContext?.action === "map_location") {
           const relationshipApplied = applyFreeModeRelationshipUpdate(extractFreeModeRelationshipUpdate(source));
-          const relationshipSummary = Object.entries(relationshipApplied)
+          const relationshipSummary = [
+            ...Object.entries(relationshipApplied.idols || {}),
+            ...Object.entries(relationshipApplied.npcs || {})
+          ]
             .map(([idolName, info]) => `${idolName}${info.delta > 0 ? "+" : ""}${info.delta}（${info.好感度}）`)
             .join("、");
           if (relationshipSummary) {
@@ -23034,8 +30146,8 @@ ${buildChoiceOnlyExample()}`;
           }
         }
         if (state.pendingActionContext?.action === "apartment_companion") {
-          const relationshipApplied = applyFreeModeRelationshipUpdate(extractFreeModeRelationshipUpdate(source));
-          const relationshipSummary = Object.entries(relationshipApplied)
+          const relationshipApplied = applyApartmentRelationshipUpdate(extractFreeModeRelationshipUpdate(source));
+          const relationshipSummary = Object.entries(relationshipApplied.idols || {})
             .map(([idolName, info]) => `${idolName}${info.delta > 0 ? "+" : ""}${info.delta}（${info.好感度}）`)
             .join("、");
           if (relationshipSummary) {
@@ -23079,7 +30191,7 @@ ${buildChoiceOnlyExample()}`;
         if (aiBtn) aiBtn.disabled = false;
         const actionsEl = document.getElementById("eventActions");
         if (actionsEl) actionsEl.style.display = "grid";
-        
+
         processSandboxQuestFromReply(source, true);
         sendAiReplyAck(requestId, true, false);
         return;
@@ -23124,7 +30236,7 @@ ${buildChoiceOnlyExample()}`;
     // ==========================================
     if (isChoiceResolutionMode()) {
       const reply = extractReplyText(replyCandidates);
-      
+
       const storyEl = document.getElementById("eventStory");
       const isMapReturn = state.pendingActionContext?.action === "map_location"
         && Boolean(state.pendingActionContext?.actionContext?.isReturn);
@@ -23773,7 +30885,7 @@ ${buildChoiceOnlyExample()}`;
       const directorJob = directorDebug?.activeJob;
       const directorReceipt = directorDebug?.receipts?.at?.(-1) || null;
       const directorBusy = Boolean(getPrimaryModelChannelOwner() || getSecondaryModelChannelOwner());
-      
+
       devPanel.innerHTML = `
         <style>
           .dev-form-row {
@@ -23865,9 +30977,9 @@ ${buildChoiceOnlyExample()}`;
           <button type="button" id="devOpenMapLayoutEditorBtn" class="dev-action-btn secondary">打开学园地图布局编辑</button>
         </div>
       `;
-      
+
       body.appendChild(devPanel);
-      
+
       document.getElementById("devApplyBtn").addEventListener("click", () => {
         state.day = clamp(parseInt(document.getElementById("devInputDay").value) || 1, 1, FINAL_LIVE_DAY);
         state.round = clamp(parseInt(document.getElementById("devInputRound").value) || 1, 1, SUMMARY_ROUND);
@@ -23877,7 +30989,7 @@ ${buildChoiceOnlyExample()}`;
         state.trust = Math.max(0, parseInt(document.getElementById("devInputTrust").value) || 0);
         state.stamina = clamp(parseInt(document.getElementById("devInputStamina").value) || 100, 0, 100);
         state.stress = clamp(parseInt(document.getElementById("devInputStress").value) || 0, 0, 100);
-        
+
         saveState();
         render();
         showToast("数值已应用", "开发数值已成功更新至本地状态。", "success");
@@ -23935,6 +31047,17 @@ ${buildChoiceOnlyExample()}`;
   document.getElementById("actionButtons").addEventListener("click", (event) => {
     const button = event.target.closest(".action-button");
     if (!button || button.disabled) return;
+    if (button.dataset.action === "nia_evening_go_home") {
+      openApartmentGoHomeOverlay();
+      return;
+    }
+    if (button.dataset.action === "nia_inter_round_outing") {
+      const outing = getNiaInterRoundOuting();
+      if (["ready", "selecting"].includes(outing.status)) beginNiaInterRoundOuting();
+      else if (outing.status === "exploring") resumeNiaInterRoundOutingIfNeeded();
+      else if (outing.status === "retryable_failed") finishNiaInterRoundOutingDay();
+      return;
+    }
     if (button.dataset.action === "freechat") {
       openFreeChatOverlay();
       return;
@@ -23963,6 +31086,26 @@ ${buildChoiceOnlyExample()}`;
       openIntimacyOverlay();
       return;
     }
+    if (button.dataset.action === "nia_business") {
+      startCurrentNiaBusinessAction();
+      return;
+    }
+    if (button.dataset.action === "nia_audition") {
+      startCurrentNiaAudition();
+      return;
+    }
+    if (button.dataset.action === "nia_audition_recap") {
+      resumeNiaAuditionIfNeeded();
+      return;
+    }
+    if (button.dataset.action === "nia_producer_work") {
+      startCurrentNiaProducerWorkAction();
+      return;
+    }
+    if (button.dataset.action === "nia_campus_activity") {
+      openOutingOverlay();
+      return;
+    }
     if (button.dataset.action === "world_map") {
       enterFreeMode();
       return;
@@ -23989,17 +31132,37 @@ ${buildChoiceOnlyExample()}`;
   document.getElementById("confirmIdolBtn").addEventListener("click", () => {
     if (!selectedIdol) return;
     triggerWipeTransition(() => {
-      openProducerSetupPanel();
+      if (isSandboxLaunch()) openProducerSetupPanel();
+      else openScenarioSelectionPanel();
     });
+  });
+
+  document.querySelectorAll(".scenario-card").forEach((button) => {
+    button.addEventListener("click", () => renderScenarioPreview(button.dataset.scenario));
+  });
+
+  document.getElementById("confirmScenarioBtn")?.addEventListener("click", () => {
+    triggerWipeTransition(confirmProduceScenario);
+  });
+
+  document.getElementById("scenarioBackBtn")?.addEventListener("click", () => {
+    triggerWipeTransition(restoreIdolSelectionPanel);
   });
 
   // Handle click on "返回选择" inside producer form
   document.getElementById("producerBackBtn").addEventListener("click", () => {
     if (!selectedIdol) return;
     triggerWipeTransition(() => {
-      restoreIdolSelectionPanel();
+      if (isSandboxLaunch()) restoreIdolSelectionPanel();
+      else openScenarioSelectionPanel();
     });
   });
+
+  document.getElementById("niaInheritanceBackBtn")?.addEventListener("click", () => {
+    triggerWipeTransition(openProducerSetupPanel);
+  });
+
+  document.getElementById("niaInheritanceConfirmBtn")?.addEventListener("click", completeNiaProducerSetup);
 
   // Helper for quick tag clicks inside producer form
   const registerQuickTagBehavior = (containerId, inputId) => {
@@ -24036,27 +31199,38 @@ ${buildChoiceOnlyExample()}`;
     const settings = document.getElementById("prodSettingsInput").value.trim();
     state.producer = { name, gender, personality, style, settings };
 
-    triggerWipeTransition(() => {
+    if (!isSandboxLaunch() && state.produceScenario === "nia") {
+      state.nia = normalizeNiaState(state.nia);
+      saveState("nia.inheritance_pending");
+      triggerWipeTransition(openNiaInheritancePanel);
+      return;
+    }
+
+    const completeProducerSetup = () => {
       const selectPanel = document.getElementById("selectPanel");
       const producerPanel = document.getElementById("producerPanel");
       if (selectPanel) selectPanel.classList.remove("is-hidden");
       if (producerPanel) producerPanel.classList.add("is-hidden");
 
-          if (isSandboxLaunch()) {
-            state.sandbox = { ...(state.sandbox || {}), apiSetupPending: true, pendingIdol: selectedIdol };
-            saveState("sandbox.api_setup_pending");
-            openSandboxApiSetupPanel(selectedIdol);
-            showToast("档案已保存", "请设置沙盒世界使用的次 API，或暂不填写。", "gold");
-            return;
-          }
+      if (isSandboxLaunch()) {
+        state.sandbox = { ...(state.sandbox || {}), apiSetupPending: true, pendingIdol: selectedIdol };
+        saveState("sandbox.api_setup_pending");
+        openSandboxApiSetupPanel(selectedIdol);
+        showToast("档案已保存", "请设置沙盒世界使用的次 API，或暂不填写。", "gold");
+        return;
+      }
 
       state.launchMode = "produce";
       applyIdolPreset(selectedIdol, true);
-      startOpeningStory("签署合约");
+      if (state.produceScenario === "hatsu") {
+        startOpeningStory("签署合约");
+      }
       saveState();
       showToast("合约签署完成", `制作人与 ${selectedIdol} 的专属育成正式开启！`, "gold");
-      });
-    });
+    };
+
+    triggerWipeTransition(completeProducerSetup);
+  });
 
   document.getElementById("sandboxApiTestBtn")?.addEventListener("click", testSandboxApiConnection);
   document.getElementById("sandboxApiSkipBtn")?.addEventListener("click", skipSandboxApiSetup);
@@ -24188,6 +31362,8 @@ ${buildChoiceOnlyExample()}`;
     confirmPhoneAddFriend(button.dataset.friendName || "");
   });
   document.getElementById("phoneChatRetryBtn").addEventListener("click", triggerPhoneChatRegeneration);
+  document.getElementById("phoneNiaScheduleRetryBtn")?.addEventListener("click", retryNiaScheduleShareReply);
+  document.getElementById("phoneNiaScheduleStartBtn")?.addEventListener("click", startNiaFirstDayAfterScheduleShare);
   document.getElementById("phoneChatMessages").addEventListener("click", (event) => {
     if (event.target.closest("[data-phone-retry]")) {
       event.preventDefault();
@@ -24203,6 +31379,88 @@ ${buildChoiceOnlyExample()}`;
   document.getElementById("phoneBroadcastGenerateBtn")?.addEventListener("click", () => {
     requestBroadcastFullScript({ silent: false, auto: false, reason: "manual" });
   });
+  document.getElementById("niaLiveContinueBtn")?.addEventListener("click", () => {
+    const index = niaBusinessSession?.runtime?.segmentIndex || 0;
+    if (index === 1 || index === 2) requestNiaLiveSegment(index + 1);
+  });
+  document.getElementById("niaLiveStageContinue")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const runtime = niaBusinessSession?.runtime;
+    if (["awaiting_continue_1", "awaiting_continue_2"].includes(runtime?.status)) {
+      requestNiaLiveSegment(Number(runtime.segmentIndex || 0) + 1);
+    }
+  });
+  document.getElementById("niaLiveStage")?.addEventListener("click", advanceNiaLivePlayback);
+  document.getElementById("niaLiveCaption")?.addEventListener("click", advanceNiaLivePlayback);
+  document.getElementById("niaLiveOverlay")?.addEventListener("click", handleNiaLiveOverlayClick);
+  document.addEventListener("fullscreenchange", syncNiaLiveOverlayRootForFullscreen);
+  document.getElementById("niaLiveRetryBtn")?.addEventListener("click", triggerNiaBusinessRegeneration);
+  document.getElementById("niaLiveProducerOptions")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-live-instruction]");
+    if (button) submitNiaLiveProducerInstruction(button.dataset.liveInstruction || button.textContent);
+  });
+  document.getElementById("niaLiveProducerForm")?.addEventListener("submit", (event) => {
+    event.preventDefault(); submitNiaLiveProducerInstruction(document.getElementById("niaLiveProducerInput")?.value || "");
+  });
+  document.getElementById("niaMiniLiveVenueList")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-mini-live-venue]");
+    if (button) selectNiaMiniLiveVenue(button.dataset.miniLiveVenue);
+  });
+  document.getElementById("niaMiniLiveStage")?.addEventListener("click", advanceNiaMiniLivePlayback);
+  document.getElementById("niaMiniLiveStage")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault(); advanceNiaMiniLivePlayback(event);
+  });
+  document.getElementById("niaMiniLiveCaption")?.addEventListener("click", advanceNiaMiniLivePlayback);
+  document.getElementById("niaMiniLiveRetryBtn")?.addEventListener("click", requestNiaMiniLiveGenerationWithApiRecovery);
+  document.getElementById("niaMiniLiveResultConfirmBtn")?.addEventListener("click", confirmNiaMiniLiveResult);
+  document.addEventListener("fullscreenchange", () => {
+    if (!document.getElementById("niaMiniLiveOverlay")?.hidden) ensureNiaMiniLiveOverlayRoot();
+  });
+  document.getElementById("niaRadioStage")?.addEventListener("click", advanceNiaRadioOrTvPlayback);
+  document.getElementById("niaRadioCaption")?.addEventListener("click", advanceNiaRadioOrTvPlayback);
+  document.addEventListener("fullscreenchange", syncNiaRadioOverlayRootForFullscreen);
+  document.getElementById("niaRadioContinueBtn")?.addEventListener("click", () => {
+    const index = niaRadioBusinessSession?.runtime?.segmentIndex || 0;
+    if (index === 1 || index === 2) requestNiaRadioSegment(index + 1);
+  });
+  document.getElementById("niaRadioStageContinue")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const radioRuntime = niaRadioBusinessSession?.runtime;
+    const tvRuntime = niaTvBusinessSession?.runtime;
+    const runtime = radioRuntime || tvRuntime;
+    if (!["awaiting_continue_1", "awaiting_continue_2"].includes(runtime?.status)) return;
+    const nextIndex = Number(runtime.segmentIndex || 0) + 1;
+    if (radioRuntime) requestNiaRadioSegment(nextIndex);
+    else requestNiaTvSegment(nextIndex);
+  });
+  document.getElementById("niaRadioRetryBtn")?.addEventListener("click", () => {
+    const runtime = niaRadioBusinessSession?.runtime;
+    if (runtime) requestNiaRadioSegment(runtime.retrySegmentIndex || niaRadioBusinessSession.segmentIndex || 1);
+  });
+  document.getElementById("niaRadioRetryBtn")?.addEventListener("click", () => {
+    const runtime = niaTvBusinessSession?.runtime;
+    if (runtime) requestNiaTvSegment(runtime.retrySegmentIndex || niaTvBusinessSession.segmentIndex || 1);
+  });
+  document.getElementById("niaRadioProducerOptions")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-tv-instruction]");
+    if (button) submitNiaTvProducerInstruction(button.dataset.tvInstruction || button.textContent);
+  });
+  document.getElementById("niaRadioResultConfirmBtn")?.addEventListener("click", () => {
+    if (niaTvBusinessSession) confirmNiaTvResult();
+  });
+  document.getElementById("niaRadioProducerOptions")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-radio-instruction]");
+    if (button) submitNiaRadioProducerInstruction(button.dataset.radioInstruction || button.textContent);
+  });
+  document.getElementById("niaRadioProducerForm")?.addEventListener("submit", (event) => {
+    event.preventDefault(); submitNiaRadioProducerInstruction(document.getElementById("niaRadioProducerInput")?.value || "");
+  });
+  document.getElementById("niaRadioHistoryToggle")?.addEventListener("click", () => {
+    const drawer = niaRadioEl("niaRadioHistoryDrawer"); const button = niaRadioEl("niaRadioHistoryToggle"); if (!drawer || !button) return;
+    drawer.hidden = !drawer.hidden; button.setAttribute("aria-expanded", String(!drawer.hidden)); button.textContent = drawer.hidden ? "查看历史台词" : "收起历史台词";
+  });
+  document.getElementById("niaRadioResultConfirmBtn")?.addEventListener("click", confirmNiaRadioResult);
   document.getElementById("phoneBroadcastHistory")?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-broadcast-id]");
     if (!button) return;
@@ -24252,6 +31510,14 @@ ${buildChoiceOnlyExample()}`;
   });
   document.getElementById("launchProduceBtn")?.addEventListener("click", () => chooseLaunchMode("produce"));
   document.getElementById("launchSandboxBtn")?.addEventListener("click", () => chooseLaunchMode("sandbox"));
+  document.getElementById("launchNsfwTestBtn")?.addEventListener("click", openNsfwCgTestLab);
+  document.getElementById("nsfwCgTestCancelBtn")?.addEventListener("click", closeNsfwCgTestLab);
+  document.getElementById("nsfwCgTestPreviewBtn")?.addEventListener("click", previewNsfwCgTest);
+  document.getElementById("nsfwCgTestInviteBtn")?.addEventListener("click", startNsfwCgTestInvite);
+  document.getElementById("nsfwCgTestConfirmPoseBtn")?.addEventListener("click", confirmNsfwCgTestPoseChange);
+  document.getElementById("nsfwCgTestOverlay")?.addEventListener("click", (event) => {
+    if (event.target.id === "nsfwCgTestOverlay") closeNsfwCgTestLab();
+  });
   document.getElementById("selectLaunchBackBtn")?.addEventListener("click", clearLaunchModeSelection);
   document.getElementById("apartmentDaySummaryBtn")?.addEventListener("click", openFreeModeEveningSummary);
   document.getElementById("apartmentPhoneBtn")?.addEventListener("click", openPhoneOverlay);
@@ -24448,6 +31714,8 @@ ${buildChoiceOnlyExample()}`;
     openFreeModeOutingOverlay();
   });
   document.getElementById("freeModeOutingSceneExploreBtn")?.addEventListener("click", () => startFreeModeOutingFacilityExplore("explore"));
+  document.getElementById("niaInterRoundOutingEndBtn")?.addEventListener("click", finishNiaInterRoundOutingDay);
+  document.getElementById("niaInterRoundOutingSceneEndBtn")?.addEventListener("click", finishNiaInterRoundOutingDay);
   document.getElementById("freeModeOutingFacilityGuideBtn")?.addEventListener("click", openFreeModeOutingFacilityGuide);
   document.getElementById("freeModeOutingFacilityGuideCloseBtn")?.addEventListener("click", closeFreeModeOutingFacilityGuide);
   document.getElementById("freeModeOutingFacilityGuide")?.addEventListener("click", (event) => {
@@ -24509,6 +31777,7 @@ ${buildChoiceOnlyExample()}`;
     if (payload.type === "character") {
       console.log("[app.js] Applying character payload. Name:", payload.character?.name, "SaveScope:", payload.saveScope);
       applyHostCharacter(payload.character, payload.saveScope, payload.savedState, payload.hasSavedState);
+      postNiaStateSync();
       return;
     }
     if (payload.type === "portraitFileOperationResult") {
@@ -24565,23 +31834,56 @@ ${buildChoiceOnlyExample()}`;
 
   window.addEventListener("message", (event) => {
     const data = event.data || {};
-    
+
+    if (data.source === "hatsuboshi-produce-nia-view") {
+      const niaFrame = document.getElementById("hatsu-nia-prototype-frame");
+      if (event.source !== niaFrame?.contentWindow) return;
+      if (data.type === "niaViewReady") postNiaStateSync();
+      if (data.type === "niaFirstRoundBriefingComplete") {
+        state.nia = { ...normalizeNiaState(state.nia), firstRoundBriefingSeen: true, updatedAt: Date.now() };
+        saveState("nia.first_round_briefing_complete");
+        postNiaStateSync();
+      }
+      if (data.type === "niaPlanSubmit") submitNiaPlanFromView(data).catch((error) => {
+        failNiaPlanRequest(String(error?.message || "企划提交失败，可以重新尝试。"), "plan_submit_failed");
+      });
+      if (data.type === "niaTrainingStart") startNiaTrainingFromTablet();
+      if (["niaProducerWorkAssign", "niaProducerWorkClear", "niaProducerWorkScheduleConfirm"].includes(data.type)) {
+        updateNiaProducerWorkSchedule(data);
+      }
+      if (data.type === "niaProducerWorkExecute") {
+        executeNiaProducerWorkPeriod(data).catch((error) => {
+          failNiaProducerWork(String(error?.message || "制作人工作请求失败，可以保留方案重试。"), "work_submit_failed");
+        });
+      }
+      if (data.type === "niaPhoneAppOpen") {
+        const appId = String(data.appId || "");
+        if (["line", "music", "broadcast", "sns", "world-engine"].includes(appId)) {
+          returnToNiaAfterPhone = true;
+          setNiaPrototypeVisible(false);
+          openPhoneOverlay();
+          launchPhoneApp(appId);
+        }
+      }
+      return;
+    }
+
     // 安全校验：允许来自父窗口（跨域 iframe）、同窗口（同域载入）或同源消息
     const isFromParent = event.source === window.parent;
     const isFromSelf = event.source === window || event.source === null;
     const isSameOrigin = event.origin === window.location.origin;
-    
+
     if (data.source === "hatsuboshi-produce-host") {
       console.log("[app.js] Received message from host:", data.type, "origin:", event.origin, "isFromParent:", isFromParent, "isFromSelf:", isFromSelf, "isSameOrigin:", isSameOrigin);
     }
-    
+
     if (!isFromParent && !isFromSelf && !isSameOrigin) {
       if (data.source === "hatsuboshi-produce-host") {
         console.warn("[app.js] Origin/source validation failed. origin:", event.origin, "local:", window.location.origin);
       }
       return;
     }
-    
+
     routeHostAiPayload(data);
   });
   window.addEventListener("hatsuAssistantCommitted", (event) => {
@@ -24816,7 +32118,12 @@ ${buildChoiceOnlyExample()}`;
     });
     bgmManager.init();
     updateBgm();
-    if (!isSillyTavernHost()) resumeOpeningIfNeeded();
+    if (!resumeNiaFanMilestoneIfNeeded() && !resumeNiaRadioBusinessIfNeeded() && !resumeNiaMiniLiveIfNeeded()) resumeNiaLiveBusinessIfNeeded();
+    if (!isSillyTavernHost()) {
+      resumeNiaModeIfNeeded();
+      resumeOpeningIfNeeded();
+      if (!isNiaEveningActive()) resumeApartmentDialogueIfNeeded();
+    }
     resumeSandboxIfNeeded();
     requestHostCharacter();
   });

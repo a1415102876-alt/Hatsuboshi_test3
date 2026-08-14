@@ -17,7 +17,7 @@ Adjust only the Vo/Da/Vi rating circle. Keep the numeric value badge, Mini icon,
 
 - Keep the current 4 by 4 Sprite sheet and rank-to-cell coordinates.
 - Center the selected cell with a 10px inset inside the ring.
-- Apply a 5px upward optical correction so the glyph does not sit low or touch the ring.
+- Apply a per-rank percentage translation derived from each cell's non-transparent pixel bounds. This compensates for the Sprite sheet's asymmetric transparent padding at every rank rather than applying one uniform offset.
 
 ## Implementation
 

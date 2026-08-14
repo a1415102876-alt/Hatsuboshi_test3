@@ -269,7 +269,7 @@ buzz 数组 ${MIN_BUZZ}～${MAX_BUZZ} 条；broadcastHint 可留空，或与广�
     if (!world) return false;
     const eventsPool = global.HatsuWorld?.eventsPool;
     const castTrack = global.HatsuWorld?.castTrack;
-    const host = eventsPool?.BROADCAST_HOST || "真城优";
+    const host = eventsPool?.BROADCAST_HOST || "真诚优";
     const topicSlug = hashSlug(plan.title);
 
     const episodePlan = {
