@@ -52,6 +52,23 @@ test("st.html reply bridge safely reads context and falls back to latest post-pr
   assert.match(stSource, /Math\.max\(1, pendingPromptChatLength\)/);
   assert.match(stSource, /const replyMessageId = findLatestUsableAiReplyId\(messageId\)/);
 });
+
+test("transactional generation owns its reply until the explicit committed result arrives", () => {
+  const forwarded = [];
+  const sendLatest = new Function(
+    "pendingRequestId",
+    "transactionalReplyRequestId",
+    "collectAndSendAiReply",
+    `${readFunction("sendLatestAiReplyToFrame")}; return sendLatestAiReplyToFrame;`
+  )("request-current", "request-current", (...args) => forwarded.push(args));
+
+  sendLatest(12, true, "host_ended_empty");
+  assert.deepEqual(forwarded, []);
+  assert.match(readFunction("runTransactionalPrompt"), /transactionalReplyRequestId = reqId/);
+  assert.match(readFunction("runTransactionalPrompt"), /pendingPromptChatLength = Array\.isArray\(context\.chat\) \? context\.chat\.length : 0/);
+  assert.match(readFunction("clearPendingReplyRequest"), /transactionalReplyRequestId = ''/);
+});
+
 test("st.html loader uses a responsive mobile viewport instead of a fixed desktop canvas", () => {
   assert.doesNotMatch(stSource, /#hatsu-st-page\s*\{[\s\S]*?width:\s*1180px\s*!important/);
   assert.match(stSource, /--hatsu-viewport-height/);
@@ -77,6 +94,48 @@ test("st.html removes older Hatsuboshi user prompt floors from chat completion p
   assert.match(stSource, /isHatsuFrontendPromptMessage/);
   assert.match(stSource, /lastHatsuUserPromptIndex/);
   assert.match(stSource, /eventData\.chat\.splice\(0, eventData\.chat\.length, \.\.\.filtered\)/);
+  assert.match(stSource, /ensureTrailingTemporaryUserTurn\(eventData\.chat\)/);
+});
+
+test("st.html appends a temporary user turn without changing the final system mirror", () => {
+  const fn = new Function(
+    `${readFunction("ensureTrailingTemporaryUserTurn")}; return ensureTrailingTemporaryUserTurn;`
+  )();
+  const chat = [
+    { role: "user", content: "real frontend prompt" },
+    { role: "assistant", content: "assistant prefill" },
+    {
+      role: "system",
+      content: "<latest_human_message>real frontend prompt</latest_human_message>",
+      name: "preset-tail"
+    }
+  ];
+
+  assert.equal(fn(chat), true);
+  assert.equal(chat.length, 4);
+  assert.equal(chat[2].role, "system");
+  assert.deepEqual(chat[2], {
+    role: "system",
+    content: "<latest_human_message>real frontend prompt</latest_human_message>",
+    name: "preset-tail"
+  });
+  assert.deepEqual(chat[3], {
+    role: "user",
+    content: "\n",
+    name: "hatsu-trailing-turn"
+  });
+
+  const unrelatedTail = [{ role: "system", content: "<角色校准>保持人设</角色校准>" }];
+  assert.equal(fn(unrelatedTail), true);
+  assert.equal(unrelatedTail[0].role, "system");
+
+  const nonFinalMirror = [
+    { role: "system", content: "<latest_human_message>old</latest_human_message>" },
+    { role: "assistant", content: "model prefill" }
+  ];
+  assert.equal(fn(nonFinalMirror), true);
+  assert.equal(nonFinalMirror.length, 3);
+  assert.equal(nonFinalMirror[0].role, "system");
 });
 
 test("st.html removes only the earlier copy of the current transactional user prompt", () => {
@@ -116,15 +175,71 @@ test("st.html loads the gift shop module so the shop/bag entry is available unde
   assert.match(scriptsBlock[1], /"shop\/gift-shop\.js"/);
 });
 
-test("st.html rewrites large assets to R2 while keeping avatars on Workers base", () => {
+test("st.html rewrites avatars and other assets to R2", () => {
   assert.match(stSource, /R2_MEDIA_CDN/);
   assert.match(stSource, /function rewriteAssetsInText\(/);
   assert.match(stSource, /function rewriteAssetRef\(/);
-  assert.match(stSource, /isLocalAvatarAsset/);
+  assert.doesNotMatch(stSource, /isLocalAvatarAsset/);
   assert.match(stSource, /rewriteAssetsInCss/);
-  assert.match(stSource, /\.replaceAll\('"\.\/assets\/avatars\/'/);
-  assert.match(stSource, /\.replaceAll\('"\.\/assets\/'/);
-  assert.doesNotMatch(stSource, /\.replaceAll\('"\.\/assets\/', '"' \+ abs\('assets\/'\)\)/);
+  assert.match(stSource, /return withR2MediaVersion\(r2MediaUrl\(normalized\)\)/);
+  assert.doesNotMatch(stSource, /return abs\(normalized\)/);
+  assert.match(stSource, /sourceText = rewriteAssetsInText\(await modRes\.text\(\)\)/);
+  assert.match(stSource, /routeText = rewriteAssetsInText\(await routeRes\.text\(\)\)/);
+  assert.match(stSource, /miniLiveCoreText = rewriteAssetsInText\(await miniLiveCoreRes\.text\(\)\)/);
+  assert.match(stSource, /function rewriteElementAssetRefs\(/);
+  assert.match(stSource, /assetRefObserver\.observe\(page/);
+});
+
+test("asset resolver sends every repository asset path form to R2", () => {
+  const start = stSource.indexOf("function withR2MediaVersion");
+  const end = stSource.indexOf(readFunction("shouldRewriteUrl")) + readFunction("shouldRewriteUrl").length;
+  const source = stSource.slice(start, end);
+  const helpers = new Function(
+    "BASE",
+    "window",
+    "R2_MEDIA_CDN",
+    "R2_MEDIA_VERSION",
+    `function abs(path) { return new URL(path, BASE).href; }
+${source}
+return { rewriteAssetRef, rewriteAssetsInText, rewriteAssetsInCss };`
+  )(
+    "https://hatsuboshi-test3.vercel.app/",
+    {},
+    "https://r2.example",
+    "test-version"
+  );
+
+  for (const path of [
+    "./assets/scenes/Producer_Apartment.png",
+    "assets/scenes/Producer_Apartment.png",
+    "/assets/scenes/Producer_Apartment.png",
+    "../assets/scenes/Producer_Apartment.png"
+  ]) {
+    assert.equal(
+      helpers.rewriteAssetRef(path),
+      "https://r2.example/assets/scenes/Producer_Apartment.png?v=test-version"
+    );
+  }
+  assert.equal(
+    helpers.rewriteAssetRef("https://example.com/assets/external.png"),
+    "https://example.com/assets/external.png"
+  );
+  assert.equal(
+    helpers.rewriteAssetRef("./UI/nia-logo.png"),
+    "https://hatsuboshi-test3.vercel.app/UI/nia-logo.png"
+  );
+  assert.match(
+    helpers.rewriteAssetsInText('const scene = "./assets/scenes/TV_Studio.png";'),
+    /https:\/\/r2\.example\/assets\/scenes\/TV_Studio\.png\?v=test-version/
+  );
+  assert.match(
+    helpers.rewriteAssetsInText('const scene = `\.\/assets\/scenes\/${name}\.png`;'),
+    /https:\/\/r2\.example\/assets\/scenes\/\$\{name\}\.png\?v=test-version/
+  );
+  assert.equal(
+    helpers.rewriteAssetsInCss('background:url("../assets/scenes/Aquarium.png") center/cover'),
+    'background:url("https://r2.example/assets/scenes/Aquarium.png?v=test-version") center/cover'
+  );
 });
 
 

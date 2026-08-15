@@ -60,9 +60,16 @@
   };
 
   function eventDefinition(eventId, routeOrIdol) {
+    const requestedEventId = text(eventId, 160);
     const events = routeOrIdol ? eventsFor(routeOrIdol) : NIA_FAN_MILESTONE_EVENTS;
-    return events.find((entry) => entry.eventId === eventId)
-      || NIA_FAN_MILESTONE_EVENTS.find((entry) => entry.eventId === eventId)
+    const fallbackDefinition = NIA_FAN_MILESTONE_EVENTS.find((entry) => entry.eventId === requestedEventId);
+    const migratedRouteDefinition = routeOrIdol && fallbackDefinition
+      ? events.find((entry) => Number(entry.episode) === Number(fallbackDefinition.episode))
+      : null;
+    return events.find((entry) => entry.eventId === requestedEventId)
+      || migratedRouteDefinition
+      || fallbackDefinition
+      || (requestedEventId.startsWith("nia-") ? { eventId: requestedEventId, threshold: 0, episode: 0 } : null)
       || events[0]
       || SAKI_FAN_MILESTONE_EVENTS[0];
   }
@@ -70,9 +77,12 @@
   function normalizeFanMilestone(raw, routeOrIdol) {
     const source = object(raw);
     const definition = eventDefinition(text(source.eventId, 160), routeOrIdol);
+    const thresholdSource = definition.episode === 0 && source.threshold != null
+      ? source.threshold
+      : (definition.threshold ?? definition.trigger?.threshold);
     return {
       eventId: definition.eventId,
-      threshold: Math.max(0, Math.floor(Number(definition.threshold ?? definition.trigger?.threshold) || 0)),
+      threshold: Math.max(0, Math.floor(Number(thresholdSource) || 0)),
       status: STATUSES.includes(source.status) ? source.status : "idle",
       story: text(source.story, 12000),
       activeRequest: source.activeRequest ? { ...object(source.activeRequest) } : null,

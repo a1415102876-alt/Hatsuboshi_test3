@@ -213,7 +213,7 @@
     return new URL(path, BASE).href;
   }
 
-  // 与 PlayList、Live 视频同一 R2 桶；除头像外的大图资源走 CDN，头像仍走 Workers 本地。
+  // PlayList、Live 视频、头像及其他图片资源统一走同一个 R2 桶。
   const R2_MEDIA_CDN = "https://pub-cfdeb8f85de84d8193695eca002e7880.r2.dev";
   // R2 同名覆盖不会自动让浏览器丢弃旧图片缓存；替换媒体文件后递增此版本号。
   const R2_MEDIA_VERSION = "20260811-1";
@@ -222,46 +222,79 @@
     return url + (url.includes("?") ? "&" : "?") + `v=${R2_MEDIA_VERSION}`;
   }
 
-  function r2MediaUrl(path) {
-    const clean = String(path || "").replace(/^\.\//, "");
-    return R2_MEDIA_CDN + "/" + clean.split("/").map(encodeURIComponent).join("/");
+  function normalizeAssetPath(path) {
+    const raw = String(path || "").trim().replace(/\\/g, "/");
+    const match = raw.match(/^(?:(?:\.\.\/)+|\.\/|\/)?(assets\/.+)$/);
+    return match ? match[1] : "";
   }
 
-  function isLocalAvatarAsset(path) {
-    const clean = String(path || "").replace(/^\.\//, "");
-    return clean.startsWith("assets/avatars/");
+  function r2MediaUrl(path) {
+    const clean = normalizeAssetPath(path) || String(path || "").replace(/^\.\//, "");
+    return R2_MEDIA_CDN + "/" + clean.split("/").map(encodeURIComponent).join("/");
   }
 
   function rewriteAssetRef(path) {
     if (!path) return path;
-    const normalized = String(path).replace(/^\.\//, "");
-    if (!normalized.startsWith("assets/")) {
+    const normalized = normalizeAssetPath(path);
+    if (!normalized) {
       return shouldRewriteUrl(path) ? abs(path) : path;
     }
-    if (isLocalAvatarAsset(path)) return abs(normalized);
     return withR2MediaVersion(r2MediaUrl(normalized));
   }
 
   window.HATSU_RESOLVE_ASSET_URL = rewriteAssetRef;
 
   function rewriteAssetsInText(text) {
-    return text.replace(/(["'`])\.\/assets\/([^"'`]+)/g, (match, quote, relativePath) => {
-      // Template expressions must be resolved after app.js evaluates; encoding
-      // `${name}` here turns it into a literal, nonexistent R2 object key.
-      if (quote === "`" && relativePath.includes("${")) return match;
+    return String(text || "").replace(
+      /(["'`])(?:(?:\.\.\/)+|\.\/|\/)?assets\/([^"'`]*)/g,
+      (match, quote, relativePath, offset, source) => {
       const normalized = `assets/${relativePath}`;
-      const target = isLocalAvatarAsset(normalized)
-        ? abs(normalized)
+      const afterClosingQuote = source.slice(offset + match.length + 1);
+      const isConcatenatedPrefix = quote !== "`" && /^\s*\+/.test(afterClosingQuote);
+      const hasTemplateExpression = quote === "`" && relativePath.includes("${");
+      const target = isConcatenatedPrefix || hasTemplateExpression
+        ? `${R2_MEDIA_CDN}/${normalized}${isConcatenatedPrefix ? "" : `?v=${R2_MEDIA_VERSION}`}`
         : withR2MediaVersion(r2MediaUrl(normalized));
       return quote + target;
     });
   }
 
   function rewriteAssetsInCss(text) {
-    return text.replace(/url\((['"]?)(\.\/assets\/[^'")]+)\1\)/gi, (match, quote, path) => {
-      const target = rewriteAssetRef(path);
-      return `url(${quote}${target}${quote})`;
+    return String(text || "").replace(/url\((['"]?)([^'")]+)\1\)/gi, (match, quote, path) => {
+      if (!normalizeAssetPath(path)) return match;
+      return `url(${quote}${rewriteAssetRef(path)}${quote})`;
     });
+  }
+
+  function rewriteAssetSrcset(srcset) {
+    return String(srcset || "").split(",").map(candidate => {
+      const parts = candidate.trim().split(/\s+/);
+      if (normalizeAssetPath(parts[0])) parts[0] = rewriteAssetRef(parts[0]);
+      return parts.join(" ");
+    }).join(", ");
+  }
+
+  function rewriteElementAssetRefs(root) {
+    if (!root) return;
+    const elements = root.nodeType === 1 ? [root, ...root.querySelectorAll("*")] : [];
+    for (const el of elements) {
+      for (const attr of ["src", "href", "poster"]) {
+        const value = el.getAttribute?.(attr);
+        if (!value || !shouldRewriteUrl(value)) continue;
+        const target = rewriteAssetRef(value);
+        if (target !== value) el.setAttribute(attr, target);
+      }
+      const srcset = el.getAttribute?.("srcset");
+      if (srcset && /(?:^|[\s,])(?:(?:\.\.\/)+|\.\/|\/)?assets\//.test(srcset)) {
+        const target = rewriteAssetSrcset(srcset);
+        if (target !== srcset) el.setAttribute("srcset", target);
+      }
+      const style = el.getAttribute?.("style");
+      if (style && /assets\//.test(style)) {
+        const target = rewriteAssetsInCss(style);
+        if (target !== style) el.setAttribute("style", target);
+      }
+    }
   }
 
   function shouldRewriteUrl(url) {
@@ -356,22 +389,25 @@
     overlayMountObserver.observe(document.body, { childList: true });
 
     const page = overlay.querySelector('#hatsu-st-page');
-    page.innerHTML = doc.body.innerHTML;
+    page.innerHTML = rewriteAssetsInCss(rewriteAssetsInText(doc.body.innerHTML));
+    rewriteElementAssetRefs(page);
 
-    // 修正 HTML 里的 src
-    page.querySelectorAll('[src]').forEach(el => {
-      const src = el.getAttribute('src');
-      if (shouldRewriteUrl(src)) {
-        el.setAttribute('src', rewriteAssetRef(src));
+    const assetRefObserver = new MutationObserver(records => {
+      for (const record of records) {
+        if (record.type === "attributes") {
+          rewriteElementAssetRefs(record.target);
+          continue;
+        }
+        for (const node of record.addedNodes) {
+          if (node.nodeType === 1) rewriteElementAssetRefs(node);
+        }
       }
     });
-
-    // 修正 href，但不动 #icon-star 这种 SVG 内部引用
-    page.querySelectorAll('[href]').forEach(el => {
-      const href = el.getAttribute('href');
-      if (shouldRewriteUrl(href)) {
-        el.setAttribute('href', rewriteAssetRef(href));
-      }
+    assetRefObserver.observe(page, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["src", "href", "poster", "srcset", "style"]
     });
 
     let bridgeReadyPromise = null;
@@ -626,7 +662,7 @@
         console.warn(`[Hatsu ST Loader] 世界观模块未找到，将降级：${rel} HTTP ${modRes.status}`);
         continue;
       }
-      const sourceText = await modRes.text();
+      const sourceText = rewriteAssetsInText(await modRes.text());
       if (!isJavaScriptResponse(modRes, sourceText)) {
         console.warn(`[Hatsu ST Loader] response returned HTML; skipped module ${rel}: ${moduleUrl}`);
         continue;
@@ -640,7 +676,7 @@
       try {
         const routeRes = await fetch(abs(rel), { cache: 'no-store' });
         if (!routeRes.ok) throw new Error('HTTP ' + routeRes.status);
-        const routeText = await routeRes.text();
+        const routeText = rewriteAssetsInText(await routeRes.text());
         if (!isJavaScriptResponse(routeRes, routeText)) throw new Error('response_not_javascript');
         const routeScript = document.createElement('script');
         routeScript.textContent = routeText + '\n//# sourceURL=' + abs(rel);
@@ -758,7 +794,7 @@
     try {
       const miniLiveCoreRes = await fetch(abs('nia-mini-live-core.js'), { cache: 'no-store' });
       if (!miniLiveCoreRes.ok) throw new Error('HTTP ' + miniLiveCoreRes.status);
-      const miniLiveCoreText = await miniLiveCoreRes.text();
+      const miniLiveCoreText = rewriteAssetsInText(await miniLiveCoreRes.text());
       if (!isJavaScriptResponse(miniLiveCoreRes, miniLiveCoreText)) throw new Error('response_not_javascript');
       const miniLiveCoreScript = document.createElement('script');
       miniLiveCoreScript.textContent = miniLiveCoreText + '\n//# sourceURL=' + abs('nia-mini-live-core.js');
@@ -1140,10 +1176,17 @@
             hiddenFloorRange = null;
             adjustMessageVisibility();
           });
-          if (eventTypes.CHAT_COMPLETION_PROMPT_READY) {
-            eventSource.on(eventTypes.CHAT_COMPLETION_PROMPT_READY, pruneHatsuChatCompletionPayload);
+          const promptReadyEvent = eventTypes.CHAT_COMPLETION_PROMPT_READY || 'chat_completion_prompt_ready';
+          if (promptReadyEvent) {
+            eventSource.on(promptReadyEvent, pruneHatsuChatCompletionPayload);
+          }
+          const settingsReadyEvent = eventTypes.CHAT_COMPLETION_SETTINGS_READY || 'chat_completion_settings_ready';
+          if (settingsReadyEvent) {
+            eventSource.on(settingsReadyEvent, ensureTrailingTemporaryUserInGenerationSettings);
           }
         }
+
+        installHatsuGenerationFetchFallback();
 
         updateInPageHatsuClass();
         bindChatDomObserver();
@@ -1164,6 +1207,7 @@
     const useVisualHideFloors = true;
     let pendingRequestId = '';
     let pendingChannelLeaseId = '';
+    let transactionalReplyRequestId = '';
     let pendingPromptSentAt = 0;
     let pendingPromptChatLength = 0;
     let pendingCandidateInFlight = false;
@@ -2972,6 +3016,8 @@
       if (!requestPromptCache.has(reqId)) requestPromptCache.set(reqId, promptText);
       pendingRequestId = reqId;
       pendingChannelLeaseId = String(channelLeaseId || '');
+      transactionalReplyRequestId = reqId;
+      pendingPromptChatLength = Array.isArray(context.chat) ? context.chat.length : 0;
       clearReplyCandidateState();
 
       const tavernHelper = getTavernHelper();
@@ -3126,6 +3172,7 @@
     }
     function sendLatestAiReplyToFrame(messageId, isFinal = true, emptyReason = '') {
       if (!pendingRequestId) return;
+      if (transactionalReplyRequestId === pendingRequestId) return;
       collectAndSendAiReply(messageId, isFinal, { emptyReason });
     }
 
@@ -3300,8 +3347,73 @@
       return content.includes('初星育成系统') || content.includes('【初星学园 Galgame 渲染规则契约】');
     }
 
+    function ensureTrailingTemporaryUserTurn(chat) {
+      if (!Array.isArray(chat) || chat.length === 0) return false;
+      const lastIndex = chat.length - 1;
+      const lastMessage = chat[lastIndex];
+      if (!lastMessage || lastMessage.role === 'user') return false;
+      chat.push({
+        role: 'user',
+        content: '\n',
+        name: 'hatsu-trailing-turn'
+      });
+      return true;
+    }
+
+    function ensureTrailingTemporaryUserInGenerationSettings(eventData) {
+      if (!eventData || typeof eventData !== 'object') return false;
+      const candidates = [
+        eventData.chat,
+        eventData.messages,
+        eventData.generate_data?.messages
+      ];
+      let changed = false;
+      for (const messages of candidates) {
+        if (Array.isArray(messages)) changed = ensureTrailingTemporaryUserTurn(messages) || changed;
+      }
+      return changed;
+    }
+
+    function installHatsuGenerationFetchFallback() {
+      let hostWindow = window;
+      try {
+        if (window.parent && window.parent !== window) hostWindow = window.parent;
+      } catch (e) {}
+      try {
+        if (hostWindow.__HATSU_GENERATION_FETCH_TURN_FIX__) return;
+        const originalFetch = hostWindow.fetch;
+        if (typeof originalFetch !== 'function') return;
+        const wrappedFetch = function(input, init) {
+          try {
+            const url = typeof input === 'string' ? input : String(input?.url || '');
+            const body = init?.body;
+            if (/\/api\/backends\/chat-completions\/generate(?:\?|$)/.test(url) && typeof body === 'string') {
+              const payload = JSON.parse(body);
+              const changed = ensureTrailingTemporaryUserInGenerationSettings(payload);
+              if (changed) {
+                init = { ...init, body: JSON.stringify(payload) };
+              }
+            }
+          } catch (error) {
+            console.debug('[Hatsu ST] generation fetch turn fallback skipped:', error);
+          }
+          return originalFetch.call(this, input, init);
+        };
+        wrappedFetch.__HATSU_GENERATION_FETCH_TURN_FIX__ = true;
+        hostWindow.fetch = wrappedFetch;
+        hostWindow.__HATSU_GENERATION_FETCH_TURN_FIX__ = true;
+      } catch (error) {
+        console.warn('[Hatsu ST] unable to install generation fetch fallback:', error);
+      }
+    }
+
     function pruneHatsuChatCompletionPayload(eventData) {
-      if (!eventData || eventData.dryRun || !Array.isArray(eventData.chat)) return;
+      if (!eventData || !Array.isArray(eventData.chat)) return;
+      // This mirror exists specifically to satisfy providers that require a
+      // user turn at the end. Do this before character/context checks: fixed
+      // stage embeds can expose an incomplete context while the payload is
+      // already fully assembled.
+      ensureTrailingTemporaryUserTurn(eventData.chat);
       removeCurrentTransactionalDuplicateUserPrompt(eventData.chat, pendingRequestId);
       const contextInfo = getCurrentContextInfo();
       const characterName = contextInfo.character?.name || '';
@@ -3317,6 +3429,7 @@
         return !isHatsuFrontendPromptMessage(message) || index === lastHatsuUserPromptIndex;
       });
       eventData.chat.splice(0, eventData.chat.length, ...filtered);
+      ensureTrailingTemporaryUserTurn(eventData.chat);
     }
 
     function resolveReplyAck(data, activeRequestId) {
@@ -3360,6 +3473,7 @@
 
     function clearPendingReplyRequest() {
       clearReplyCandidateState();
+      transactionalReplyRequestId = '';
       pendingPromptSentAt = 0;
       pendingPromptChatLength = 0;
       pendingRequestId = '';

@@ -22,6 +22,27 @@ test("HatsuHcg exposes Saki pose whitelist and asset paths", () => {
   assert.equal(HatsuHcg.resolveHcgAsset("花海咲季", "not_a_pose"), null);
 });
 
+test("HatsuHcg exposes Kotone pose whitelist and asset paths", () => {
+  assert.equal(HatsuHcg.resolveCharacterSlug("藤田琴音"), "kotone");
+  assert.equal(HatsuHcg.resolveCharacterSlug("琴音"), "kotone");
+  assert.equal(HatsuHcg.resolveCharacterSlug("藤田ことね"), "kotone");
+  assert.equal(HatsuHcg.resolveCharacterSlug("藤田琴音(平常待机)"), "kotone");
+  assert.ok(HatsuHcg.listPoseIds("藤田琴音").includes("cowgirl"));
+  assert.ok(HatsuHcg.listPoseIds("藤田琴音").includes("chair"));
+  const cowgirl = HatsuHcg.resolveHcgAsset("藤田琴音", "cowgirl");
+  assert.equal(cowgirl.id, "kotone_nsfw_cowgirl_v01");
+  assert.equal(cowgirl.path, "./assets/hcg/kotone/cowgirl_v01.png");
+  const kiss = HatsuHcg.resolveHcgAsset("藤田琴音", "kissing_makeout");
+  assert.equal(kiss.path, "./assets/hcg/kotone/kissing_makeout_v01.png");
+  const chair = HatsuHcg.resolveHcgAsset("藤田琴音", "chair");
+  assert.equal(chair.path, "./assets/hcg/kotone/chair_v01.png");
+  assert.equal(HatsuHcg.resolveHcgAsset("藤田琴音", "titjob").fallbackPoseId, "handjob");
+  assert.equal(HatsuHcg.resolveHcgAsset("藤田琴音", "missionary_legs_up").fallbackPoseId, "missionary");
+  assert.equal(HatsuHcg.resolveHcgAsset("藤田琴音", "missionary_mating_press").fallbackPoseId, "missionary");
+  assert.equal(HatsuHcg.resolveHcgAsset("藤田琴音", "aftercare_embrace").fallbackPoseId, "kissing_makeout");
+  assert.equal(HatsuHcg.resolveHcgAsset("藤田琴音", "lotus").fallbackPoseId, "cowgirl");
+});
+
 test("HatsuHcg exposes Ume pose whitelist and asset paths", () => {
   assert.equal(HatsuHcg.resolveCharacterSlug("花海佑芽"), "ume");
   assert.equal(HatsuHcg.resolveCharacterSlug("花海祐芽"), "ume");
@@ -172,12 +193,16 @@ test("VN keeps sticky HCG until next pose or explicit end", () => {
 test("launch screen exposes NSFW CG test lab entry", () => {
   const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
   const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  assert.match(html, /id="launchNsfwTestBtn"/);
+  assert.match(html, /id="launchNsfwTestBtn"[^>]*hidden/);
+  assert.match(html, /id="launchNsfwRevealBtn"/);
   assert.match(html, /id="nsfwCgTestOverlay"/);
   assert.match(appSource, /function openNsfwCgTestLab\(/);
   assert.match(appSource, /function previewNsfwCgTest\(/);
   assert.match(appSource, /function startNsfwCgTestInvite\(/);
   assert.match(appSource, /nsfwCgTest:\s*true/);
+  assert.match(appSource, /launchNsfwRevealClicks >= 3/);
+  assert.match(appSource, /launchNsfwTestBtn\.hidden = false/);
+  assert.match(appSource, /launchNsfwRevealBtn\.hidden = true/);
   assert.match(appSource, /launchNsfwTestBtn[\s\S]*openNsfwCgTestLab/);
 });
 

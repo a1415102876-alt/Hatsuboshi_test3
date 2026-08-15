@@ -13849,20 +13849,30 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     };
   }
 
+  function resolvePortraitAssetUrl(url) {
+    const raw = String(url || "").trim();
+    if (!raw || !/^(?:(?:\.\.\/)+|\.\/|\/)?assets\//.test(raw)) return raw;
+    return typeof window.HATSU_RESOLVE_ASSET_URL === "function"
+      ? window.HATSU_RESOLVE_ASSET_URL(raw)
+      : raw;
+  }
+
   function applyResolvedPortraitToImage(img, resolved) {
     if (!img || !resolved) return false;
+    const portraitUrl = resolvePortraitAssetUrl(resolved.url);
+    const fallbackUrl = resolvePortraitAssetUrl(resolved.fallbackUrl || resolved.url);
     const transform = globalThis.HatsuPortraits.normalizeTransform(resolved.transform);
     img.style.setProperty("--portrait-scale", String(transform.scale));
     img.style.setProperty("--portrait-x", `${transform.offsetX}px`);
     img.style.setProperty("--portrait-y", `${transform.offsetY}px`);
     img.dataset.portraitSpeaker = String(resolved.speaker || "");
     img.dataset.portraitCharacterKey = String(resolved.characterKey || "");
-    img.dataset.portraitUserUrl = ["user", "preset"].includes(resolved.source) ? String(resolved.url || "") : "";
-    img.dataset.portraitFallbackUrl = String(resolved.fallbackUrl || resolved.url || "");
+    img.dataset.portraitUserUrl = ["user", "preset"].includes(resolved.source) ? portraitUrl : "";
+    img.dataset.portraitFallbackUrl = fallbackUrl;
     img.dataset.portraitFallbackApplied = "0";
     img.onerror = () => handlePortraitImageError(img, resolved.speaker || resolved.characterKey);
-    img.src = String(resolved.url || "");
-    return Boolean(resolved.url);
+    img.src = portraitUrl;
+    return Boolean(portraitUrl);
   }
 
   function handlePortraitImageError(img, speaker) {
@@ -27291,7 +27301,13 @@ ${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到
     }
 
     // 切换背景
-    const bgUrl = getSceneBackground();
+    const rawBgUrl = getSceneBackground();
+    let bgUrl = rawBgUrl;
+    try {
+      bgUrl = new URL(rawBgUrl, window.HATSU_ASSET_BASE || document.baseURI).href;
+    } catch {
+      // Keep the configured path when the host has no usable base URL.
+    }
     const backdropEl = document.getElementById("vnBackdrop");
     if (backdropEl) {
       backdropEl.style.backgroundImage = `linear-gradient(180deg, rgba(18, 18, 24, 0.08) 0%, transparent 42%, rgba(18, 18, 24, 0.22) 100%), url('${bgUrl}')`;
@@ -31510,7 +31526,20 @@ ${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到
   });
   document.getElementById("launchProduceBtn")?.addEventListener("click", () => chooseLaunchMode("produce"));
   document.getElementById("launchSandboxBtn")?.addEventListener("click", () => chooseLaunchMode("sandbox"));
-  document.getElementById("launchNsfwTestBtn")?.addEventListener("click", openNsfwCgTestLab);
+  const launchNsfwTestBtn = document.getElementById("launchNsfwTestBtn");
+  const launchNsfwRevealBtn = document.getElementById("launchNsfwRevealBtn");
+  let launchNsfwRevealClicks = 0;
+  launchNsfwRevealBtn?.addEventListener("click", () => {
+    if (!launchNsfwTestBtn) return;
+    launchNsfwRevealClicks += 1;
+    if (launchNsfwRevealClicks >= 3) {
+      launchNsfwRevealClicks = 0;
+      launchNsfwTestBtn.hidden = false;
+      launchNsfwRevealBtn.hidden = true;
+      return;
+    }
+  });
+  launchNsfwTestBtn?.addEventListener("click", openNsfwCgTestLab);
   document.getElementById("nsfwCgTestCancelBtn")?.addEventListener("click", closeNsfwCgTestLab);
   document.getElementById("nsfwCgTestPreviewBtn")?.addEventListener("click", previewNsfwCgTest);
   document.getElementById("nsfwCgTestInviteBtn")?.addEventListener("click", startNsfwCgTestInvite);

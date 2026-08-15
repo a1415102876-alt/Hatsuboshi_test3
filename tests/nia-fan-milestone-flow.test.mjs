@@ -36,7 +36,7 @@ test('NIA state initializes and normalizes the fan milestone', () => {
   const defaults = functionBody('createDefaultNiaState', 'normalizeNiaState');
   assert.match(defaults, /fanMilestoneEvent:/);
   const normalize = functionBody('normalizeNiaState', 'defaultSandboxFirstLiveChallenge');
-  assert.match(normalize, /normalizeFanMilestone\(source\.fanMilestoneEvent\)/);
+  assert.match(normalize, /normalizeFanMilestone\(source\.fanMilestoneEvent, route\)/);
 });
 
 test('one reconciliation helper is used after every NIA fan settlement', () => {
@@ -134,7 +134,7 @@ test('milestone owns a strict primary-model request and releases failed leases',
 test('VN completion is the only path that unlocks the milestone', () => {
   const complete = functionBody('completeNiaFanMilestoneAfterPlayback', 'resumeNiaFanMilestoneIfNeeded');
   assert.match(complete, /completeFanMilestone/);
-  assert.match(complete, /setNiaPrototypeVisible\(completedEventId !== "nia-saki-round2-quartet-victory"\)/);
+  assert.match(complete, /setNiaPrototypeVisible\(!completedRoundTwoAudition\)/);
   assert.match(app, /activeStoryNode\?\.type === "niaFanMilestone"[\s\S]*completeNiaFanMilestoneAfterPlayback\(\)/);
   assert.match(app, /activeStoryNode\?\.type === "niaFanMilestone"[\s\S]*showToast\("剧情尚未结束"/);
   const skip = functionBody('skipAllVnDialogue', 'escapeDebugHtml');

@@ -83,6 +83,7 @@ function loadIntegration() {
     readFunction("getBuiltinPortraitMap"),
     readFunction("resolvePortraitForSpeaker"),
     readFunction("resolvePortraitForSpeakerVisualCue"),
+    readFunction("resolvePortraitAssetUrl"),
     readFunction("applyResolvedPortraitToImage"),
     readFunction("handlePortraitImageError"),
     "this.api = { getBuiltinPortraitMap, resolvePortraitForSpeaker, resolvePortraitForSpeakerVisualCue, applyResolvedPortraitToImage, handlePortraitImageError };"
@@ -162,7 +163,7 @@ test("resolved portrait applies source transform and fallback metadata", () => {
   assert.equal(image.properties.get("--portrait-scale"), "1.2");
   assert.equal(image.properties.get("--portrait-x"), "4px");
   assert.equal(image.properties.get("--portrait-y"), "-3px");
-  assert.equal(image.dataset.portraitFallbackUrl, "./assets/novel-standees/producer.png");
+  assert.equal(image.dataset.portraitFallbackUrl, "resolved:./assets/novel-standees/producer.png");
 });
 
 test("image error falls back once without saving or mutating library", () => {
@@ -170,7 +171,7 @@ test("image error falls back once without saving or mutating library", () => {
   const image = fakeImage();
   sandbox.api.applyResolvedPortraitToImage(image, sandbox.api.resolvePortraitForSpeaker("P"));
   assert.equal(sandbox.api.handlePortraitImageError(image, "P"), true);
-  assert.equal(image.src, "./assets/novel-standees/producer.png");
+  assert.equal(image.src, "resolved:./assets/novel-standees/producer.png");
   assert.equal(sandbox.portraitWardrobeState.invalidUrls.has("/user/files/custom.png"), true);
   assert.equal(sandbox.api.handlePortraitImageError(image, "P"), false);
   assert.equal(sandbox.saveCalls, 0);
@@ -188,7 +189,15 @@ test("expression preset image errors fall back to the normal portrait", () => {
     transform: { scale: 1, offsetX: 0, offsetY: 0 }
   });
   assert.equal(sandbox.api.handlePortraitImageError(image, "花海咲季(被夸陶醉)"), true);
-  assert.equal(image.src, "./assets/novel-standees/hanami-saki.png");
+  assert.equal(image.src, "resolved:./assets/novel-standees/hanami-saki.png");
+});
+
+test("built-in Asari portrait resolves through the host asset resolver before display", () => {
+  const sandbox = loadIntegration();
+  const image = fakeImage();
+  sandbox.api.applyResolvedPortraitToImage(image, sandbox.api.resolvePortraitForSpeaker("亚纱里老师"));
+  assert.equal(image.src, "resolved:./assets/novel-standees/asari-sensei.png");
+  assert.equal(image.dataset.portraitFallbackUrl, "resolved:./assets/novel-standees/asari-sensei.png");
 });
 
 test("expression presets ignore custom portrait transforms and fall back to the built-in standee", () => {
