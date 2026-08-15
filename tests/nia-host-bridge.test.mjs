@@ -70,6 +70,16 @@ test('N.I.A is a formal produce scenario and keeps the host page alive', () => {
   assert.match(appJs, /triggerNiaEntryTransition\(\(\) => startNiaOpeningStory\("确认前情并签署 N\.I\.A 合约"\)\)/);
 });
 
+test('host prompt dispatch appends route markers for conditional worldbook loading', () => {
+  assert.match(appJs, /function buildHatsuRouteMarkers\(options = \{\}\)/);
+  assert.match(appJs, /<HATSU_ROUTE>\$\{route\}<\/HATSU_ROUTE>/);
+  assert.match(appJs, /<HATSU_IDOL>\$\{idolCode\}<\/HATSU_IDOL>/);
+  assert.match(appJs, /<HATSU_PHASE>\$\{phase\}<\/HATSU_PHASE>/);
+  assert.match(appJs, /<HATSU_CONTEXT>\$\{route\}:\$\{idolCode\}:\$\{phase\}<\/HATSU_CONTEXT>/);
+  assert.match(appJs, /withNiaAffinityContext\(appendHatsuRouteMarkers\(rawPrompt, options\)\)/);
+  assert.match(appJs, /ownerKind\.includes\("nia_opening"\)/);
+});
+
 test('N.I.A opening has its own persisted lifecycle and primary API contract', () => {
   assert.match(appJs, /openingStatus:\s*"idle"/);
   assert.match(appJs, /openingStory:\s*""/);

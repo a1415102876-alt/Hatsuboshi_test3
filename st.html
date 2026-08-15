@@ -799,13 +799,19 @@
       const miniLiveCoreScript = document.createElement('script');
       miniLiveCoreScript.textContent = miniLiveCoreText + '\n//# sourceURL=' + abs('nia-mini-live-core.js');
       page.appendChild(miniLiveCoreScript);
-      const miniLiveApiRes = await fetch(abs('nia-mini-live-api.js'), { cache: 'no-store' });
-      if (!miniLiveApiRes.ok) throw new Error('HTTP ' + miniLiveApiRes.status);
-      const miniLiveApiText = await miniLiveApiRes.text();
-      if (!isJavaScriptResponse(miniLiveApiRes, miniLiveApiText)) throw new Error('response_not_javascript');
-      const miniLiveApiScript = document.createElement('script');
-      miniLiveApiScript.textContent = miniLiveApiText.replace(/export\s+/g, '') + '\n//# sourceURL=' + abs('nia-mini-live-api.js');
-      page.appendChild(miniLiveApiScript);
+      // index.html may already have loaded this file as an ES module. Never
+      // evaluate the same source a second time as a classic script.
+      if (!globalThis.HatsuNiaMiniLiveApi) {
+        const miniLiveApiRes = await fetch(abs('nia-mini-live-api.js'), { cache: 'no-store' });
+        if (!miniLiveApiRes.ok) throw new Error('HTTP ' + miniLiveApiRes.status);
+        const miniLiveApiText = await miniLiveApiRes.text();
+        if (!isJavaScriptResponse(miniLiveApiRes, miniLiveApiText)) throw new Error('response_not_javascript');
+        const miniLiveApiScript = document.createElement('script');
+        miniLiveApiScript.textContent = '(function () {\n'
+          + miniLiveApiText.replace(/export\s+/g, '')
+          + '\n})();\n//# sourceURL=' + abs('nia-mini-live-api.js');
+        page.appendChild(miniLiveApiScript);
+      }
     } catch (error) {
       console.warn('[Hatsu ST Loader] N.I.A mini live loading failed:', error);
     }
@@ -3380,28 +3386,71 @@
         if (window.parent && window.parent !== window) hostWindow = window.parent;
       } catch (e) {}
       try {
-        if (hostWindow.__HATSU_GENERATION_FETCH_TURN_FIX__) return;
-        const originalFetch = hostWindow.fetch;
-        if (typeof originalFetch !== 'function') return;
-        const wrappedFetch = function(input, init) {
-          try {
-            const url = typeof input === 'string' ? input : String(input?.url || '');
-            const body = init?.body;
-            if (/\/api\/backends\/chat-completions\/generate(?:\?|$)/.test(url) && typeof body === 'string') {
-              const payload = JSON.parse(body);
-              const changed = ensureTrailingTemporaryUserInGenerationSettings(payload);
-              if (changed) {
-                init = { ...init, body: JSON.stringify(payload) };
+        // The wrapper must be constructed in the host realm. Assigning a
+        // function created by this embedded frame to parent.fetch leaves the
+        // host with a dead callback after the frame is reloaded.
+        const HostFunction = hostWindow.Function;
+        if (typeof HostFunction !== 'function') return;
+        const createHostInstaller = HostFunction(`
+          return function installHatsuTrailingUserFetchFix() {
+            const stateKey = '__HATSU_GENERATION_FETCH_TURN_FIX_V2__';
+            const existing = globalThis[stateKey];
+            if (existing?.version === 2 && globalThis.fetch === existing.wrappedFetch) return;
+
+            const originalFetch = existing?.originalFetch || globalThis.fetch;
+            if (typeof originalFetch !== 'function') return;
+
+            const hasHatsuMarker = function(payload) {
+              try {
+                const text = JSON.stringify(payload);
+                return text.includes('<HATSU_ROUTE>')
+                  || text.includes('<HATSU_CONTEXT>')
+                  || text.includes('[HATSU_OUTPUT_MODE:');
+              } catch (error) {
+                return false;
               }
-            }
-          } catch (error) {
-            console.debug('[Hatsu ST] generation fetch turn fallback skipped:', error);
-          }
-          return originalFetch.call(this, input, init);
-        };
-        wrappedFetch.__HATSU_GENERATION_FETCH_TURN_FIX__ = true;
-        hostWindow.fetch = wrappedFetch;
-        hostWindow.__HATSU_GENERATION_FETCH_TURN_FIX__ = true;
+            };
+
+            const appendTrailingUser = function(payload) {
+              if (!payload || typeof payload !== 'object' || !hasHatsuMarker(payload)) return false;
+              const candidates = [
+                payload.chat,
+                payload.messages,
+                payload.generate_data?.messages
+              ];
+              let changed = false;
+              for (const messages of candidates) {
+                if (!Array.isArray(messages) || messages.length === 0) continue;
+                const lastMessage = messages[messages.length - 1];
+                if (lastMessage?.role === 'user') continue;
+                messages.push({ role: 'user', content: '\\n', name: 'hatsu-trailing-turn' });
+                changed = true;
+              }
+              return changed;
+            };
+
+            const wrappedFetch = function(input, init) {
+              let nextInit = init;
+              try {
+                const url = typeof input === 'string' ? input : String(input?.url || '');
+                const body = init?.body;
+                if (/\\/api\\/backends\\/chat-completions\\/generate(?:\\?|$)/.test(url) && typeof body === 'string') {
+                  const payload = JSON.parse(body);
+                  if (appendTrailingUser(payload)) {
+                    nextInit = { ...init, body: JSON.stringify(payload) };
+                  }
+                }
+              } catch (error) {
+                console.debug('[Hatsu ST] generation fetch turn fallback skipped:', error);
+              }
+              return Reflect.apply(originalFetch, globalThis, [input, nextInit]);
+            };
+
+            globalThis[stateKey] = { version: 2, originalFetch, wrappedFetch };
+            globalThis.fetch = wrappedFetch;
+          };
+        `);
+        createHostInstaller()();
       } catch (error) {
         console.warn('[Hatsu ST] unable to install generation fetch fallback:', error);
       }

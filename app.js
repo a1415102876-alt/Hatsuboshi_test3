@@ -30,7 +30,7 @@
   const idols = {
     "藤田琴音": {
       tag: "皮卡丘 / 薯鸡",
-      bio: "梦想成为「能赚钱的偶像」的贪心的女孩。把偶像视为逆转人生的手段。成绩不好，自我评价也不高，但对自己可爱的外表很有自信。不擅长应对不知为何总对自己有过高评价的学生会长星南。",
+      bio: "目标是成为「赚大钱的偶像」的开心果。从初中部内部直升高中。富有舞蹈天赋。无论是学园评价以及自我评价都不高。但实际观察后认为评价有失偏颇。因为同时打很多份工，她似乎长期处于疲劳状态。",
       theme: "#FAD356",
       background: "./assets/idols/fujita-kotone.png",
       avatar: "./assets/avatars/fujita-kotone.png",
@@ -18655,6 +18655,39 @@ ${buildChoiceOnlyExample(true)}`;
     return sent;
   }
 
+  function buildHatsuRouteMarkers(options = {}) {
+    options = options && typeof options === "object" ? options : {};
+    const isNia = state.produceScenario === "nia"
+      || state.launchMode === "nia"
+      || state.nia?.mode === "nia";
+    const route = isNia ? "NIA" : state.produceScenario === "hatsu" ? "HATSU" : "OTHER";
+    const idolName = canonicalIdolName(state.idol || selectedIdol || "");
+    const idolCode = affinityIdolCodes[idolName] || "UNKNOWN";
+    const ownerKind = String(options.ownerKind || "").toLowerCase();
+    let phase = route === "NIA" ? "SCHEDULE" : "GENERAL";
+    if (ownerKind === "opening") phase = "OPENING";
+    else if (ownerKind.includes("nia_opening")) phase = "OPENING";
+    else if (ownerKind.includes("audition")) phase = "AUDITION";
+    else if (ownerKind.includes("business") || ownerKind.includes("live") || ownerKind.includes("radio") || ownerKind.includes("tv")) phase = "BUSINESS";
+    else if (ownerKind.includes("bond") || ownerKind.includes("affinity") || ownerKind.includes("milestone")) phase = "BOND";
+    else if (ownerKind.includes("evening") || ownerKind.includes("apartment")) phase = "EVENING";
+    else if (ownerKind.includes("phone")) phase = "PHONE";
+    return [
+      "[HATSU_ROUTE_CONTEXT]",
+      `<HATSU_ROUTE>${route}</HATSU_ROUTE>`,
+      `<HATSU_IDOL>${idolCode}</HATSU_IDOL>`,
+      `<HATSU_PHASE>${phase}</HATSU_PHASE>`,
+      `<HATSU_CONTEXT>${route}:${idolCode}:${phase}</HATSU_CONTEXT>`,
+      "[/HATSU_ROUTE_CONTEXT]"
+    ].join("\n");
+  }
+
+  function appendHatsuRouteMarkers(promptText, options = {}) {
+    const prompt = String(promptText || "");
+    if (prompt.includes("<HATSU_ROUTE>") && prompt.includes("<HATSU_IDOL>")) return prompt;
+    return `${prompt}\n\n${buildHatsuRouteMarkers(options)}`;
+  }
+
   function resetBroadcastPendingState() {
     if (state.freeMode?.world?.broadcast) {
       state.freeMode.world.broadcast.pendingRequestId = "";
@@ -18673,7 +18706,7 @@ ${buildChoiceOnlyExample(true)}`;
     }
     const rawPrompt = promptText || state.lastPrompt || document.getElementById("promptText").value || "";
     ensureNiaInheritedAffinity();
-    const prompt = withNiaAffinityContext(rawPrompt);
+    const prompt = withNiaAffinityContext(appendHatsuRouteMarkers(rawPrompt, options));
     if (!prompt.trim()) {
       releasePreparedLease("empty_prompt");
       return false;
@@ -25302,6 +25335,7 @@ ${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到
   function loadNiaMiniLiveApi() {
     const loaded = globalThis.HatsuNiaMiniLiveApi;
     if (loaded?.buildNiaMiniLivePrompt && loaded?.parseNiaMiniLivePayload) return Promise.resolve(loaded);
+    if (globalThis.__HATSU_NIA_MINI_LIVE_API_LOAD__) return globalThis.__HATSU_NIA_MINI_LIVE_API_LOAD__;
     if (niaMiniLiveApiLoadPromise) return niaMiniLiveApiLoadPromise;
     let moduleUrl = "";
     try {
@@ -25330,7 +25364,9 @@ ${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到
       })
       .finally(() => {
         niaMiniLiveApiLoadPromise = null;
+        delete globalThis.__HATSU_NIA_MINI_LIVE_API_LOAD__;
       });
+    globalThis.__HATSU_NIA_MINI_LIVE_API_LOAD__ = niaMiniLiveApiLoadPromise;
     return niaMiniLiveApiLoadPromise;
   }
 

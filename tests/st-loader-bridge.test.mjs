@@ -138,6 +138,56 @@ test("st.html appends a temporary user turn without changing the final system mi
   assert.equal(nonFinalMirror[0].role, "system");
 });
 
+test("generation fetch fallback lives in the host realm and only changes Hatsuboshi payloads", async () => {
+  const calls = [];
+  const hostRealm = vm.createContext({
+    console,
+    fetch: async (input, init) => {
+      calls.push({ input, init });
+      return { ok: true };
+    }
+  });
+  hostRealm.Function = vm.runInContext("Function", hostRealm);
+  const embeddedWindow = { parent: hostRealm };
+  const install = new Function(
+    "window",
+    "console",
+    `${readFunction("installHatsuGenerationFetchFallback")}; return installHatsuGenerationFetchFallback;`
+  )(embeddedWindow, console);
+
+  install();
+  assert.equal(typeof hostRealm.__HATSU_GENERATION_FETCH_TURN_FIX_V2__?.wrappedFetch, "function");
+  assert.equal(hostRealm.fetch, hostRealm.__HATSU_GENERATION_FETCH_TURN_FIX_V2__.wrappedFetch);
+
+  await hostRealm.fetch("/api/settings/save", {
+    method: "POST",
+    body: JSON.stringify({ messages: [{ role: "system", content: "ordinary settings" }] })
+  });
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body).messages, [
+    { role: "system", content: "ordinary settings" }
+  ]);
+
+  await hostRealm.fetch("/api/backends/chat-completions/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      messages: [
+        { role: "user", content: "NIA prompt <HATSU_ROUTE>nia</HATSU_ROUTE>" },
+        { role: "system", content: "<latest_human_message>NIA prompt</latest_human_message>" }
+      ]
+    })
+  });
+  assert.deepEqual(JSON.parse(calls.at(-1).init.body).messages.at(-1), {
+    role: "user",
+    content: "\n",
+    name: "hatsu-trailing-turn"
+  });
+
+  const firstWrapper = hostRealm.fetch;
+  install();
+  assert.equal(hostRealm.fetch, firstWrapper);
+  assert.doesNotMatch(readFunction("installHatsuGenerationFetchFallback"), /hostWindow\.fetch\s*=/);
+});
+
 test("st.html removes only the earlier copy of the current transactional user prompt", () => {
   const fn = new Function(
     `${readFunction("getChatCompletionMessageText")}
