@@ -338,6 +338,12 @@ function buildKotoneEpisodePrompt(source, runtime, eventId) {
     'nia-kotone-fans-5000-followup': {
       episode: 13,
       timing: '第 12 话结束后连续播放',
+      continuity: [
+        '琴音在本话所说的“战胜十王星南、成为一等星”，指向未来的 H.I.F 舞台，不是当前进行中的 N.I.A。',
+        '当前 N.I.A 是琴音快速成长、积累名气，并为未来挑战星南做准备的阶段。',
+        '本话只确立琴音未来在 H.I.F 挑战星南的目标，不展开 H.I.F 的赛制、日程、参赛流程或结局。',
+        '不得把星南写成当前 N.I.A 的最终对手，也不得声称琴音会在本次 N.I.A 直接击败星南。'
+      ],
       beats: [
         '紧接第 12 话制作人宣布长期出差的结尾。琴音向星南追问出差内幕；星南先坚持让琴音改口直呼“星南”，琴音从“星南会长”退到“星南前辈”，形成轻快的称呼拉锯。',
         '星南故意回答“秘密”，又提醒琴音制作人自己也说过暂时开不了口。琴音被吊足胃口而大声抗议。',
@@ -429,6 +435,9 @@ function buildKotoneEpisodePrompt(source, runtime, eventId) {
     `当前 N.I.A 粉丝数：${Math.max(0, Math.floor(Number(source.fans ?? runtime.triggeredAtFans) || 0))}`,
     `担当偶像：${text(source.idolName, 80) || '藤田琴音'}`,
     `制作人资料：${JSON.stringify(object(source.producer))}`,
+    ...(Array.isArray(detail.continuity) && detail.continuity.length
+      ? [`时间轴与舞台校准：\n${detail.continuity.map((item, index) => `${index + 1}. ${item}`).join('\n')}`]
+      : []),
     `这是固定剧情的自然改写，必须保留以下剧情锚点：\n${detail.beats.map((beat, index) => `${index + 1}. ${beat}`).join('\n')}`,
     '不得增加好感度、粉丝、属性，不推进日期、时段或行动，不提前开始下一轮或改写已经结算的试镜结果。',
     '藤田琴音的 speaker 使用“藤田琴音(功能词)”；其他角色遵守各自世界书中的立绘情绪标记规则，不在本提示词中另作限制；制作人写“制作人”。',

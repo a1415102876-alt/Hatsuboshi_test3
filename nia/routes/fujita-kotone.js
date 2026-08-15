@@ -42,15 +42,27 @@
         stageName: "第二轮试镜 · QUARTET",
         isFinale: false,
         opponents: [
-          { id: "nia-round2-nadeshiko", name: "蓝井抚子", avatar: "" },
-          { id: "nia-round2-shion", name: "白草四音", avatar: "" }
+          {
+            id: "nia-round2-nadeshiko",
+            name: "蓝井抚子",
+            avatar: "./assets/avatars/aoi-nadeshiko.png"
+          },
+          {
+            id: "nia-round2-shion",
+            name: "白草四音",
+            avatar: "./assets/avatars/shirakusa-shion.png"
+          }
         ]
       },
       {
         round: 3,
         stageName: "FINALE",
         isFinale: true,
-        opponent: { id: "nia-finale-tsukika", name: "白草月花", avatar: "" }
+        opponent: {
+          id: "nia-finale-tsukika",
+          name: "白草月花",
+          avatar: "./assets/avatars/shirakusa-tsukika.png"
+        }
       }
     ],
     episodes: [

@@ -35,7 +35,13 @@ test("Kotone route registers inherited affinity, QUARTET opponents, and episode 
   assert.equal(route.routeId, "fujita-kotone");
   assert.equal(route.inheritedAffinity.tag, "AFF_KOTONE_100");
   assert.equal(route.inheritedAffinity.value, 100);
-  assert.deepEqual([...route.rounds.find((entry) => entry.round === 2).opponents].map((entry) => String(entry.name)), ["蓝井抚子", "白草四音"]);
+  const quartetOpponents = [...route.rounds.find((entry) => entry.round === 2).opponents];
+  assert.deepEqual(quartetOpponents.map((entry) => String(entry.name)), ["蓝井抚子", "白草四音"]);
+  assert.deepEqual(quartetOpponents.map((entry) => String(entry.avatar)), [
+    "./assets/avatars/aoi-nadeshiko.png",
+    "./assets/avatars/shirakusa-shion.png"
+  ]);
+  assert.equal(route.rounds.find((entry) => entry.round === 3).opponent.avatar, "./assets/avatars/shirakusa-tsukika.png");
   assert.deepEqual(Array.from(routes.getEpisodes("藤田琴音"), (entry) => entry.episode), [12, 13, 14, 15, 16, 17, 18, 19, 20]);
   assert.equal(route.opening.episode, 11);
 });

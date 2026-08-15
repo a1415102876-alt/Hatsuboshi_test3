@@ -155,6 +155,25 @@ test("Rinha speaker names share the supplied built-in standee", () => {
   assert.equal(sandbox.api.resolvePortraitForSpeaker("姬崎莉波").url, "");
 });
 
+test("Tsukika has supplied audition avatar and VN standee assets", () => {
+  assert.match(appSource, /"白草月花": "\.\/assets\/novel-standees\/shirakusa-tsukika\.png"/);
+  assert.match(appSource, /"月花": "白草月花"/);
+  assert.equal(existsSync(new URL("../assets/novel-standees/shirakusa-tsukika.png", import.meta.url)), true);
+  assert.equal(existsSync(new URL("../assets/avatars/shirakusa-tsukika.png", import.meta.url)), true);
+});
+
+test("QUARTET opponents have supplied audition avatars and VN standees", () => {
+  for (const [name, alias, file] of [
+    ["白草四音", "四音", "shirakusa-shion.png"],
+    ["蓝井抚子", "抚子", "aoi-nadeshiko.png"]
+  ]) {
+    assert.match(appSource, new RegExp(`"${name}": "\\.\\/assets\\/novel-standees\\/${file.replace(".", "\\.")}"`));
+    assert.match(appSource, new RegExp(`"${alias}": "${name}"`));
+    assert.equal(existsSync(new URL(`../assets/novel-standees/${file}`, import.meta.url)), true);
+    assert.equal(existsSync(new URL(`../assets/avatars/${file}`, import.meta.url)), true);
+  }
+});
+
 test("resolved portrait applies source transform and fallback metadata", () => {
   const sandbox = loadIntegration();
   const image = fakeImage();

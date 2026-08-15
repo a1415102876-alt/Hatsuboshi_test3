@@ -297,13 +297,19 @@
     "亚纱里老师": "./assets/novel-standees/asari-sensei.png",
     "冰渡香名江": "./assets/novel-standees/Hiwatari-Kanae.png",
     "真诚优": "./assets/novel-standees/mashiro-yu.png",
-  "贺阳燐羽": "./assets/novel-standees/kaya-rinha.png"
+    "贺阳燐羽": "./assets/novel-standees/kaya-rinha.png",
+    "白草月花": "./assets/novel-standees/shirakusa-tsukika.png",
+    "白草四音": "./assets/novel-standees/shirakusa-shion.png",
+    "蓝井抚子": "./assets/novel-standees/aoi-nadeshiko.png"
   };
   const vnSpeakerAliases = {
     "亚纱里": "亚纱里老师",
     "根绪亚纱里": "亚纱里老师",
     "优": "真诚优",
     "优前辈": "真诚优",
+    "月花": "白草月花",
+    "四音": "白草四音",
+    "抚子": "蓝井抚子",
     "Mashiro Yu": "真诚优",
     "燐羽": "贺阳燐羽",
     "贺阳": "贺阳燐羽"
