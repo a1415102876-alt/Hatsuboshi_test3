@@ -1176,10 +1176,17 @@
             hiddenFloorRange = null;
             adjustMessageVisibility();
           });
-          if (eventTypes.CHAT_COMPLETION_PROMPT_READY) {
-            eventSource.on(eventTypes.CHAT_COMPLETION_PROMPT_READY, pruneHatsuChatCompletionPayload);
+          const promptReadyEvent = eventTypes.CHAT_COMPLETION_PROMPT_READY || 'chat_completion_prompt_ready';
+          if (promptReadyEvent) {
+            eventSource.on(promptReadyEvent, pruneHatsuChatCompletionPayload);
+          }
+          const settingsReadyEvent = eventTypes.CHAT_COMPLETION_SETTINGS_READY || 'chat_completion_settings_ready';
+          if (settingsReadyEvent) {
+            eventSource.on(settingsReadyEvent, ensureTrailingTemporaryUserInGenerationSettings);
           }
         }
+
+        installHatsuGenerationFetchFallback();
 
         updateInPageHatsuClass();
         bindChatDomObserver();
@@ -3340,8 +3347,73 @@
       return content.includes('初星育成系统') || content.includes('【初星学园 Galgame 渲染规则契约】');
     }
 
+    function ensureTrailingTemporaryUserTurn(chat) {
+      if (!Array.isArray(chat) || chat.length === 0) return false;
+      const lastIndex = chat.length - 1;
+      const lastMessage = chat[lastIndex];
+      if (!lastMessage || lastMessage.role === 'user') return false;
+      chat.push({
+        role: 'user',
+        content: '\n',
+        name: 'hatsu-trailing-turn'
+      });
+      return true;
+    }
+
+    function ensureTrailingTemporaryUserInGenerationSettings(eventData) {
+      if (!eventData || typeof eventData !== 'object') return false;
+      const candidates = [
+        eventData.chat,
+        eventData.messages,
+        eventData.generate_data?.messages
+      ];
+      let changed = false;
+      for (const messages of candidates) {
+        if (Array.isArray(messages)) changed = ensureTrailingTemporaryUserTurn(messages) || changed;
+      }
+      return changed;
+    }
+
+    function installHatsuGenerationFetchFallback() {
+      let hostWindow = window;
+      try {
+        if (window.parent && window.parent !== window) hostWindow = window.parent;
+      } catch (e) {}
+      try {
+        if (hostWindow.__HATSU_GENERATION_FETCH_TURN_FIX__) return;
+        const originalFetch = hostWindow.fetch;
+        if (typeof originalFetch !== 'function') return;
+        const wrappedFetch = function(input, init) {
+          try {
+            const url = typeof input === 'string' ? input : String(input?.url || '');
+            const body = init?.body;
+            if (/\/api\/backends\/chat-completions\/generate(?:\?|$)/.test(url) && typeof body === 'string') {
+              const payload = JSON.parse(body);
+              const changed = ensureTrailingTemporaryUserInGenerationSettings(payload);
+              if (changed) {
+                init = { ...init, body: JSON.stringify(payload) };
+              }
+            }
+          } catch (error) {
+            console.debug('[Hatsu ST] generation fetch turn fallback skipped:', error);
+          }
+          return originalFetch.call(this, input, init);
+        };
+        wrappedFetch.__HATSU_GENERATION_FETCH_TURN_FIX__ = true;
+        hostWindow.fetch = wrappedFetch;
+        hostWindow.__HATSU_GENERATION_FETCH_TURN_FIX__ = true;
+      } catch (error) {
+        console.warn('[Hatsu ST] unable to install generation fetch fallback:', error);
+      }
+    }
+
     function pruneHatsuChatCompletionPayload(eventData) {
-      if (!eventData || eventData.dryRun || !Array.isArray(eventData.chat)) return;
+      if (!eventData || !Array.isArray(eventData.chat)) return;
+      // This mirror exists specifically to satisfy providers that require a
+      // user turn at the end. Do this before character/context checks: fixed
+      // stage embeds can expose an incomplete context while the payload is
+      // already fully assembled.
+      ensureTrailingTemporaryUserTurn(eventData.chat);
       removeCurrentTransactionalDuplicateUserPrompt(eventData.chat, pendingRequestId);
       const contextInfo = getCurrentContextInfo();
       const characterName = contextInfo.character?.name || '';
@@ -3357,6 +3429,7 @@
         return !isHatsuFrontendPromptMessage(message) || index === lastHatsuUserPromptIndex;
       });
       eventData.chat.splice(0, eventData.chat.length, ...filtered);
+      ensureTrailingTemporaryUserTurn(eventData.chat);
     }
 
     function resolveReplyAck(data, activeRequestId) {

@@ -94,6 +94,48 @@ test("st.html removes older Hatsuboshi user prompt floors from chat completion p
   assert.match(stSource, /isHatsuFrontendPromptMessage/);
   assert.match(stSource, /lastHatsuUserPromptIndex/);
   assert.match(stSource, /eventData\.chat\.splice\(0, eventData\.chat\.length, \.\.\.filtered\)/);
+  assert.match(stSource, /ensureTrailingTemporaryUserTurn\(eventData\.chat\)/);
+});
+
+test("st.html appends a temporary user turn without changing the final system mirror", () => {
+  const fn = new Function(
+    `${readFunction("ensureTrailingTemporaryUserTurn")}; return ensureTrailingTemporaryUserTurn;`
+  )();
+  const chat = [
+    { role: "user", content: "real frontend prompt" },
+    { role: "assistant", content: "assistant prefill" },
+    {
+      role: "system",
+      content: "<latest_human_message>real frontend prompt</latest_human_message>",
+      name: "preset-tail"
+    }
+  ];
+
+  assert.equal(fn(chat), true);
+  assert.equal(chat.length, 4);
+  assert.equal(chat[2].role, "system");
+  assert.deepEqual(chat[2], {
+    role: "system",
+    content: "<latest_human_message>real frontend prompt</latest_human_message>",
+    name: "preset-tail"
+  });
+  assert.deepEqual(chat[3], {
+    role: "user",
+    content: "\n",
+    name: "hatsu-trailing-turn"
+  });
+
+  const unrelatedTail = [{ role: "system", content: "<角色校准>保持人设</角色校准>" }];
+  assert.equal(fn(unrelatedTail), true);
+  assert.equal(unrelatedTail[0].role, "system");
+
+  const nonFinalMirror = [
+    { role: "system", content: "<latest_human_message>old</latest_human_message>" },
+    { role: "assistant", content: "model prefill" }
+  ];
+  assert.equal(fn(nonFinalMirror), true);
+  assert.equal(nonFinalMirror.length, 3);
+  assert.equal(nonFinalMirror[0].role, "system");
 });
 
 test("st.html removes only the earlier copy of the current transactional user prompt", () => {
