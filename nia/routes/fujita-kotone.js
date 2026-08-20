@@ -10,7 +10,8 @@
     idolName: "藤田琴音",
     status: "available",
     assets: {
-      avatar: "./assets/avatars/fujita-kotone.png"
+      avatar: "./assets/avatars/fujita-kotone.png",
+      finaleVideo: "assets/campusmode/Fujita-Kotone-Campusmode.mp4"
     },
     draftDefaults: {
       goal: "让更多观众认识藤田琴音，并把她从星南的粉丝推向能够与星南竞争的一等星。",
@@ -42,15 +43,27 @@
         stageName: "第二轮试镜 · QUARTET",
         isFinale: false,
         opponents: [
-          { id: "nia-round2-nadeshiko", name: "蓝井抚子", avatar: "" },
-          { id: "nia-round2-shion", name: "白草四音", avatar: "" }
+          {
+            id: "nia-round2-nadeshiko",
+            name: "蓝井抚子",
+            avatar: "./assets/avatars/aoi-nadeshiko.png"
+          },
+          {
+            id: "nia-round2-shion",
+            name: "白草四音",
+            avatar: "./assets/avatars/shirakusa-shion.png"
+          }
         ]
       },
       {
         round: 3,
         stageName: "FINALE",
         isFinale: true,
-        opponent: { id: "nia-finale-tsukika", name: "白草月花", avatar: "" }
+        opponent: {
+          id: "nia-finale-tsukika",
+          name: "白草月花",
+          avatar: "./assets/avatars/shirakusa-tsukika.png"
+        }
       }
     ],
     episodes: [

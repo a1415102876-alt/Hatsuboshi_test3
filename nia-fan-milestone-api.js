@@ -38,6 +38,40 @@ function hasOnlyVnTags(story) {
   return !remainder;
 }
 
+function buildRouteAnchorsEpisodePrompt(source, runtime, eventId) {
+  const route = object(source.route);
+  const episode = Array.isArray(route.episodes)
+    ? route.episodes.find((entry) => String(entry?.eventId || '') === eventId)
+    : null;
+  const anchors = Array.isArray(episode?.promptAnchors) ? episode.promptAnchors.filter(Boolean) : [];
+  const idolName = text(source.idolName, 80) || text(route.idolName, 80) || '担当偶像';
+  const shape = {
+    schemaVersion: 1,
+    eventId,
+    story: '<narration>...</narration><dialogue char="角色名">“...”</dialogue>'
+  };
+  return [
+    '[HATSU_OUTPUT_MODE:NIA_FAN_MILESTONE_EVENT]',
+    `生成${idolName}在 N.I.A 育成期间的第 ${Number(episode?.episode) || 12} 话固定剧情。`,
+    `事件 ID：${eventId}`,
+    `当前 N.I.A 粉丝数：${Math.max(0, Math.floor(Number(source.fans ?? runtime.triggeredAtFans) || 0))}`,
+    `担当偶像：${idolName}`,
+    `制作人资料：${JSON.stringify(object(source.producer))}`,
+    '这是固定剧情的自然改写，只承担关系与成长叙事，不增加好感度、粉丝、属性，不推进日期、时段、行动或营业结算。',
+    '必须依次自然完成以下剧情锚点：',
+    ...anchors.map((anchor, index) => `${index + 1}. ${anchor}`),
+    '允许补充自然的场景、动作、心理和对白，但不得改变锚点顺序、人物关系、比赛阶段或结论。',
+    '不得把 H.I.F 写成当前 N.I.A 的同一赛事；若锚点提到 H.I.F，只能作为后续目标或背景。',
+    '遵守当前角色卡和世界书中的 speaker、立绘功能词与姓名规则；不要自行发明功能词。',
+    'story 内只能连续使用 <dialogue char="角色名">台词</dialogue> 与 <narration>旁白</narration>。',
+    '不要输出选项、自由输入、Markdown、解释、思考文本、普通剧情外壳或数据库操作。',
+    '只输出最后一个完整 JSON 标签块：',
+    '<NIA_FAN_MILESTONE_EVENT>',
+    JSON.stringify(shape),
+    '</NIA_FAN_MILESTONE_EVENT>'
+  ].join('\n');
+}
+
 function buildSakiEpisode13Prompt(source, runtime, eventId) {
   const shape = {
     schemaVersion: 1,
@@ -338,11 +372,25 @@ function buildKotoneEpisodePrompt(source, runtime, eventId) {
     'nia-kotone-fans-5000-followup': {
       episode: 13,
       timing: '第 12 话结束后连续播放',
+      continuity: [
+        '琴音在本话所说的“战胜十王星南、成为一等星”，指向未来的 H.I.F 舞台，不是当前进行中的 N.I.A。',
+        '当前 N.I.A 是琴音快速成长、积累名气，并为未来挑战星南做准备的阶段。',
+        '本话只确立琴音未来在 H.I.F 挑战星南的目标，不展开 H.I.F 的赛制、日程、参赛流程或结局。',
+        '不得把星南写成当前 N.I.A 的最终对手，也不得声称琴音会在本次 N.I.A 直接击败星南。'
+      ],
       beats: [
-        '琴音向星南坦白自己从小就是星南的忠实粉丝。',
-        '她承认憧憬星南，却不愿永远停在仰望的位置。',
-        '琴音正式宣言要击败星南，成为真正的一等星。',
-        '星南接受这份挑战，琴音的 N.I.A 最终目标被明确下来。'
+        '紧接第 12 话制作人宣布长期出差的结尾。琴音向星南追问出差内幕；星南先坚持让琴音改口直呼“星南”，琴音从“星南会长”退到“星南前辈”，形成轻快的称呼拉锯。',
+        '星南故意回答“秘密”，又提醒琴音制作人自己也说过暂时开不了口。琴音被吊足胃口而大声抗议。',
+        '星南评价琴音的制作人很不一般，并提起自己曾想挖走琴音，却与制作人进行了一场“谁更能给予藤田琴音爱与指引”的较量后放弃。琴音吐槽两人在自己不知道的地方进行了可怕的比试，也不断打断星南继续炫耀培养计划。',
+        '琴音随即得意地强调，究竟制作人有多厉害，自己才是最清楚的人。星南因此劝她相信制作人并耐心等待；琴音收起抱怨，明确答应。',
+        '星南转而询问琴音如何看待制作人的 N.I.A 安排。制作人的计划被重新确认：让琴音通过 N.I.A 快速成长，把“一等星”收入囊中、打出名声，并赚到下半学期的学费。琴音因这份过于宏大的公开目标而慌张。',
+        '星南认真承认琴音是自己心中“一等星”的头号继承候补，拥有出色才能和世界第一的可爱；她愿意为了琴音的成长全力协助，但今年的胜利绝不会让出，今年的初星学园仍要由十王星南背负。',
+        '星南质疑制作人的路线：现在的琴音赢不了自己，夏天只靠避开星南、击败其他对手来提高名气并非上策。制作人承认风险，却断言琴音的成长速度足以带来胜算，要让一年级的琴音夺下“一等星”并走向顶尖偶像。',
+        '琴音先被吓到，害羞吐槽制作人又因为太喜欢自己而影响判断；星南也因这份豪言受到冲击。琴音随后表明自己已经决定相信制作人。',
+        '星南直接逼她把目标说出口：试着战胜十王星南。琴音不是认为自己绝对赢不了，而是在本人面前说这件事太沉重、太难为情。',
+        '琴音终于坦白自己是星南从童年电视舞蹈时期起的老粉丝：星南中学时代那些不起眼的工作、高中后的迅速成长、击败强敌登上一等星的全过程，她一直都看在眼里；在星南真正登顶以前，星南就已经是她心中的一等星。',
+        '正因为这份长年憧憬，琴音反复承认挑战宣言沉重得令她害怕，却仍正式宣言要击败星南、成为真正的一等星。',
+        '星南被琴音的经历、偶像目标与这份沉重感触动，意识到不能把对决拖到自己毕业后的明年；她接受琴音当下的挑战，承诺拿出全部实力，并要求琴音亲手实现制作人的豪言。琴音响亮答应，以两人正式成为竞争对手收尾。'
       ]
     },
     'nia-kotone-round2-audition-eve': {
@@ -421,6 +469,9 @@ function buildKotoneEpisodePrompt(source, runtime, eventId) {
     `当前 N.I.A 粉丝数：${Math.max(0, Math.floor(Number(source.fans ?? runtime.triggeredAtFans) || 0))}`,
     `担当偶像：${text(source.idolName, 80) || '藤田琴音'}`,
     `制作人资料：${JSON.stringify(object(source.producer))}`,
+    ...(Array.isArray(detail.continuity) && detail.continuity.length
+      ? [`时间轴与舞台校准：\n${detail.continuity.map((item, index) => `${index + 1}. ${item}`).join('\n')}`]
+      : []),
     `这是固定剧情的自然改写，必须保留以下剧情锚点：\n${detail.beats.map((beat, index) => `${index + 1}. ${beat}`).join('\n')}`,
     '不得增加好感度、粉丝、属性，不推进日期、时段或行动，不提前开始下一轮或改写已经结算的试镜结果。',
     '藤田琴音的 speaker 使用“藤田琴音(功能词)”；其他角色遵守各自世界书中的立绘情绪标记规则，不在本提示词中另作限制；制作人写“制作人”。',
@@ -435,6 +486,9 @@ function buildKotoneEpisodePrompt(source, runtime, eventId) {
 export function buildNiaFanMilestonePrompt(context = {}, runtime = {}) {
   const source = object(context);
   const eventId = text(source.eventId || runtime.eventId, 160) || 'nia-saki-fans-5000';
+  if (source.route?.promptProvider === 'route-anchors' && Array.isArray(source.route?.episodes)) {
+    return buildRouteAnchorsEpisodePrompt(source, runtime, eventId);
+  }
   if (text(source.idolName, 80) === '藤田琴音' || eventId.startsWith('nia-kotone-')) {
     return buildKotoneEpisodePrompt(source, runtime, eventId);
   }

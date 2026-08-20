@@ -38,7 +38,9 @@ test('fan milestone unlocked by audition rewards waits until the recap is comple
 });
 
 test('FINALE recap plays the dedicated post-show live before episodes 19 and 20', () => {
-  assert.match(app, /const NIA_FINALE_LIVE_VIDEO = `\$\{VIDEO_CDN\}\/assets\/campusmode\/Hanami-Saki-Campusmode\.mp4`/);
+  assert.match(app, /getCurrentNiaRoute\(\)\?\.assets\?\.finaleVideo/);
+  assert.match(app, /savedUrl/);
+  assert.match(app, /if \(!videoUrl\) return false/);
 
   const completeStart = app.indexOf('function completeNiaPostAuditionAfterPlayback()');
   const completeEnd = app.indexOf('function retryNiaAuditionSegment()', completeStart);
@@ -50,12 +52,18 @@ test('FINALE recap plays the dedicated post-show live before episodes 19 and 20'
   const startLiveEnd = app.indexOf('function resumeNiaFinaleLiveIfNeeded()', startLiveStart);
   const startLiveBody = app.slice(startLiveStart, startLiveEnd);
   assert.match(startLiveBody, /Number\(nia\.round\) < 3/);
-  assert.match(startLiveBody, /playLiveVideo\(NIA_FINALE_LIVE_VIDEO, completeNiaFinaleLive\)/);
+  assert.match(startLiveBody, /playLiveVideo\(videoUrl, completeNiaFinaleLive\)/);
 
   const completeLiveStart = app.indexOf('function completeNiaFinaleLive()');
   const completeLiveEnd = app.indexOf('function startNiaFinaleLive()', completeLiveStart);
   const completeLiveBody = app.slice(completeLiveStart, completeLiveEnd);
   assert.ok(completeLiveBody.indexOf('saveState("nia.finale_live.completed")') < completeLiveBody.indexOf('reconcileNiaFanMilestoneAfterSettlement()'));
+});
+
+test('saved finale video URL is preferred and missing route video skips playback', () => {
+  assert.match(app, /const savedUrl = cleanText\(nia\.finaleLive\?\.videoUrl, ""\)/);
+  assert.match(app, /finale_live\.skipped/);
+  assert.match(app, /playLiveVideo\(videoUrl, completeNiaFinaleLive\)/);
 });
 
 test('an interrupted FINALE live resumes before milestone stories', () => {

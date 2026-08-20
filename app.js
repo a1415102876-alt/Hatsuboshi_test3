@@ -30,7 +30,7 @@
   const idols = {
     "藤田琴音": {
       tag: "皮卡丘 / 薯鸡",
-      bio: "梦想成为「能赚钱的偶像」的贪心的女孩。把偶像视为逆转人生的手段。成绩不好，自我评价也不高，但对自己可爱的外表很有自信。不擅长应对不知为何总对自己有过高评价的学生会长星南。",
+      bio: "目标是成为「赚大钱的偶像」的开心果。从初中部内部直升高中。富有舞蹈天赋。无论是学园评价以及自我评价都不高。但实际观察后认为评价有失偏颇。因为同时打很多份工，她似乎长期处于疲劳状态。",
       theme: "#FAD356",
       background: "./assets/idols/fujita-kotone.png",
       avatar: "./assets/avatars/fujita-kotone.png",
@@ -297,13 +297,19 @@
     "亚纱里老师": "./assets/novel-standees/asari-sensei.png",
     "冰渡香名江": "./assets/novel-standees/Hiwatari-Kanae.png",
     "真诚优": "./assets/novel-standees/mashiro-yu.png",
-  "贺阳燐羽": "./assets/novel-standees/kaya-rinha.png"
+    "贺阳燐羽": "./assets/novel-standees/kaya-rinha.png",
+    "白草月花": "./assets/novel-standees/shirakusa-tsukika.png",
+    "白草四音": "./assets/novel-standees/shirakusa-shion.png",
+    "蓝井抚子": "./assets/novel-standees/aoi-nadeshiko.png"
   };
   const vnSpeakerAliases = {
     "亚纱里": "亚纱里老师",
     "根绪亚纱里": "亚纱里老师",
     "优": "真诚优",
     "优前辈": "真诚优",
+    "月花": "白草月花",
+    "四音": "白草四音",
+    "抚子": "蓝井抚子",
     "Mashiro Yu": "真诚优",
     "燐羽": "贺阳燐羽",
     "贺阳": "贺阳燐羽"
@@ -11485,7 +11491,7 @@ ${anchors.map((anchor, index) => `${index + 1}. ${anchor}`).join("\n")}
 叙事要求：
 - 可以补充场景、动作、心理与制作人的反应，但不能改变上述事件顺序。
 - 不要提前描写选拔结果或 FINALE 胜负，不要写已经开始营业或训练。
-- 让咲季主动理解并接受目标，不要把她写成只听制作人说明的被动角色。
+- 让${state.idol || route?.idolName || "担当偶像"}主动理解并接受目标，不要把她写成只听制作人说明的被动角色。
 - 一次完整写完，自然收束，不要生成选项，不要写“待续”。
 
 ${outputContract("请写 1000 字以内的 N.I.A 开场剧情。")}`;
@@ -12220,7 +12226,6 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
 
   // First Live 演出视频：仅使用远程 CDN，本地不 bundled 视频资源
   const VIDEO_CDN = "https://pub-cfdeb8f85de84d8193695eca002e7880.r2.dev";
-  const NIA_FINALE_LIVE_VIDEO = `${VIDEO_CDN}/assets/campusmode/Hanami-Saki-Campusmode.mp4`;
   const idolVideoFiles = {
     "藤田琴音": "fujita-kotone-live.mp4",
     "月村手毬": "tsukimura-temari-live.mp4",
@@ -12242,6 +12247,13 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
       `${VIDEO_CDN}/${file}`
     ])
   );
+
+  function getNiaFinaleLiveVideoUrl(nia = normalizeNiaState(state.nia)) {
+    const savedUrl = cleanText(nia.finaleLive?.videoUrl, "");
+    if (savedUrl) return savedUrl;
+    const finaleVideo = cleanText(getCurrentNiaRoute()?.assets?.finaleVideo, "").replace(/^\/+/, "");
+    return finaleVideo ? `${VIDEO_CDN}/${finaleVideo}` : "";
+  }
 
   function completeNiaFinaleLive() {
     const nia = normalizeNiaState(state.nia);
@@ -12268,12 +12280,14 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
   function startNiaFinaleLive() {
     const nia = normalizeNiaState(state.nia);
     if (Number(nia.round) < 3 || nia.finaleLive?.status === "completed") return false;
+    const videoUrl = getNiaFinaleLiveVideoUrl(nia);
+    if (!videoUrl) return false;
     deferredLivePostReply = null;
     state.nia = {
       ...nia,
       finaleLive: {
         status: "playing",
-        videoUrl: NIA_FINALE_LIVE_VIDEO,
+        videoUrl,
         startedAt: Date.now(),
         completedAt: 0
       },
@@ -12284,7 +12298,7 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     saveState("nia.finale_live.started");
     render();
     setElementHidden("eventOverlay", true);
-    triggerWipeTransition(() => playLiveVideo(NIA_FINALE_LIVE_VIDEO, completeNiaFinaleLive));
+    triggerWipeTransition(() => playLiveVideo(videoUrl, completeNiaFinaleLive));
     return true;
   }
 
@@ -12292,12 +12306,19 @@ ${outputContract(`请写一段 800 字左右、以演出后后台沟通与总结
     if (state.produceScenario !== "nia") return false;
     const nia = normalizeNiaState(state.nia);
     if (nia.finaleLive?.status !== "playing") return false;
+    const videoUrl = getNiaFinaleLiveVideoUrl(nia);
+    if (!videoUrl) {
+      state.nia = { ...nia, finaleLive: { ...nia.finaleLive, status: "completed", completedAt: Date.now() }, updatedAt: Date.now() };
+      saveState("nia.finale_live.skipped");
+      reconcileNiaFanMilestoneAfterSettlement();
+      return true;
+    }
     state.nia = nia;
     state.activeStoryNode = { type: "niaFinaleLive", ready: false };
     state.pendingActionContext = { action: "nia_finale_live", actionContext: { phase: "playing" } };
     render();
     setElementHidden("eventOverlay", true);
-    triggerWipeTransition(() => playLiveVideo(nia.finaleLive.videoUrl || NIA_FINALE_LIVE_VIDEO, completeNiaFinaleLive));
+    triggerWipeTransition(() => playLiveVideo(videoUrl, completeNiaFinaleLive));
     return true;
   }
 
@@ -18655,6 +18676,39 @@ ${buildChoiceOnlyExample(true)}`;
     return sent;
   }
 
+  function buildHatsuRouteMarkers(options = {}) {
+    options = options && typeof options === "object" ? options : {};
+    const isNia = state.produceScenario === "nia"
+      || state.launchMode === "nia"
+      || state.nia?.mode === "nia";
+    const route = isNia ? "NIA" : state.produceScenario === "hatsu" ? "HATSU" : "OTHER";
+    const idolName = canonicalIdolName(state.idol || selectedIdol || "");
+    const idolCode = affinityIdolCodes[idolName] || "UNKNOWN";
+    const ownerKind = String(options.ownerKind || "").toLowerCase();
+    let phase = route === "NIA" ? "SCHEDULE" : "GENERAL";
+    if (ownerKind === "opening") phase = "OPENING";
+    else if (ownerKind.includes("nia_opening")) phase = "OPENING";
+    else if (ownerKind.includes("audition")) phase = "AUDITION";
+    else if (ownerKind.includes("business") || ownerKind.includes("live") || ownerKind.includes("radio") || ownerKind.includes("tv")) phase = "BUSINESS";
+    else if (ownerKind.includes("bond") || ownerKind.includes("affinity") || ownerKind.includes("milestone")) phase = "BOND";
+    else if (ownerKind.includes("evening") || ownerKind.includes("apartment")) phase = "EVENING";
+    else if (ownerKind.includes("phone")) phase = "PHONE";
+    return [
+      "[HATSU_ROUTE_CONTEXT]",
+      `<HATSU_ROUTE>${route}</HATSU_ROUTE>`,
+      `<HATSU_IDOL>${idolCode}</HATSU_IDOL>`,
+      `<HATSU_PHASE>${phase}</HATSU_PHASE>`,
+      `<HATSU_CONTEXT>${route}:${idolCode}:${phase}</HATSU_CONTEXT>`,
+      "[/HATSU_ROUTE_CONTEXT]"
+    ].join("\n");
+  }
+
+  function appendHatsuRouteMarkers(promptText, options = {}) {
+    const prompt = String(promptText || "");
+    if (prompt.includes("<HATSU_ROUTE>") && prompt.includes("<HATSU_IDOL>")) return prompt;
+    return `${prompt}\n\n${buildHatsuRouteMarkers(options)}`;
+  }
+
   function resetBroadcastPendingState() {
     if (state.freeMode?.world?.broadcast) {
       state.freeMode.world.broadcast.pendingRequestId = "";
@@ -18673,7 +18727,7 @@ ${buildChoiceOnlyExample(true)}`;
     }
     const rawPrompt = promptText || state.lastPrompt || document.getElementById("promptText").value || "";
     ensureNiaInheritedAffinity();
-    const prompt = withNiaAffinityContext(rawPrompt);
+    const prompt = withNiaAffinityContext(appendHatsuRouteMarkers(rawPrompt, options));
     if (!prompt.trim()) {
       releasePreparedLease("empty_prompt");
       return false;
@@ -23913,6 +23967,7 @@ ${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到
     const prompt = api.buildNiaFanMilestonePrompt({
       eventId: runtime.eventId,
       idolName: state.idol,
+      route: clone(getCurrentNiaRoute() || {}),
       fans: training.fans,
       producer: clone(state.producer || {}),
       round: nia.round,
@@ -25302,6 +25357,7 @@ ${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到
   function loadNiaMiniLiveApi() {
     const loaded = globalThis.HatsuNiaMiniLiveApi;
     if (loaded?.buildNiaMiniLivePrompt && loaded?.parseNiaMiniLivePayload) return Promise.resolve(loaded);
+    if (globalThis.__HATSU_NIA_MINI_LIVE_API_LOAD__) return globalThis.__HATSU_NIA_MINI_LIVE_API_LOAD__;
     if (niaMiniLiveApiLoadPromise) return niaMiniLiveApiLoadPromise;
     let moduleUrl = "";
     try {
@@ -25330,7 +25386,9 @@ ${outputContract("请写 900 字以内的完整校内傍晚场景，从抵达到
       })
       .finally(() => {
         niaMiniLiveApiLoadPromise = null;
+        delete globalThis.__HATSU_NIA_MINI_LIVE_API_LOAD__;
       });
+    globalThis.__HATSU_NIA_MINI_LIVE_API_LOAD__ = niaMiniLiveApiLoadPromise;
     return niaMiniLiveApiLoadPromise;
   }
 

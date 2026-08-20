@@ -7,6 +7,7 @@ const root = new URL("../", import.meta.url);
 const registrySource = fs.readFileSync(new URL("nia/routes/registry.js", root), "utf8");
 const sakiSource = fs.readFileSync(new URL("nia/routes/hanami-saki.js", root), "utf8");
 const kotoneSource = fs.readFileSync(new URL("nia/routes/fujita-kotone.js", root), "utf8");
+const umeSource = fs.readFileSync(new URL("nia/routes/hanami-ume.js", root), "utf8");
 const html = fs.readFileSync(new URL("index.html", root), "utf8");
 const st = fs.readFileSync(new URL("st.html", root), "utf8");
 
@@ -16,6 +17,7 @@ function loadRoutes() {
   vm.runInContext(registrySource, context);
   vm.runInContext(sakiSource, context);
   vm.runInContext(kotoneSource, context);
+  vm.runInContext(umeSource, context);
   return context.HatsuNiaRoutes;
 }
 
@@ -35,9 +37,34 @@ test("Kotone route registers inherited affinity, QUARTET opponents, and episode 
   assert.equal(route.routeId, "fujita-kotone");
   assert.equal(route.inheritedAffinity.tag, "AFF_KOTONE_100");
   assert.equal(route.inheritedAffinity.value, 100);
-  assert.deepEqual([...route.rounds.find((entry) => entry.round === 2).opponents].map((entry) => String(entry.name)), ["蓝井抚子", "白草四音"]);
+  assert.equal(route.assets.finaleVideo, "assets/campusmode/Fujita-Kotone-Campusmode.mp4");
+  const quartetOpponents = [...route.rounds.find((entry) => entry.round === 2).opponents];
+  assert.deepEqual(quartetOpponents.map((entry) => String(entry.name)), ["蓝井抚子", "白草四音"]);
+  assert.deepEqual(quartetOpponents.map((entry) => String(entry.avatar)), [
+    "./assets/avatars/aoi-nadeshiko.png",
+    "./assets/avatars/shirakusa-shion.png"
+  ]);
+  assert.equal(route.rounds.find((entry) => entry.round === 3).opponent.avatar, "./assets/avatars/shirakusa-tsukika.png");
   assert.deepEqual(Array.from(routes.getEpisodes("藤田琴音"), (entry) => entry.episode), [12, 13, 14, 15, 16, 17, 18, 19, 20]);
   assert.equal(route.opening.episode, 11);
+});
+
+test("Saki route keeps its Campus Mode finale video", () => {
+  const routes = loadRoutes();
+  assert.equal(routes.getByIdol("花海咲季").assets.finaleVideo, "assets/campusmode/Hanami-Saki-Campusmode.mp4");
+});
+
+test("Ume route registers inherited affinity, opponents, opening, and episode anchors", () => {
+  const routes = loadRoutes();
+  const route = routes.getByIdol("花海佑芽");
+  assert.equal(route.routeId, "hanami-ume");
+  assert.equal(route.inheritedAffinity.tag, "AFF_UME_100");
+  assert.equal(route.opening.episode, 11);
+  assert.match(route.opening.anchors.join("\n"), /H\.I\.F/);
+  assert.equal(routes.getRound("花海佑芽", 2).opponent.name, "贺阳燐羽");
+  assert.equal(routes.getRound("花海佑芽", 3).opponent.name, "花海咲季");
+  assert.deepEqual(Array.from(routes.getEpisodes("花海佑芽"), (entry) => entry.episode), [12, 13, 14, 15, 16, 17, 18, 19, 20]);
+  assert.match(routes.getEpisode("花海佑芽", "nia-ume-fans-10000").promptAnchors.join("\n"), /替她复仇/);
 });
 
 test("registry rejects incomplete routes and duplicates", () => {
@@ -54,7 +81,9 @@ test("route scripts load before N.I.A cores and app in both entries", () => {
   assert.ok(html.indexOf("nia/routes/registry.js") < html.indexOf("nia-training-core.js"));
   assert.ok(html.indexOf("nia/routes/hanami-saki.js") < html.indexOf("app.js"));
   assert.ok(html.indexOf("nia/routes/fujita-kotone.js") < html.indexOf("nia-training-core.js"));
+  assert.ok(html.indexOf("nia/routes/hanami-ume.js") < html.indexOf("nia-training-core.js"));
   assert.ok(st.indexOf("'nia/routes/registry.js'") < st.indexOf("abs('nia-training-core.js')"));
   assert.ok(st.indexOf("'nia/routes/hanami-saki.js'") < st.indexOf("abs('app.js')"));
   assert.ok(st.indexOf("'nia/routes/fujita-kotone.js'") < st.indexOf("abs('nia-training-core.js')"));
+  assert.ok(st.indexOf("'nia/routes/hanami-ume.js'") < st.indexOf("abs('nia-training-core.js')"));
 });

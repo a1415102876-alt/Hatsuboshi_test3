@@ -38,6 +38,28 @@ test('Kotone route uses its own fixed episode prompt instead of Saki fallback', 
   assert.doesNotMatch(prompt, /生成花海咲季/);
 });
 
+test('route-anchor provider builds a reusable episode prompt without idol-specific API branching', () => {
+  const prompt = api.buildNiaFanMilestonePrompt({
+    eventId: 'nia-ume-fans-10000',
+    idolName: '花海佑芽',
+    fans: 10020,
+    route: {
+      idolName: '花海佑芽',
+      promptProvider: 'route-anchors',
+      episodes: [{
+        eventId: 'nia-ume-fans-10000',
+        episode: 13,
+        promptAnchors: ['咲季替佑芽复仇。', '燐羽被触动后亲吻佑芽。']
+      }]
+    }
+  }, { status: 'pending', triggeredAtFans: 10020 });
+  assert.match(prompt, /生成花海佑芽/);
+  assert.match(prompt, /咲季替佑芽复仇/);
+  assert.match(prompt, /燐羽被触动后亲吻佑芽/);
+  assert.match(prompt, /H\.I\.F/);
+  assert.match(prompt, /NIA_FAN_MILESTONE_EVENT/);
+});
+
 test('parser selects the last valid matching tag and discards settlement fields', () => {
   const source = [
     'pensamiento en español',
