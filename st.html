@@ -216,7 +216,7 @@
   // PlayList、Live 视频、头像及其他图片资源统一走同一个 R2 桶。
   const R2_MEDIA_CDN = "https://pub-cfdeb8f85de84d8193695eca002e7880.r2.dev";
   // R2 同名覆盖不会自动让浏览器丢弃旧图片缓存；替换媒体文件后递增此版本号。
-  const R2_MEDIA_VERSION = "20260811-1";
+  const R2_MEDIA_VERSION = "20260820-1";
 
   function withR2MediaVersion(url) {
     return url + (url.includes("?") ? "&" : "?") + `v=${R2_MEDIA_VERSION}`;
